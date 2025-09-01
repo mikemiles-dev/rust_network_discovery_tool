@@ -1,30 +1,42 @@
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
+use pnet::datalink;
 use pnet::datalink::Channel::Ethernet;
-use pnet::datalink::{self, NetworkInterface};
+use pnet::datalink::NetworkInterface;
+use pnet::packet::Packet;
 use pnet::packet::ethernet::EthernetPacket;
-use pnet::packet::{Packet, ip};
 
-use pnet::packet::ethernet::{EtherType, EtherTypes};
-use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
-use pnet::packet::ipv4::{Ipv4, Ipv4Packet};
-use pnet::packet::ipv6::{Ipv6, Ipv6Packet};
+use pnet::packet::ethernet::EtherTypes;
+use pnet::packet::ip::IpNextHeaderProtocols;
+use pnet::packet::ipv4::Ipv4Packet;
+use pnet::packet::ipv6::Ipv6Packet;
 use pnet::packet::tcp::TcpPacket;
 use pnet::packet::udp::UdpPacket;
-use std::env;
 
-fn main() {
-    let interface_name = env::args().nth(1).unwrap();
-    let interface_names_match = |iface: &NetworkInterface| iface.name == interface_name;
+use pnet::util::MacAddr;
+use tokio::io;
 
+#[tokio::main]
+async fn main() -> io::Result<()> {
     // Find the network interface with the provided name
     let interfaces = datalink::interfaces();
-    let interface = interfaces
-        .into_iter()
-        .filter(interface_names_match)
-        .next()
-        .unwrap();
 
+    let mut results = vec![];
+
+    for interface in interfaces.into_iter() {
+        println!("Capturing on interface: {}", interface.name);
+        let result = tokio::spawn(async { capture_packets(interface).await });
+        results.push(result);
+    }
+
+    for result in results {
+        let _ = result.await;
+    }
+
+    Ok(())
+}
+
+async fn capture_packets(interface: NetworkInterface) -> io::Result<()> {
     // Create a new channel, dealing with layer 2 packets
     let (_tx, mut rx) = match datalink::channel(&interface, Default::default()) {
         Ok(Ethernet(tx, rx)) => (tx, rx),
@@ -39,7 +51,8 @@ fn main() {
         match rx.next() {
             Ok(packet) => {
                 let ethernet_packet: EthernetPacket<'_> = EthernetPacket::new(packet).unwrap();
-                let communication: Communication = ethernet_packet.into();
+                let mut communication: Communication = ethernet_packet.into();
+                communication.interface = interface.name.clone();
                 println!("Detected communication: {:?}", communication);
                 communications.push(communication);
             }
@@ -53,10 +66,12 @@ fn main() {
 
 impl From<EthernetPacket<'_>> for Communication {
     fn from(ethernet_packet: EthernetPacket<'_>) -> Self {
-        let packet_wrapper = PacketWrapper::new(&ethernet_packet);
+        let packet_wrapper = &PacketWrapper::new(&ethernet_packet);
         let mut communication: Communication = packet_wrapper.into();
-        communication.source_mac = Some(ethernet_packet.get_source().to_string());
-        communication.destination_mac = Some(ethernet_packet.get_destination().to_string());
+        communication.set_source_and_dest_mac(
+            ethernet_packet.get_source(),
+            ethernet_packet.get_destination(),
+        );
         communication
     }
 }
@@ -86,8 +101,7 @@ impl<'a> PacketWrapper<'a> {
                     PacketWrapper::Unknown
                 }
             }
-            //_ => PacketWrapper::Ethernet(packet),
-            _ => PacketWrapper::Unknown,
+            _ => PacketWrapper::Ethernet(EthernetPacket::new(packet.packet()).unwrap()),
         }
     }
 
@@ -217,8 +231,8 @@ impl<'a> PacketWrapper<'a> {
     }
 }
 
-impl From<PacketWrapper<'_>> for Communication {
-    fn from(packet_wrapper: PacketWrapper) -> Self {
+impl From<&PacketWrapper<'_>> for Communication {
+    fn from(packet_wrapper: &PacketWrapper) -> Self {
         let mut communication = Communication::default();
 
         communication.source_ip = packet_wrapper.get_source_ip();
@@ -240,6 +254,7 @@ impl From<PacketWrapper<'_>> for Communication {
 
 #[derive(Default, Debug)]
 struct Communication {
+    interface: String,
     source_mac: Option<String>,
     destination_mac: Option<String>,
     source_ip: Option<String>,
@@ -249,6 +264,13 @@ struct Communication {
     ip_version: Option<u8>,
     ip_header_protocol: Option<String>,
     sub_protocol: Option<String>,
+}
+
+impl Communication {
+    fn set_source_and_dest_mac(&mut self, source_mac: MacAddr, dest_mac: MacAddr) {
+        self.source_mac = Some(source_mac.to_string());
+        self.destination_mac = Some(dest_mac.to_string());
+    }
 }
 
 #[derive(Debug, FromPrimitive)]
