@@ -2,4 +2,8 @@
 
 Usage:
 
-`cargo new -- <interface name>`
+`cargo run`
+
+Description:
+
+Identifies traffic coming into your machine.  
