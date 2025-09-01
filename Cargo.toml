@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+futures ={ version = "0.3.31", features = ["async-await"] }
 num-derive = "0.4.2"
 num-traits = "0.2.18"
 pnet = "0.35.0"

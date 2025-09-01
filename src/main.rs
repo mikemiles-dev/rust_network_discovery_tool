@@ -1,35 +1,38 @@
 pub mod packet;
+pub mod writer;
 
 use pnet::datalink;
 use pnet::datalink::Channel::Ethernet;
 use pnet::datalink::NetworkInterface;
 use pnet::packet::ethernet::EthernetPacket;
 
-use tokio::io;
+use tokio::{io, task};
 
 use packet::communication::Communication;
+use writer::SQLWriter;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
     // Find the network interface with the provided name
     let interfaces = datalink::interfaces();
 
-    let mut results = vec![];
+    let mut handles = vec![];
+
+    let sql_writer = SQLWriter::new().await;
 
     for interface in interfaces.into_iter() {
-        println!("Capturing on interface: {}", interface.name);
-        let result = tokio::spawn(async { capture_packets(interface).await });
-        results.push(result);
+        let sql_writer_clone = sql_writer.clone();
+        let result = task::spawn_blocking(move || capture_packets(interface, sql_writer_clone));
+        handles.push(result);
     }
 
-    for result in results {
-        let _ = result.await;
-    }
+    futures::future::join_all(handles).await;
 
     Ok(())
 }
 
-async fn capture_packets(interface: NetworkInterface) -> io::Result<()> {
+fn capture_packets(interface: NetworkInterface, sql_writer: SQLWriter) -> io::Result<()> {
+    println!("Starting packet capture on interface: {}", interface.name);
     // Create a new channel, dealing with layer 2 packets
     let (_tx, mut rx) = match datalink::channel(&interface, Default::default()) {
         Ok(Ethernet(tx, rx)) => (tx, rx),
@@ -39,15 +42,14 @@ async fn capture_packets(interface: NetworkInterface) -> io::Result<()> {
             e
         ),
     };
-    let mut communications = vec![];
     loop {
         match rx.next() {
             Ok(packet) => {
                 let ethernet_packet: EthernetPacket<'_> = EthernetPacket::new(packet).unwrap();
                 let mut communication: Communication = ethernet_packet.into();
                 communication.interface = interface.name.clone();
-                println!("Detected communication: {:?}", communication);
-                communications.push(communication);
+                //println!("{:?}", communication);
+                let _ = sql_writer.write_communication(communication);
             }
             Err(e) => {
                 // If an error occurs, we can handle it here
