@@ -3,15 +3,7 @@ pub mod packet;
 use pnet::datalink;
 use pnet::datalink::Channel::Ethernet;
 use pnet::datalink::NetworkInterface;
-use pnet::packet::Packet;
 use pnet::packet::ethernet::EthernetPacket;
-
-use pnet::packet::ethernet::EtherTypes;
-use pnet::packet::ip::IpNextHeaderProtocols;
-use pnet::packet::ipv4::Ipv4Packet;
-use pnet::packet::ipv6::Ipv6Packet;
-use pnet::packet::tcp::TcpPacket;
-use pnet::packet::udp::UdpPacket;
 
 use tokio::io;
 

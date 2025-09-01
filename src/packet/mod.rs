@@ -65,35 +65,19 @@ impl<'a> PacketWrapper<'a> {
         match self {
             PacketWrapper::Ipv4(packet) => match packet.get_next_level_protocol() {
                 IpNextHeaderProtocols::Tcp => {
-                    if let Some(tcp_packet) = TcpPacket::new(packet.payload()) {
-                        Some(tcp_packet.get_source())
-                    } else {
-                        None
-                    }
+                    TcpPacket::new(packet.payload()).map(|tcp_packet| tcp_packet.get_source())
                 }
                 IpNextHeaderProtocols::Udp => {
-                    if let Some(udp_packet) = UdpPacket::new(packet.payload()) {
-                        Some(udp_packet.get_source())
-                    } else {
-                        None
-                    }
+                    UdpPacket::new(packet.payload()).map(|udp_packet| udp_packet.get_source())
                 }
                 _ => None,
             },
             PacketWrapper::Ipv6(packet) => match packet.get_next_header() {
                 IpNextHeaderProtocols::Tcp => {
-                    if let Some(tcp_packet) = TcpPacket::new(packet.payload()) {
-                        Some(tcp_packet.get_source())
-                    } else {
-                        None
-                    }
+                    TcpPacket::new(packet.payload()).map(|tcp_packet| tcp_packet.get_source())
                 }
                 IpNextHeaderProtocols::Udp => {
-                    if let Some(udp_packet) = UdpPacket::new(packet.payload()) {
-                        Some(udp_packet.get_source())
-                    } else {
-                        None
-                    }
+                    UdpPacket::new(packet.payload()).map(|udp_packet| udp_packet.get_source())
                 }
                 _ => None,
             },
@@ -106,38 +90,22 @@ impl<'a> PacketWrapper<'a> {
         match self {
             PacketWrapper::Ipv4(packet) => match packet.get_next_level_protocol() {
                 proto if proto == IpNextHeaderProtocols::Tcp => {
-                    if let Some(tcp_packet) = TcpPacket::new(packet.payload()) {
-                        Some(tcp_packet.get_destination())
-                    } else {
-                        None
-                    }
+                    TcpPacket::new(packet.payload()).map(|tcp_packet| tcp_packet.get_destination())
                 }
                 proto if proto == IpNextHeaderProtocols::Udp => {
-                    if let Some(udp_packet) = UdpPacket::new(packet.payload()) {
-                        Some(udp_packet.get_destination())
-                    } else {
-                        None
-                    }
+                    UdpPacket::new(packet.payload()).map(|udp_packet| udp_packet.get_destination())
                 }
                 _ => None,
             },
-            PacketWrapper::Ipv6(packet) => match packet.get_next_header() {
-                IpNextHeaderProtocols::Tcp => {
-                    if let Some(tcp_packet) = TcpPacket::new(packet.payload()) {
-                        Some(tcp_packet.get_destination())
-                    } else {
-                        None
-                    }
+            PacketWrapper::Ipv6(packet) => {
+                match packet.get_next_header() {
+                    IpNextHeaderProtocols::Tcp => TcpPacket::new(packet.payload())
+                        .map(|tcp_packet| tcp_packet.get_destination()),
+                    IpNextHeaderProtocols::Udp => UdpPacket::new(packet.payload())
+                        .map(|udp_packet| udp_packet.get_destination()),
+                    _ => None,
                 }
-                IpNextHeaderProtocols::Udp => {
-                    if let Some(udp_packet) = UdpPacket::new(packet.payload()) {
-                        Some(udp_packet.get_destination())
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            },
+            }
             PacketWrapper::Ethernet(_) => None,
             PacketWrapper::Unknown => None,
         }
@@ -171,14 +139,16 @@ impl<'a> PacketWrapper<'a> {
 
 impl From<&PacketWrapper<'_>> for Communication {
     fn from(packet_wrapper: &PacketWrapper) -> Self {
-        let mut communication = Communication::default();
-
-        communication.source_ip = packet_wrapper.get_source_ip();
-        communication.destination_ip = packet_wrapper.get_destination_ip();
-        communication.source_port = packet_wrapper.get_source_port();
-        communication.destination_port = packet_wrapper.get_destination_port();
-        communication.ip_version = packet_wrapper.get_ip_version();
-        communication.ip_header_protocol = packet_wrapper.get_header_protocol();
+        let mut communication = Communication {
+            source_ip: packet_wrapper.get_source_ip(),
+            destination_ip: packet_wrapper.get_destination_ip(),
+            source_port: packet_wrapper.get_source_port(),
+            destination_port: packet_wrapper.get_destination_port(),
+            ip_version: packet_wrapper.get_ip_version(),
+            ip_header_protocol: packet_wrapper.get_header_protocol(),
+            sub_protocol: None,
+            ..Default::default()
+        };
         if communication.ip_header_protocol == Some("Tcp".to_string())
             || communication.ip_header_protocol == Some("Udp".to_string())
         {
