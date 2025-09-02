@@ -38,8 +38,6 @@ impl SQLWriter {
                 .expect("Failed to create table if not exists");
 
             while let Some(communication) = rx.recv().await {
-                // Here you would implement the logic to write the communication to the SQL database
-                println!("Writing communication to database: {:?}", communication);
                 communication
                     .insert_communication(&conn)
                     .expect("Failed to insert communication");

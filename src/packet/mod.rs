@@ -128,11 +128,11 @@ impl<'a> PacketWrapper<'a> {
         }
     }
 
-    fn get_sub_protocol(&self, port: u16) -> String {
+    fn get_sub_protocol(&self, port: u16) -> Option<String> {
         if let Some(protocol_port) = ProtocolPort::from_u16(port) {
-            format!("{}", protocol_port)
+            Some(format!("{}", protocol_port))
         } else {
-            format!("Unknown ({})", port)
+            None
         }
     }
 }
@@ -152,8 +152,17 @@ impl From<&PacketWrapper<'_>> for Communication {
         if communication.ip_header_protocol == Some("Tcp".to_string())
             || communication.ip_header_protocol == Some("Udp".to_string())
         {
-            communication.sub_protocol =
-                Some(packet_wrapper.get_sub_protocol(communication.destination_port.unwrap_or(0)));
+            if let Some(sub_protol) =
+                packet_wrapper.get_sub_protocol(communication.destination_port.unwrap_or(0))
+            {
+                communication.sub_protocol = Some(sub_protol);
+            } else if let Some(sub_protol) =
+                packet_wrapper.get_sub_protocol(communication.source_port.unwrap_or(0))
+            {
+                communication.sub_protocol = Some(sub_protol);
+            } else {
+                communication.sub_protocol = None;
+            }
         }
 
         communication
