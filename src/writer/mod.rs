@@ -1,5 +1,9 @@
-use std::env;
+use rusqlite::Connection;
 use tokio::sync::mpsc;
+
+use std::env;
+
+use crate::packet::communication::Communication;
 
 fn get_channel_buffer_size() -> usize {
     env::var("CHANNEL_BUFFER_SIZE")
@@ -14,33 +18,34 @@ fn get_database_url() -> String {
 
 #[derive(Clone)]
 pub struct SQLWriter {
-    sender: mpsc::Sender<crate::packet::communication::Communication>,
+    pub sender: mpsc::Sender<crate::packet::communication::Communication>,
 }
 
 impl SQLWriter {
     pub async fn new() -> Self {
-        let (tx, mut rx) = mpsc::channel(get_channel_buffer_size());
+        let (tx, mut rx) = mpsc::channel::<Communication>(get_channel_buffer_size());
 
         tokio::spawn(async move {
             println!(
                 "SQL Writer started, connecting to database at {}",
                 get_database_url()
             );
+
+            let conn = Connection::open("test.db")
+                .unwrap_or_else(|_| panic!("Failed to open database: {}", get_database_url()));
+
+            Communication::create_table_if_not_exists(&conn)
+                .expect("Failed to create table if not exists");
+
             while let Some(communication) = rx.recv().await {
                 // Here you would implement the logic to write the communication to the SQL database
                 println!("Writing communication to database: {:?}", communication);
+                communication
+                    .insert_communication(&conn)
+                    .expect("Failed to insert communication");
             }
         });
 
         SQLWriter { sender: tx }
-    }
-
-    pub fn write_communication(&self, communication: crate::packet::communication::Communication) {
-        let sender = self.sender.clone();
-        tokio::spawn(async move {
-            if let Err(e) = sender.send(communication).await {
-                eprintln!("Failed to send communication to SQL writer: {}", e);
-            }
-        });
     }
 }

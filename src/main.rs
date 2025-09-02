@@ -48,11 +48,9 @@ fn capture_packets(interface: NetworkInterface, sql_writer: SQLWriter) -> io::Re
                 let ethernet_packet: EthernetPacket<'_> = EthernetPacket::new(packet).unwrap();
                 let mut communication: Communication = ethernet_packet.into();
                 communication.interface = interface.name.clone();
-                //println!("{:?}", communication);
-                let _ = sql_writer.write_communication(communication);
+                communication.write(sql_writer.clone());
             }
             Err(e) => {
-                // If an error occurs, we can handle it here
                 println!("An error occurred while reading: {}", e);
             }
         }
