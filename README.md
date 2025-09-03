@@ -1,4 +1,4 @@
- Rust Network Discovery Tool
+Rust Network Discovery Tool
 
 Usage:
 
@@ -7,3 +7,5 @@ Usage:
 Description:
 
 Identifies traffic coming into your machine.  
+
+Uses PNet Library.  For Windows support see: https://github.com/libpnet/libpnet
