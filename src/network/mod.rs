@@ -1,4 +1,5 @@
 pub mod communication;
+pub mod endpoint;
 pub mod protocol;
 
 use num_traits::FromPrimitive;
@@ -11,8 +12,7 @@ use pnet::packet::ipv6::Ipv6Packet;
 use pnet::packet::tcp::TcpPacket;
 use pnet::packet::udp::UdpPacket;
 
-use crate::packet::communication::Communication;
-use crate::packet::protocol::ProtocolPort;
+use crate::network::protocol::ProtocolPort;
 
 #[derive(Debug)]
 enum PacketWrapper<'a> {
@@ -47,7 +47,7 @@ impl<'a> PacketWrapper<'a> {
         match self {
             PacketWrapper::Ipv4(packet) => Some(packet.get_source().to_string()),
             PacketWrapper::Ipv6(packet) => Some(packet.get_source().to_string()),
-            PacketWrapper::Ethernet(packet) => Some(packet.get_source().to_string()),
+            PacketWrapper::Ethernet(packet) => None, //Some(packet.get_source().to_string()),
             PacketWrapper::Unknown => None,
         }
     }
@@ -134,37 +134,5 @@ impl<'a> PacketWrapper<'a> {
         } else {
             None
         }
-    }
-}
-
-impl From<&PacketWrapper<'_>> for Communication {
-    fn from(packet_wrapper: &PacketWrapper) -> Self {
-        let mut communication = Communication {
-            source_ip: packet_wrapper.get_source_ip(),
-            destination_ip: packet_wrapper.get_destination_ip(),
-            source_port: packet_wrapper.get_source_port(),
-            destination_port: packet_wrapper.get_destination_port(),
-            ip_version: packet_wrapper.get_ip_version(),
-            ip_header_protocol: packet_wrapper.get_header_protocol(),
-            sub_protocol: None,
-            ..Default::default()
-        };
-        if communication.ip_header_protocol == Some("Tcp".to_string())
-            || communication.ip_header_protocol == Some("Udp".to_string())
-        {
-            if let Some(sub_protol) =
-                packet_wrapper.get_sub_protocol(communication.destination_port.unwrap_or(0))
-            {
-                communication.sub_protocol = Some(sub_protol);
-            } else if let Some(sub_protol) =
-                packet_wrapper.get_sub_protocol(communication.source_port.unwrap_or(0))
-            {
-                communication.sub_protocol = Some(sub_protol);
-            } else {
-                communication.sub_protocol = None;
-            }
-        }
-
-        communication
     }
 }

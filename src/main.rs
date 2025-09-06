@@ -1,4 +1,4 @@
-pub mod packet;
+pub mod network;
 pub mod writer;
 
 use pnet::datalink;
@@ -8,7 +8,7 @@ use pnet::packet::ethernet::EthernetPacket;
 
 use tokio::{io, task};
 
-use packet::communication::Communication;
+use network::communication::Communication;
 use writer::SQLWriter;
 
 #[tokio::main]
@@ -46,8 +46,8 @@ fn capture_packets(interface: NetworkInterface, sql_writer: SQLWriter) -> io::Re
         match rx.next() {
             Ok(packet) => {
                 let ethernet_packet: EthernetPacket<'_> = EthernetPacket::new(packet).unwrap();
-                let mut communication: Communication = ethernet_packet.into();
-                communication.interface = interface.name.clone();
+                let communication: Communication =
+                    Communication::new(ethernet_packet, interface.name.clone());
                 communication.write(sql_writer.clone());
             }
             Err(e) => {

@@ -3,7 +3,8 @@ use tokio::sync::mpsc;
 
 use std::env;
 
-use crate::packet::communication::Communication;
+use crate::network::communication::Communication;
+use crate::network::endpoint::EndPoint;
 
 fn get_channel_buffer_size() -> usize {
     env::var("CHANNEL_BUFFER_SIZE")
@@ -18,7 +19,7 @@ fn get_database_url() -> String {
 
 #[derive(Clone)]
 pub struct SQLWriter {
-    pub sender: mpsc::Sender<crate::packet::communication::Communication>,
+    pub sender: mpsc::Sender<Communication>,
 }
 
 impl SQLWriter {
@@ -34,13 +35,28 @@ impl SQLWriter {
             let conn = Connection::open("test.db")
                 .unwrap_or_else(|_| panic!("Failed to open database: {}", get_database_url()));
 
+            // Execute the PRAGMA foreign_keys = ON; statement
+            conn.execute("PRAGMA foreign_keys = ON;", [])
+                .expect("Failed to set foreign key pragma");
+
+            EndPoint::create_table_if_not_exists(&conn)
+                .expect("Failed to create table if not exists");
             Communication::create_table_if_not_exists(&conn)
                 .expect("Failed to create table if not exists");
 
             while let Some(communication) = rx.recv().await {
-                communication
-                    .insert_communication(&conn)
-                    .expect("Failed to insert communication");
+                if let Err(e) = communication.insert_communication(&conn) {
+                    match e {
+                        rusqlite::Error::SqliteFailure(err, Some(_msg))
+                            if err.code == rusqlite::ErrorCode::ConstraintViolation =>
+                        {
+                            //eprintln!("Constraint violation: {}", msg);
+                        }
+                        _ => {
+                            eprintln!("Failed to insert communication: {}", e);
+                        }
+                    }
+                }
             }
         });
 
