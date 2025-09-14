@@ -47,7 +47,7 @@ impl<'a> PacketWrapper<'a> {
         match self {
             PacketWrapper::Ipv4(packet) => Some(packet.get_source().to_string()),
             PacketWrapper::Ipv6(packet) => Some(packet.get_source().to_string()),
-            PacketWrapper::Ethernet(packet) => None, //Some(packet.get_source().to_string()),
+            PacketWrapper::Ethernet(_packet) => None, //Some(packet.get_source().to_string()),
             PacketWrapper::Unknown => None,
         }
     }

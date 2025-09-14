@@ -23,13 +23,20 @@ async fn main() -> io::Result<()> {
 
     let sql_writer = SQLWriter::new().await;
 
+    // Setup Ctrl+C handler
+    ctrlc::set_handler(move || {
+        println!("\nReceived Ctrl+C, shutting down...");
+        std::process::exit(0);
+    })
+    .expect("Error setting Ctrl+C handler");
+
     for interface in interfaces.into_iter() {
         let sql_writer_clone = sql_writer.clone();
         let result = task::spawn_blocking(move || capture_packets(interface, sql_writer_clone));
         handles.push(result);
     }
 
-    task::spawn_blocking(|| {
+    task::spawn_blocking(move || {
         println!("Starting web server");
         let sys = actix_rt::System::new();
         sys.block_on(async {
@@ -42,7 +49,10 @@ async fn main() -> io::Result<()> {
         .expect("Failed to start Web server");
     });
 
-    futures::future::join_all(handles).await;
+    // Wait for either all tasks to complete or shutdown signal
+    tokio::select! {
+        _ = futures::future::join_all(handles) => println!("All packet captures completed"),
+    }
 
     Ok(())
 }

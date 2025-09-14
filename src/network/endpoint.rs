@@ -2,9 +2,9 @@ use rusqlite::{Connection, Result};
 
 #[derive(Default, Debug)]
 pub struct EndPoint {
-    pub interface: String,
-    pub mac: Option<String>,
-    pub ip: Option<String>,
+    interface: String,
+    mac: Option<String>,
+    ip: Option<String>,
 }
 
 impl EndPoint {
