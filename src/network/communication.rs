@@ -76,8 +76,8 @@ impl Communication {
         ip: Option<String>,
         interface: String,
     ) -> Result<i64> {
-        let mut stmt =
-            conn.prepare("SELECT id FROM endpoints WHERE mac = ?1 AND ip = ?2 AND interface = ?3")?;
+        let mut stmt = conn
+            .prepare("SELECT id FROM endpoints WHERE (mac = ?1 OR ip = ?2) AND interface = ?3")?;
         if let Some(id) = stmt
             .query_row(params![mac, ip, interface], |row| row.get(0))
             .optional()?

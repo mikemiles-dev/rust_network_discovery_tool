@@ -1,5 +1,8 @@
-pub mod network;
-pub mod writer;
+mod network;
+mod web;
+mod writer;
+
+use actix_web::{App, HttpServer};
 
 use pnet::datalink;
 use pnet::datalink::Channel::Ethernet;
@@ -25,6 +28,19 @@ async fn main() -> io::Result<()> {
         let result = task::spawn_blocking(move || capture_packets(interface, sql_writer_clone));
         handles.push(result);
     }
+
+    task::spawn_blocking(|| {
+        println!("Starting web server");
+        let sys = actix_rt::System::new();
+        sys.block_on(async {
+            HttpServer::new(|| App::new().service(web::index))
+                .bind(("127.0.0.1", 8080))
+                .unwrap()
+                .run()
+                .await
+        })
+        .expect("Failed to start Web server");
+    });
 
     futures::future::join_all(handles).await;
 
