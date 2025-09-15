@@ -32,11 +32,11 @@ async fn main() -> io::Result<()> {
 
     for interface in interfaces.into_iter() {
         let sql_writer_clone = sql_writer.clone();
-        let result = task::spawn_blocking(move || capture_packets(interface, sql_writer_clone));
+        let result = task::spawn(async move { capture_packets(interface, sql_writer_clone).await });
         handles.push(result);
     }
 
-    task::spawn_blocking(move || {
+    task::spawn_blocking(move ||  {
         println!("Starting web server");
         let sys = actix_rt::System::new();
         sys.block_on(async {
@@ -57,7 +57,7 @@ async fn main() -> io::Result<()> {
     Ok(())
 }
 
-fn capture_packets(interface: NetworkInterface, sql_writer: SQLWriter) -> io::Result<()> {
+async fn capture_packets(interface: NetworkInterface, sql_writer: SQLWriter) -> io::Result<()> {
     println!("Starting packet capture on interface: {}", interface.name);
     // Create a new channel, dealing with layer 2 packets
     let (_tx, mut rx) = match datalink::channel(&interface, Default::default()) {
