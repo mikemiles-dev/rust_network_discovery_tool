@@ -131,12 +131,10 @@ impl Communication {
         Ok(())
     }
 
-    pub fn write(self, writer: SQLWriter) {
+    pub async fn write(self, writer: SQLWriter) {
         let sender = writer.sender.clone();
-        tokio::spawn(async move {
-            if let Err(e) = sender.send(self).await {
-                eprintln!("Failed to send communication to SQL writer: {}", e);
-            }
-        });
+        if let Err(e) = sender.send(self).await {
+            eprintln!("Failed to send communication to SQL writer: {}", e);
+        }
     }
 }

@@ -1,5 +1,5 @@
 use rusqlite::Connection;
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task};
 
 use std::env;
 
@@ -26,7 +26,7 @@ impl SQLWriter {
     pub async fn new() -> Self {
         let (tx, mut rx) = mpsc::channel::<Communication>(get_channel_buffer_size());
 
-        tokio::spawn(async move {
+        task::spawn(async move {
             println!(
                 "SQL Writer started, connecting to database at {}",
                 get_database_url()

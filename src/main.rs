@@ -36,7 +36,7 @@ async fn main() -> io::Result<()> {
         handles.push(result);
     }
 
-    task::spawn_blocking(move ||  {
+    task::spawn_blocking(move || {
         println!("Starting web server");
         let sys = actix_rt::System::new();
         sys.block_on(async {
@@ -74,8 +74,8 @@ async fn capture_packets(interface: NetworkInterface, sql_writer: SQLWriter) -> 
                 let ethernet_packet: EthernetPacket<'_> = EthernetPacket::new(packet).unwrap();
                 let communication: Communication =
                     Communication::new(ethernet_packet, interface.name.clone());
-                println!("{:?}", communication);
-                //communication.write(sql_writer.clone());
+                //println!("{:?}", communication);
+                communication.write(sql_writer.clone()).await;
             }
             Err(e) => {
                 println!("An error occurred while reading: {}", e);
