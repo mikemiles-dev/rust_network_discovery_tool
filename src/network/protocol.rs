@@ -26,6 +26,7 @@ pub enum ProtocolPort {
     NetbiosNameService = 137,
     NetbiosDatagramService = 138,
     NetbiosSessionService = 139,
+    Dota2 = 27015,
 }
 
 impl std::fmt::Display for ProtocolPort {
@@ -49,6 +50,7 @@ impl std::fmt::Display for ProtocolPort {
             ProtocolPort::NetbiosNameService => write!(f, "NetBIOS Name Service"),
             ProtocolPort::NetbiosDatagramService => write!(f, "NetBIOS Datagram Service"),
             ProtocolPort::NetbiosSessionService => write!(f, "NetBIOS Session Service"),
+            ProtocolPort::Dota2 => write!(f, "Dota 2"),
         }
     }
 }

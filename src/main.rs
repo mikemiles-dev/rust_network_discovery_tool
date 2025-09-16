@@ -74,7 +74,8 @@ async fn capture_packets(interface: NetworkInterface, sql_writer: SQLWriter) -> 
                 let ethernet_packet: EthernetPacket<'_> = EthernetPacket::new(packet).unwrap();
                 let communication: Communication =
                     Communication::new(ethernet_packet, interface.name.clone());
-                communication.write(sql_writer.clone());
+                println!("{:?}", communication);
+                //communication.write(sql_writer.clone());
             }
             Err(e) => {
                 println!("An error occurred while reading: {}", e);
