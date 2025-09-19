@@ -131,8 +131,7 @@ impl Communication {
         Ok(())
     }
 
-    pub async fn write(self, writer: SQLWriter) {
-        let sender = writer.sender.clone();
+    pub async fn write(self, sender: tokio::sync::mpsc::Sender<Communication>) {
         if let Err(e) = sender.send(self).await {
             eprintln!("Failed to send communication to SQL writer: {}", e);
         }

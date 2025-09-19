@@ -31,8 +31,8 @@ async fn main() -> io::Result<()> {
     .expect("Error setting Ctrl+C handler");
 
     for interface in interfaces.into_iter() {
-        let sql_writer_clone = sql_writer.clone();
-        let result = task::spawn(async move { capture_packets(interface, sql_writer_clone).await });
+        let sender = sql_writer.sender.clone();
+        let result = task::spawn(async move { capture_packets(interface, sender).await });
         handles.push(result);
     }
 
@@ -57,7 +57,7 @@ async fn main() -> io::Result<()> {
     Ok(())
 }
 
-async fn capture_packets(interface: NetworkInterface, sql_writer: SQLWriter) -> io::Result<()> {
+async fn capture_packets(interface: NetworkInterface, sender: tokio::sync::mpsc::Sender<Communication>) -> io::Result<()> {
     println!("Starting packet capture on interface: {}", interface.name);
     // Create a new channel, dealing with layer 2 packets
     let (_tx, mut rx) = match datalink::channel(&interface, Default::default()) {
@@ -75,7 +75,7 @@ async fn capture_packets(interface: NetworkInterface, sql_writer: SQLWriter) -> 
                 let communication: Communication =
                     Communication::new(ethernet_packet, interface.name.clone());
                 //println!("{:?}", communication);
-                communication.write(sql_writer.clone()).await;
+                communication.write(sender.clone()).await;
             }
             Err(e) => {
                 println!("An error occurred while reading: {}", e);

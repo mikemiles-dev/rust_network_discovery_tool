@@ -17,21 +17,20 @@ fn get_database_url() -> String {
     env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://communications.db".to_string())
 }
 
-#[derive(Clone)]
 pub struct SQLWriter {
     pub sender: mpsc::Sender<Communication>,
+    pub handle: task::JoinHandle<()>,
 }
 
 impl SQLWriter {
     pub async fn new() -> Self {
         let (tx, mut rx) = mpsc::channel::<Communication>(get_channel_buffer_size());
+        println!(
+            "SQL Writer started, connecting to database at {}",
+            get_database_url()
+        );
 
-        task::spawn(async move {
-            println!(
-                "SQL Writer started, connecting to database at {}",
-                get_database_url()
-            );
-
+        let handle = task::spawn_blocking(move || {
             let conn = Connection::open("test.db")
                 .unwrap_or_else(|_| panic!("Failed to open database: {}", get_database_url()));
 
@@ -44,7 +43,7 @@ impl SQLWriter {
             Communication::create_table_if_not_exists(&conn)
                 .expect("Failed to create table if not exists");
 
-            while let Some(communication) = rx.recv().await {
+            while let Some(communication) = rx.blocking_recv() {
                 if let Err(e) = communication.insert_communication(&conn) {
                     match e {
                         rusqlite::Error::SqliteFailure(err, Some(_msg))
@@ -60,6 +59,6 @@ impl SQLWriter {
             }
         });
 
-        SQLWriter { sender: tx }
+        SQLWriter { sender: tx, handle }
     }
 }
