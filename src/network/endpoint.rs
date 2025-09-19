@@ -1,11 +1,7 @@
 use rusqlite::{Connection, Result};
 
 #[derive(Default, Debug)]
-pub struct EndPoint {
-    interface: String,
-    mac: Option<String>,
-    ip: Option<String>,
-}
+pub struct EndPoint;
 
 impl EndPoint {
     pub fn create_table_if_not_exists(conn: &Connection) -> Result<()> {

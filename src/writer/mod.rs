@@ -6,6 +6,11 @@ use std::env;
 use crate::network::communication::Communication;
 use crate::network::endpoint::EndPoint;
 
+pub fn new_connection() -> Connection {
+    let db_url = get_database_url();
+    Connection::open("test.db").unwrap_or_else(|_| panic!("Failed to open database: {}", db_url))
+}
+
 fn get_channel_buffer_size() -> usize {
     env::var("CHANNEL_BUFFER_SIZE")
         .ok()
@@ -30,8 +35,7 @@ impl SQLWriter {
         );
 
         task::spawn_blocking(move || {
-            let conn = Connection::open("test.db")
-                .unwrap_or_else(|_| panic!("Failed to open database: {}", get_database_url()));
+            let conn = new_connection();
 
             // Execute the PRAGMA foreign_keys = ON; statement
             conn.execute("PRAGMA foreign_keys = ON;", [])
