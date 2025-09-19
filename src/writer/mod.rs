@@ -19,7 +19,6 @@ fn get_database_url() -> String {
 
 pub struct SQLWriter {
     pub sender: mpsc::Sender<Communication>,
-    pub handle: task::JoinHandle<()>,
 }
 
 impl SQLWriter {
@@ -30,7 +29,7 @@ impl SQLWriter {
             get_database_url()
         );
 
-        let handle = task::spawn_blocking(move || {
+        task::spawn_blocking(move || {
             let conn = Connection::open("test.db")
                 .unwrap_or_else(|_| panic!("Failed to open database: {}", get_database_url()));
 
@@ -59,6 +58,6 @@ impl SQLWriter {
             }
         });
 
-        SQLWriter { sender: tx, handle }
+        SQLWriter { sender: tx }
     }
 }

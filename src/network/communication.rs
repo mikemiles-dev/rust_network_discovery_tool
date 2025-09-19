@@ -2,7 +2,6 @@ use pnet::packet::ethernet::EthernetPacket;
 use rusqlite::{Connection, OptionalExtension, Result, params};
 
 use crate::network::PacketWrapper;
-use crate::writer::SQLWriter;
 
 #[derive(Default, Debug)]
 pub struct Communication {

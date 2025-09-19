@@ -57,7 +57,10 @@ async fn main() -> io::Result<()> {
     Ok(())
 }
 
-async fn capture_packets(interface: NetworkInterface, sender: tokio::sync::mpsc::Sender<Communication>) -> io::Result<()> {
+async fn capture_packets(
+    interface: NetworkInterface,
+    sender: tokio::sync::mpsc::Sender<Communication>,
+) -> io::Result<()> {
     println!("Starting packet capture on interface: {}", interface.name);
     // Create a new channel, dealing with layer 2 packets
     let (_tx, mut rx) = match datalink::channel(&interface, Default::default()) {
