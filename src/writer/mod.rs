@@ -6,6 +6,8 @@ use std::env;
 use crate::network::communication::Communication;
 use crate::network::endpoint::EndPoint;
 
+const MAX_CHANNEL_BUFFER_SIZE: usize = 10_000_000;
+
 pub fn new_connection() -> Connection {
     let db_url = get_database_url();
     Connection::open("test.db").unwrap_or_else(|_| panic!("Failed to open database: {}", db_url))
@@ -15,7 +17,7 @@ fn get_channel_buffer_size() -> usize {
     env::var("CHANNEL_BUFFER_SIZE")
         .ok()
         .and_then(|val| val.parse::<usize>().ok())
-        .unwrap_or(100) // Default value if env var is not set or invalid
+        .unwrap_or(MAX_CHANNEL_BUFFER_SIZE) // Default value if env var is not set or invalid
 }
 
 fn get_database_url() -> String {
