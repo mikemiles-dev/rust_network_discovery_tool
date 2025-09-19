@@ -2,13 +2,13 @@ mod network;
 mod web;
 mod writer;
 
-use actix_web::{App, HttpServer};
-
+use actix_files::Files;
+use actix_web::{App, HttpServer, web::Data};
 use pnet::datalink;
 use pnet::datalink::Channel::Ethernet;
 use pnet::datalink::NetworkInterface;
 use pnet::packet::ethernet::EthernetPacket;
-
+use tera::Tera;
 use tokio::{io, task};
 
 use network::communication::Communication;
@@ -39,12 +39,18 @@ async fn main() -> io::Result<()> {
     task::spawn_blocking(move || {
         println!("Starting web server");
         let sys = actix_rt::System::new();
+        let tera = Tera::new("templates/**/*").unwrap();
         sys.block_on(async {
-            HttpServer::new(|| App::new().service(web::index))
-                .bind(("127.0.0.1", 8080))
-                .unwrap()
-                .run()
-                .await
+            HttpServer::new(move || {
+                App::new()
+                    .app_data(Data::new(tera.clone()))
+                    .service(Files::new("/static", "static").show_files_listing())
+                    .service(web::index)
+            })
+            .bind(("127.0.0.1", 8080))
+            .unwrap()
+            .run()
+            .await
         })
         .expect("Failed to start Web server");
     });

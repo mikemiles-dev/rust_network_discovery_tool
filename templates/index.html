@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sigma.js Graph</title>
+    <!--<link rel="stylesheet" href="/static/css/sigma.min.css">-->
+    <style>
+        #container {
+            width: 800px;
+            height: 600px;
+            background-color: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <h1>My Sigma.js Graph</h1>
+
+    <div id="container"></div>
+
+    <script src="/static/js/graphology.umd.min.js"></script>
+    <script src="/static/js/sigma.min.js"></script>
+
+    <script>
+        // Initialize Sigma.js
+        const container = document.getElementById('container');
+        const graph = new graphology.Graph();
+
+        // Add some nodes and edges
+        graph.addNode('n1', { x: 0, y: 0, size: 10, label: 'Node 1', color: '#E42875' });
+        graph.addNode('n2', { x: 1, y: 1, size: 10, label: 'Node 2', color: '#727272' });
+        graph.addNode('n3', { x: 2, y: 0, size: 10, label: 'Node 3', color: '#97116B' });
+        graph.addEdge('n1', 'n2', { type: 'arrow' });
+        graph.addEdge('n2', 'n3', { type: 'arrow' });
+        graph.addEdge('n3', 'n1', { type: 'arrow' });
+
+        // Initialize the renderer
+        const renderer = new sigma.Sigma(graph, container);
+    </script>
+</body>
+</html>
