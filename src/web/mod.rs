@@ -1,4 +1,4 @@
-use actix_web::{HttpResponse, Responder, get, web::Data};
+use actix_web::{HttpResponse, Responder, get, http::header, web::Data};
 use tera::{Context, Tera};
 
 use crate::writer::new_connection;
@@ -19,6 +19,8 @@ async fn index(tera: Data<Tera>) -> impl Responder {
         SELECT
             src_e.hostname AS src_hostname,
             dst_e.hostname AS dst_hostname,
+            c.destination_port AS dst_port,
+            c.ip_header_protocol as header_protocol,
             c.sub_protocol
         FROM
             communications AS c
@@ -40,11 +42,23 @@ async fn index(tera: Data<Tera>) -> impl Responder {
 
     let rows = stmt
         .query_map([], |row| {
+            let dst_port = row.get::<_, Option<u16>>("dst_port")?.unwrap_or(0);
+            let header_protocol = row.get::<_, String>("header_protocol")?;
+            let sub_protocol = match row.get::<_, String>("sub_protocol") {
+                Ok(proto) => format!("{}:{}", header_protocol, proto),
+                Err(_) => {
+                    if dst_port == 0 {
+                        header_protocol
+                    } else {
+                        format!("Unknown({})", dst_port)
+                    }
+                }
+            };
+
             Ok((
                 row.get::<_, String>("src_hostname")?,
                 row.get::<_, String>("dst_hostname")?,
-                row.get::<_, String>("sub_protocol")
-                    .unwrap_or("Unknown".to_string()),
+                sub_protocol,
             ))
         })
         .expect("Failed to execute query");
