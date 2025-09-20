@@ -30,7 +30,7 @@
                 { data: { id: '{{ endpoint }}' } },
             {% endfor %}
             {% for comm in communications %}
-                { data: {id: '{{ comm.sub_protocol }}-{{ comm.src_ip}}-{{ comm.dst_ip }}', source: '{{ comm.src_ip }}', target: '{{ comm.dst_ip }}' } },
+                { data: {id: '{{ comm.sub_protocol }}-{{ comm.src_ip}}-{{ comm.dst_ip }}', source: '{{ comm.src_ip }}', target: '{{ comm.dst_ip }}', label: '{{ comm.sub_protocol }}' } },
             {% endfor %}
           ],
           style: [
@@ -38,6 +38,7 @@
               selector: 'edge',
               style: {
                 'curve-style': 'bezier',
+                'label': 'data(label)',
                 'target-arrow-shape': 'triangle',
                 'line-color': '#ccc'
               }
