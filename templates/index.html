@@ -3,15 +3,15 @@
 <head>
     <title>Network Discovery Tool</title>
     <style>
-        #sigma-container {
-            width: 800px;
+        #container {
+            width: 100%;
             height: 600px;
             background-color: #f0f0f0;
         }
     </style>
 
-    <script src="static/sigma.min.js"></script>
-    <script src="static/graphology.umd.min.js"></script>
+    <script src="https://unpkg.com/cytoscape@3.20.0/dist/cytoscape.min.js"></script>
+
 </head>
 <body>
     Show the last <input type="number" id="num-hours" value="10" min="1" max="100" /> hours
@@ -19,35 +19,39 @@
     <br/>
     <br/>
 
-    <div id="sigma-container"></div>
+    <div id="container"></div>
 
     <script>
-        // A simple example of creating a graph
-        const graph = new graphology.Graph();
-        
-        const RED = "#FA4F40";
-        const BLUE = "#727EE0";
-        const GREEN = "#5DB346";
 
-        {% for endpoint in endpoints %}
-            graph.addNode("{{ endpoint }}", { size: 15, label: "{{ endpoint }}", color: RED });
-        {% endfor %}
-
-        {% for comm in communications %}
-            graph.addEdge("{{ comm.src_ip }}", "{{ comm.dst_ip }}", { type: "line", label: "{{ comm.sub_protocol }}", size: 5 });
-        {% endfor %}
-
-        graph.nodes().forEach((node, i) => {
-            const angle = (i * 2 * Math.PI) / graph.order;
-            graph.setNodeAttribute(node, "x", 100 * Math.cos(angle));
-            graph.setNodeAttribute(node, "y", 100 * Math.sin(angle));
-        });
-
-        const container = document.getElementById('sigma-container');
-
-        const renderer = new Sigma(graph, container, {
-          // We don't have to declare edgeProgramClasses here, because we only use the default ones ("line" and "arrow")
-          renderEdgeLabels: true,
+        var cy = cytoscape({
+          container: document.getElementById('container'),
+          elements: [
+            {% for endpoint in endpoints %}
+                { data: { id: '{{ endpoint }}' } },
+            {% endfor %}
+            {% for comm in communications %}
+                { data: {id: '{{ comm.sub_protocol }}-{{ comm.src_ip}}-{{ comm.dst_ip }}', source: '{{ comm.src_ip }}', target: '{{ comm.dst_ip }}' } },
+            {% endfor %}
+          ],
+          style: [
+            {
+              selector: 'edge',
+              style: {
+                'curve-style': 'bezier',
+                'target-arrow-shape': 'triangle',
+                'line-color': '#ccc'
+              }
+            },
+            {
+              selector: 'node',
+              style: {
+                'content': 'data(id)',
+                'text-valign': 'center',
+                'color': 'black',
+                'background-color': '#aaa'
+              }
+            }
+          ]
         });
 
     </script>
