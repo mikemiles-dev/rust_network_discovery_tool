@@ -12,6 +12,7 @@ impl EndPoint {
                 interface TEXT,
                 mac TEXT,
                 ip TEXT,
+                hostname TEXT,
                 UNIQUE(interface, ip),
                 UNIQUE(interface, mac)
             )",

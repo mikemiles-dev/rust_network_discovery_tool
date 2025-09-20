@@ -9,6 +9,7 @@ actix-web = "4.0"
 actix-rt = "2.0"
 ctrlc = "3.2.3"
 chrono = { version = "0.4", features = ["serde"] }
+dns-lookup = "1.0"
 futures ={ version = "0.3.31", features = ["async-await"] }
 num-derive = "0.4.2"
 num-traits = "0.2.18"

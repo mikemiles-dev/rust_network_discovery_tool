@@ -1,3 +1,4 @@
+use dns_lookup::lookup_addr;
 use pnet::packet::ethernet::EthernetPacket;
 use rusqlite::{Connection, OptionalExtension, Result, params};
 
@@ -69,6 +70,13 @@ impl Communication {
         Ok(())
     }
 
+    fn lookup_dns(ip: Option<String>) -> Option<String> {
+        match ip {
+            Some(ref ip_str) => lookup_addr(&ip_str.parse().ok()?).ok(),
+            None => None,
+        }
+    }
+
     pub fn get_or_insert_endpoint(
         conn: &Connection,
         mac: Option<String>,
@@ -84,9 +92,11 @@ impl Communication {
             return Ok(id);
         }
 
+        let hostname = Self::lookup_dns(ip.clone());
+
         conn.execute(
-            "INSERT INTO endpoints (created_at, interface, mac, ip) VALUES (?1, ?2, ?3, ?4)",
-            params![chrono::Utc::now().timestamp(), interface, mac, ip],
+            "INSERT INTO endpoints (created_at, interface, mac, ip, hostname) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![chrono::Utc::now().timestamp(), interface, mac, ip, hostname],
         )?;
         Ok(conn.last_insert_rowid())
     }

@@ -1,61 +1,77 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Network Discovery Tool</title>
-    <style>
-        #container {
-            width: 100%;
-            height: 600px;
-            background-color: #f0f0f0;
-        }
-    </style>
-
-    <script src="https://unpkg.com/cytoscape@3.20.0/dist/cytoscape.min.js"></script>
-
+  <title>Network Discovery Tool</title>
+  <style>
+    #container {
+      width: 100%;
+      height: 600px;
+      background-color: #f0f0f0;
+    }
+  </style>
+  <script src="https://unpkg.com/cytoscape@3.20.0/dist/cytoscape.min.js"></script>
 </head>
 <body>
+  <div>
     Show the last <input type="number" id="num-hours" value="10" min="1" max="100" /> hours
     <button onclick="location.reload();">Refresh</button>
-    <br/>
-    <br/>
+  </div>
+  <br/>
+  
+  <div id="container"></div>
 
-    <div id="container"></div>
-
-    <script>
-
-        var cy = cytoscape({
-          container: document.getElementById('container'),
-          elements: [
-            {% for endpoint in endpoints %}
-                { data: { id: '{{ endpoint }}' } },
-            {% endfor %}
-            {% for comm in communications %}
-                { data: {id: '{{ comm.sub_protocol }}-{{ comm.src_ip}}-{{ comm.dst_ip }}', source: '{{ comm.src_ip }}', target: '{{ comm.dst_ip }}', label: '{{ comm.sub_protocol }}' } },
-            {% endfor %}
-          ],
-          style: [
-            {
-              selector: 'edge',
-              style: {
-                'curve-style': 'bezier',
-                'label': 'data(label)',
-                'target-arrow-shape': 'triangle',
-                'line-color': '#ccc'
-              }
-            },
-            {
-              selector: 'node',
-              style: {
-                'content': 'data(id)',
-                'text-valign': 'center',
-                'color': 'black',
-                'background-color': '#aaa'
-              }
-            }
-          ]
-        });
-
-    </script>
-
+  <script>
+    var cy = cytoscape({
+      container: document.getElementById('container'),
+      boxSelectionEnabled: false,
+      autounselectify: true,
+      layout: {
+        name: 'concentric',
+        concentric: function(node) {
+          return node.degree();
+        },
+        levelWidth: function(nodes) {
+          return 2;
+        }
+      },
+      elements: [
+        {% for endpoint in endpoints %}
+          { data: { id: '{{ endpoint }}' } },
+        {% endfor %}
+        {% for comm in communications %}
+          { data: {
+            id: '{{ comm.sub_protocol }}-{{ comm.src_hostname }}-{{ comm.dst_hostname }}',
+            source: '{{ comm.src_hostname }}',
+            target: '{{ comm.dst_hostname }}',
+            label: '{{ comm.sub_protocol }}'
+          }},
+        {% endfor %}
+      ],
+      style: [
+        {
+          selector: 'edge',
+          style: {
+            'curve-style': 'bezier',
+            'label': 'data(label)',
+            'target-arrow-shape': 'triangle',
+            'line-color': '#ccc',
+            'font-size': '8px'
+          }
+        },
+        {
+          selector: 'node',
+          style: {
+            'content': 'data(id)',
+            'text-valign': 'bottom',
+            'color': 'black',
+            'background-color': '#8dabb8',
+            'width': '20px',
+            'height': '20px',
+            'font-size': '8px'
+          }
+        }
+      ]
+    });
+  </script>
 </body>
 </html>
