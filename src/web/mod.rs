@@ -23,7 +23,7 @@ async fn index(tera: Data<Tera>) -> impl Responder {
             c.sub_protocol
         FROM
             communications AS c
-        right JOIN
+        LEFT JOIN
             endpoints AS src_e
             ON c.src_endpoint_id = src_e.id
         LEFT JOIN
@@ -42,7 +42,8 @@ async fn index(tera: Data<Tera>) -> impl Responder {
             Ok((
                 row.get::<_, String>("src_ip")?,
                 row.get::<_, String>("dst_ip")?,
-                row.get::<_, String>("sub_protocol")?,
+                row.get::<_, String>("sub_protocol")
+                    .unwrap_or("Unknown".to_string()),
             ))
         })
         .expect("Failed to execute query");
