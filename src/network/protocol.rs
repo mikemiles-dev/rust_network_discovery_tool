@@ -27,6 +27,7 @@ pub enum ProtocolPort {
     NBDG = 138,
     NBSS = 139,
     MDNS = 5353,
+    Valve = 27020,
     Dota2 = 27015,
 }
 
@@ -52,6 +53,7 @@ impl std::fmt::Display for ProtocolPort {
             ProtocolPort::NBDG => write!(f, "NetBIOS Datagram Service"),
             ProtocolPort::NBSS => write!(f, "NetBIOS Session Service"),
             ProtocolPort::MDNS => write!(f, "mDNS"),
+            ProtocolPort::Valve => write!(f, "Valve"),
             ProtocolPort::Dota2 => write!(f, "Dota 2"),
         }
     }
