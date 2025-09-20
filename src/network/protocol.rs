@@ -23,9 +23,9 @@ pub enum ProtocolPort {
     RDP = 3389,
     // Windows networking
     SMB = 445,
-    NetbiosNameService = 137,
-    NetbiosDatagramService = 138,
-    NetbiosSessionService = 139,
+    NBNS = 137,
+    NBDG = 138,
+    NBSS = 139,
     Dota2 = 27015,
 }
 
@@ -47,9 +47,9 @@ impl std::fmt::Display for ProtocolPort {
             ProtocolPort::Telnet => write!(f, "Telnet"),
             ProtocolPort::RDP => write!(f, "RDP"),
             ProtocolPort::SMB => write!(f, "SMB"),
-            ProtocolPort::NetbiosNameService => write!(f, "NetBIOS Name Service"),
-            ProtocolPort::NetbiosDatagramService => write!(f, "NetBIOS Datagram Service"),
-            ProtocolPort::NetbiosSessionService => write!(f, "NetBIOS Session Service"),
+            ProtocolPort::NBNS => write!(f, "NetBIOS Name Service"),
+            ProtocolPort::NBDG => write!(f, "NetBIOS Datagram Service"),
+            ProtocolPort::NBSS => write!(f, "NetBIOS Session Service"),
             ProtocolPort::Dota2 => write!(f, "Dota 2"),
         }
     }

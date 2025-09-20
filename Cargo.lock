@@ -301,6 +301,8 @@ dependencies = [
  "num-traits",
  "pnet",
  "rusqlite",
+ "serde",
+ "serde_json",
  "tera",
  "tokio",
 ]
