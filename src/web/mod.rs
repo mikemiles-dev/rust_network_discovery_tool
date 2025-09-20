@@ -31,7 +31,8 @@ async fn index(tera: Data<Tera>) -> impl Responder {
             ON c.dst_endpoint_id = dst_e.id
         GROUP BY
             src_ip,
-            dst_ip;
+            dst_ip,
+            sub_protocol
     "#;
 
     let conn = new_connection();
