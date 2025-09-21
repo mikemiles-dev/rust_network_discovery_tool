@@ -1,7 +1,7 @@
 use actix_web::{HttpResponse, Responder, get, http::header, web::Data};
 use tera::{Context, Tera};
 
-use crate::writer::new_connection;
+use crate::{network::communication, writer::new_connection};
 
 use serde::Serialize;
 
@@ -12,9 +12,28 @@ pub struct Node {
     sub_protocol: String,
 }
 
-// Define a handler function for the web request
-#[get("/")]
-async fn index(tera: Data<Tera>) -> impl Responder {
+fn get_interfaces() -> Vec<String> {
+    let query = r#"
+        SELECT interface FROM endpoints GROUP BY interface;
+    "#;
+
+    let conn = new_connection();
+    let mut stmt = conn.prepare(query).expect("Failed to prepare statement");
+
+    let rows = stmt
+        .query_map([], |row| Ok((row.get::<_, String>("interface")?,)))
+        .expect("Failed to execute query");
+
+    let interfaces = rows
+        .filter_map(|row| match row.as_ref() {
+            Ok(r) => Some(r.0.clone()),
+            Err(_e) => None,
+        })
+        .collect::<Vec<String>>();
+    interfaces
+}
+
+fn get_nodes() -> Vec<Node> {
     let query = r#"
         SELECT
             src_e.hostname AS src_hostname,
@@ -75,6 +94,10 @@ async fn index(tera: Data<Tera>) -> impl Responder {
         })
         .collect::<Vec<Node>>();
 
+    communications
+}
+
+fn get_endpoints(communications: &Vec<Node>) -> Vec<String> {
     let endpoints = communications.iter().fold(vec![], |mut acc, comm| {
         if !acc.contains(&comm.src_hostname) {
             acc.push(comm.src_hostname.clone());
@@ -84,12 +107,22 @@ async fn index(tera: Data<Tera>) -> impl Responder {
         }
         acc
     });
+    endpoints
+}
+
+// Define a handler function for the web request
+#[get("/")]
+async fn index(tera: Data<Tera>) -> impl Responder {
+    let communications = get_nodes();
+    let endpoints = get_endpoints(&communications);
+    let interfaces = get_interfaces();
 
     // format!("Hello, Actix!, {:?}", rows_string)
     let mut context = Context::new();
 
     context.insert("communications", &communications);
     context.insert("endpoints", &endpoints);
+    context.insert("interfaces", &interfaces);
 
     let rendered = tera
         .render("index.html", &context)

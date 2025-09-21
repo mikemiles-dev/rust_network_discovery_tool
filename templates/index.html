@@ -30,9 +30,19 @@
 
     <br><br>
 
+    Interfaces:
+
+    <br>
+
+    {% for interface in interfaces %}
+      - {{ interface }} <br>
+    {% endfor %}
+
+    <br>
+
     Protocols:
 
-    <br><br>
+    <br>
 
     <input type="checkbox" id="tcp" checked /> TCP <br>
     <input type="checkbox" id="udp" checked /> UDP <br>
