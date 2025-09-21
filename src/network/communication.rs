@@ -71,6 +71,16 @@ impl Communication {
     }
 
     fn is_local_ip(target_ip: String, interface: String) -> bool {
+        if target_ip == "127.0.0.1"
+            || target_ip == "::1"
+            || target_ip == "localhost"
+            || target_ip == "::ffff:"
+            || target_ip == "0:0:0:0:0:0:0:1"
+            || target_ip == "::"
+        {
+            return true; // Loopback addresses are always local
+        }
+
         // Find the network interface with the matching name
         let matching_interface = match interfaces()
             .into_iter()
