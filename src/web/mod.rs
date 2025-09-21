@@ -1,5 +1,6 @@
 use actix_web::{HttpResponse, Responder, get, web::Data};
 use dns_lookup::get_hostname;
+use pnet::datalink;
 use tera::{Context, Tera};
 
 use crate::network::protocol::ProtocolPort;
@@ -15,24 +16,8 @@ pub struct Node {
 }
 
 fn get_interfaces() -> Vec<String> {
-    let query = r#"
-        SELECT interface FROM endpoints GROUP BY interface;
-    "#;
-
-    let conn = new_connection();
-    let mut stmt = conn.prepare(query).expect("Failed to prepare statement");
-
-    let rows = stmt
-        .query_map([], |row| Ok((row.get::<_, String>("interface")?,)))
-        .expect("Failed to execute query");
-
-    let interfaces = rows
-        .filter_map(|row| match row.as_ref() {
-            Ok(r) => Some(r.0.clone()),
-            Err(_e) => None,
-        })
-        .collect::<Vec<String>>();
-    interfaces
+    let interfaces = datalink::interfaces();
+    interfaces.into_iter().map(|iface| iface.name).collect()
 }
 
 fn get_nodes() -> Vec<Node> {
@@ -85,22 +70,19 @@ fn get_nodes() -> Vec<Node> {
         })
         .expect("Failed to execute query");
 
-    let communications = rows
-        .filter_map(|row| match row.as_ref() {
-            Ok(r) => Some(Node {
-                src_hostname: r.0.clone(),
-                dst_hostname: r.1.clone(),
-                sub_protocol: r.2.clone(),
-            }),
-            Err(_e) => None,
-        })
-        .collect::<Vec<Node>>();
-
-    communications
+    rows.filter_map(|row| match row.as_ref() {
+        Ok(r) => Some(Node {
+            src_hostname: r.0.clone(),
+            dst_hostname: r.1.clone(),
+            sub_protocol: r.2.clone(),
+        }),
+        Err(_e) => None,
+    })
+    .collect::<Vec<Node>>()
 }
 
-fn get_endpoints(communications: &Vec<Node>) -> Vec<String> {
-    let endpoints = communications.iter().fold(vec![], |mut acc, comm| {
+fn get_endpoints(communications: &[Node]) -> Vec<String> {
+    communications.iter().fold(vec![], |mut acc, comm| {
         if !acc.contains(&comm.src_hostname) {
             acc.push(comm.src_hostname.clone());
         }
@@ -108,8 +90,7 @@ fn get_endpoints(communications: &Vec<Node>) -> Vec<String> {
             acc.push(comm.dst_hostname.clone());
         }
         acc
-    });
-    endpoints
+    })
 }
 
 // Define a handler function for the web request

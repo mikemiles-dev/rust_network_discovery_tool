@@ -35,33 +35,33 @@ macro_rules! define_protocol_ports {
 // Use the macro to define everything in one place
 define_protocol_ports! {
     // Web protocols
-    (HTTP, 80, "HTTP"),
-    (HTTPS, 443, "HTTPS"),
+    (Http, 80, "HTTP"),
+    (Https, 443, "HTTPS"),
     // File transfer
-    (FTP, 21, "FTP"),
-    (FTPS, 990, "FTPS"),
+    (Ftp, 21, "FTP"),
+    (Ftps, 990, "FTPS"),
     // Email
-    (SMTP, 25, "SMTP"),
-    (POP3, 110, "POP3"),
-    (IMAP, 143, "IMAP"),
+    (Smtp, 25, "SMTP"),
+    (Pop3, 110, "POP3"),
+    (Imap, 143, "IMAP"),
     // Domain and network services
-    (DNS, 53, "DNS"),
+    (Dns, 53, "DNS"),
     (DhcpServer, 67, "DHCP Server"),
     (DhcpClient, 68, "DHCP Client"),
-    (NTP, 123, "NTP"),
+    (Ntp, 123, "NTP"),
     // Remote access
-    (SSH, 22, "SSH"),
+    (Ssh, 22, "SSH"),
     (Telnet, 23, "Telnet"),
-    (RDP, 3389, "RDP"),
+    (Rdp, 3389, "RDP"),
     // Windows networking
-    (SMB, 445, "SMB"),
-    (NBNS, 137, "NetBIOS Name Service"),
-    (NBDG, 138, "NetBIOS Datagram Service"),
-    (NBSS, 139, "NetBIOS Session Service"),
-    (MDNS, 5353, "mDNS"),
+    (Smb, 445, "SMB"),
+    (Nbns, 137, "NetBIOS Name Service"),
+    (Nbdg, 138, "NetBIOS Datagram Service"),
+    (Nbss, 139, "NetBIOS Session Service"),
+    (Mdns, 5353, "mDNS"),
     (Valve, 27020, "Valve"),
     (Dota2, 27015, "Dota 2"),
     (AppleXServerAid, 3722, "Apple X Server AID"),
-    (OAS, 58726, "OAS"),
-    (WMI, 59632, "Windows Management Instrumentation"),
+    (Oas, 58726, "OAS"),
+    (Wmi, 59632, "WMI"),
 }

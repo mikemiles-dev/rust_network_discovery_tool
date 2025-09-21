@@ -129,10 +129,6 @@ impl<'a> PacketWrapper<'a> {
     }
 
     fn get_sub_protocol(&self, port: u16) -> Option<String> {
-        if let Some(protocol_port) = ProtocolPort::from_u16(port) {
-            Some(format!("{}", protocol_port))
-        } else {
-            None
-        }
+        ProtocolPort::from_u16(port).map(|protocol_port| format!("{}", protocol_port))
     }
 }

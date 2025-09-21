@@ -33,19 +33,18 @@ impl Communication {
             ip_version: packet_wrapper.get_ip_version(),
             ip_header_protocol: packet_wrapper.get_header_protocol(),
             sub_protocol: None,
-            ..Default::default()
         };
-        if let Some(ip_header_protocol) = &communication.ip_header_protocol {
-            if ip_header_protocol == "Tcp" || ip_header_protocol == "Udp" {
-                communication.sub_protocol = communication
-                    .destination_port
-                    .and_then(|port| packet_wrapper.get_sub_protocol(port))
-                    .or_else(|| {
-                        communication
-                            .source_port
-                            .and_then(|port| packet_wrapper.get_sub_protocol(port))
-                    });
-            }
+        if let Some(ip_header_protocol) = &communication.ip_header_protocol
+            && (ip_header_protocol == "Tcp" || ip_header_protocol == "Udp")
+        {
+            communication.sub_protocol = communication
+                .destination_port
+                .and_then(|port| packet_wrapper.get_sub_protocol(port))
+                .or_else(|| {
+                    communication
+                        .source_port
+                        .and_then(|port| packet_wrapper.get_sub_protocol(port))
+                });
         }
         communication
     }

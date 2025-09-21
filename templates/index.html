@@ -3,7 +3,19 @@
 <head>
   <title>Network Discovery Tool</title>
   <style>
-    #toolbar {
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #ffffff;
+    }
+    #top_toolbar {
+      position: relative;
+      text-align: left;
+      margin-bottom: 10px;
+      background-color: #c0c0c0;
+    }
+    #left_toolbar {
       position: absolute; /* Positioned within the container */
       z-index: 1; /* Lower z-index means it's underneath */
       left: 20px;
@@ -13,8 +25,20 @@
       opacity: 0.9;
       border-radius: 15px; /* Applies a 15px radius to all four corners */
     }
+    #right_toolbar {
+      position: absolute; /* Positioned within the container */
+      z-index: 1; /* Lower z-index means it's underneath */
+      right: 20px;
+      border: 1px solid black;
+      padding: 20px;
+      background-color: #c0c0c0;
+      opacity: 0.9;
+      border-radius: 15px; /* Applies a 15px radius to all four corners */
+    }
     #container {
-      width: 100%;
+      position: relative;
+      margin: 0 auto;
+      width: 80%;
       height: 100vh;
       background-color: #ffffff;
     }
@@ -23,25 +47,23 @@
 
 </head>
 <body>
-  <div>
+
+  <div id="top_toolbar">
+    <b>Network Discovery Tool</b>
   </div>
-  <br/>
-  
-  <div id="toolbar">
-    Show the last <input type="number" id="num-hours" value="1" min="1" max="24" /> hours
 
-    <br><br>
-
+  <div id="left_toolbar">
     Interfaces:
 
     <br>
 
     {% for interface in interfaces %}
-      - {{ interface }} <br>
+      - <input type="checkbox" id="{{ interface }}" checked /> {{ interface }} <br>
     {% endfor %}
 
-    <br>
+  </div>
 
+  <div id="right_toolbar">
     Protocols:
 
     <br>
@@ -49,8 +71,8 @@
     {% for protocol in protocols %}
       - <input type="checkbox" id="{{ protocol }}" checked /> {{ protocol }} <br>
     {% endfor %}
-
   </div>
+
   <div id="container"></div>
 
   <script>
