@@ -19,7 +19,13 @@
       background-color: #ffffff;
     }
   </style>
-  <script src="https://unpkg.com/cytoscape@3.20.0/dist/cytoscape.min.js"></script>
+   <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
+
+    <!-- for testing with local version of cytoscape.js -->
+    <!--<script src="../cytoscape.js/build/cytoscape.js"></script>-->
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.10/lodash.js"></script>
+    <script src="cytoscape-edgehandles.js"></script>
 </head>
 <body>
   <div>
@@ -59,16 +65,14 @@
       autounselectify: true,
       layout: {
         name: 'concentric',
-        concentric: function(node) {
-          return node.degree();
-        },
-        levelWidth: function(nodes) {
-          return 2;
-        }
       },
       elements: [
         {% for endpoint in endpoints %}
-          { data: { id: '{{ endpoint }}' } },
+          { data: { 
+              id: '{{ endpoint }}',
+              {% if endpoint == hostname %}type: 'local'{% endif %}
+            } 
+          },
         {% endfor %}
         {% for comm in communications %}
           { data: {
@@ -81,28 +85,32 @@
       ],
       style: [
         {
-          selector: 'edge',
-          style: {
-            'curve-style': 'bezier',
-            'label': 'data(label)',
-            'target-arrow-shape': 'triangle',
-            'line-color': '#ccc',
-            'font-size': '8px'
-          }
-        },
-        {
           selector: 'node',
           style: {
             'content': 'data(id)',
-            'text-valign': 'bottom',
-            'color': 'black',
-            'background-color': '#8dabb8',
-            'width': '20px',
-            'height': '20px',
-            'font-size': '8px'
+            'background-color': '#61bffc',
+            'font-size': 6,
+          }
+        },
+      {
+      selector: 'node[type = "local"]',
+      style: {
+          'background-color': '#3333CC' // A specific color for these nodes
+        }
+      },
+        {
+          selector: 'edge',
+          style: {
+            'target-arrow-shape': 'triangle',
+            'label': 'data(label)',
+            'curve-style': 'bezier',
+            'width': '1px',
+            'opacity': 0.5,
+            'line-color': '#AAAAAA',
+            'font-size': 4,
           }
         }
-      ]
+      ],
     });
   </script>
 </body>
