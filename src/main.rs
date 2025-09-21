@@ -1,6 +1,6 @@
+mod db;
 mod network;
 mod web;
-mod writer;
 
 use pnet::datalink;
 use pnet::datalink::Channel::Ethernet;
@@ -8,8 +8,8 @@ use pnet::datalink::NetworkInterface;
 use pnet::packet::ethernet::EthernetPacket;
 use tokio::{io, task};
 
+use db::SQLWriter;
 use network::communication::Communication;
-use writer::SQLWriter;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {

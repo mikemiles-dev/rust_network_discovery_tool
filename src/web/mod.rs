@@ -6,8 +6,8 @@ use pnet::datalink;
 use tera::{Context, Tera};
 use tokio::task;
 
+use crate::db::new_connection;
 use crate::network::protocol::ProtocolPort;
-use crate::writer::new_connection;
 
 use serde::Serialize;
 
