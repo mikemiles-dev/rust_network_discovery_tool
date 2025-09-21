@@ -1,4 +1,4 @@
-use dns_lookup::lookup_addr;
+use dns_lookup::{get_hostname, lookup_addr};
 use pnet::packet::ethernet::EthernetPacket;
 use rusqlite::{Connection, OptionalExtension, Result, params};
 
@@ -72,7 +72,16 @@ impl Communication {
 
     fn lookup_dns(ip: Option<String>) -> Option<String> {
         match ip {
-            Some(ref ip_str) => lookup_addr(&ip_str.parse().ok()?).ok(),
+            Some(ref ip_str) => match lookup_addr(&ip_str.parse().ok()?) {
+                Ok(hostname) => get_hostname().ok().map(|local_hostname| {
+                    if hostname == local_hostname {
+                        hostname
+                    } else {
+                        format!("{} ({})", hostname, local_hostname)
+                    }
+                }),
+                Err(_) => None,
+            },
             None => None,
         }
     }
