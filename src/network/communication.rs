@@ -1,5 +1,5 @@
 use dns_lookup::{get_hostname, lookup_addr};
-use pnet::packet::ethernet::EthernetPacket;
+use pnet::{datalink::interfaces, packet::ethernet::EthernetPacket};
 use rusqlite::{Connection, OptionalExtension, Result, params};
 
 use crate::network::PacketWrapper;
@@ -70,20 +70,36 @@ impl Communication {
         Ok(())
     }
 
-    fn lookup_dns(ip: Option<String>) -> Option<String> {
-        match ip {
-            Some(ref ip_str) => match lookup_addr(&ip_str.parse().ok()?) {
-                Ok(hostname) => get_hostname().ok().map(|local_hostname| {
-                    if hostname == local_hostname {
-                        hostname
-                    } else {
-                        format!("{} ({})", hostname, local_hostname)
-                    }
-                }),
-                Err(_) => None,
+    fn is_local_ip(target_ip: String, interface: String) -> bool {
+        // Find the network interface with the matching name
+        let matching_interface = match interfaces()
+            .into_iter()
+            .find(|iface| iface.name == interface)
+        {
+            Some(iface) => iface,
+            None => return false, // Interface not found
+        };
+
+        // Check if the target IP matches any IP on the interface
+        matching_interface
+            .ips
+            .iter()
+            .any(|ip_network| ip_network.ip().to_string() == target_ip)
+    }
+
+    fn lookup_dns(ip: Option<String>, interface: String) -> Option<String> {
+        let ip_str = ip?;
+        let ip_addr = ip_str.parse().ok()?;
+        let hostname = lookup_addr(&ip_addr).ok()?;
+        let local_hostname = get_hostname().ok()?;
+
+        Some(
+            if hostname != local_hostname && Self::is_local_ip(ip_str, interface) {
+                local_hostname
+            } else {
+                hostname
             },
-            None => None,
-        }
+        )
     }
 
     pub fn get_or_insert_endpoint(
@@ -101,7 +117,7 @@ impl Communication {
             return Ok(id);
         }
 
-        let hostname = Self::lookup_dns(ip.clone());
+        let hostname = Self::lookup_dns(ip.clone(), interface.clone());
 
         conn.execute(
             "INSERT INTO endpoints (created_at, interface, mac, ip, hostname) VALUES (?1, ?2, ?3, ?4, ?5)",
