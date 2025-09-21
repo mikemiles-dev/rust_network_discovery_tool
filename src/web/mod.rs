@@ -1,7 +1,10 @@
-use actix_web::{HttpResponse, Responder, get, web::Data};
+use actix_files::Files;
+use actix_web::{App, HttpServer, web::Data};
+use actix_web::{HttpResponse, Responder, get};
 use dns_lookup::get_hostname;
 use pnet::datalink;
 use tera::{Context, Tera};
+use tokio::task;
 
 use crate::network::protocol::ProtocolPort;
 use crate::writer::new_connection;
@@ -91,6 +94,27 @@ fn get_endpoints(communications: &[Node]) -> Vec<String> {
         }
         acc
     })
+}
+
+pub fn start() {
+    task::spawn_blocking(move || {
+        println!("Starting web server");
+        let sys = actix_rt::System::new();
+        let tera = Tera::new("templates/**/*").unwrap();
+        sys.block_on(async {
+            HttpServer::new(move || {
+                App::new()
+                    .app_data(Data::new(tera.clone()))
+                    .service(Files::new("/static", "static").show_files_listing())
+                    .service(index)
+            })
+            .bind(("127.0.0.1", 8080))
+            .unwrap()
+            .run()
+            .await
+        })
+        .expect("Failed to start Web server");
+    });
 }
 
 // Define a handler function for the web request

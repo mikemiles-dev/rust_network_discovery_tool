@@ -2,13 +2,10 @@ mod network;
 mod web;
 mod writer;
 
-use actix_files::Files;
-use actix_web::{App, HttpServer, web::Data};
 use pnet::datalink;
 use pnet::datalink::Channel::Ethernet;
 use pnet::datalink::NetworkInterface;
 use pnet::packet::ethernet::EthernetPacket;
-use tera::Tera;
 use tokio::{io, task};
 
 use network::communication::Communication;
@@ -30,30 +27,13 @@ async fn main() -> io::Result<()> {
     })
     .expect("Error setting Ctrl+C handler");
 
+    web::start();
+
     for interface in interfaces.into_iter() {
         let sender = sql_writer.sender.clone();
         let result = task::spawn_blocking(move || capture_packets(interface, sender));
         handles.push(result);
     }
-
-    task::spawn_blocking(move || {
-        println!("Starting web server");
-        let sys = actix_rt::System::new();
-        let tera = Tera::new("templates/**/*").unwrap();
-        sys.block_on(async {
-            HttpServer::new(move || {
-                App::new()
-                    .app_data(Data::new(tera.clone()))
-                    .service(Files::new("/static", "static").show_files_listing())
-                    .service(web::index)
-            })
-            .bind(("127.0.0.1", 8080))
-            .unwrap()
-            .run()
-            .await
-        })
-        .expect("Failed to start Web server");
-    });
 
     // Wait for either all tasks to complete or shutdown signal
     tokio::select! {
