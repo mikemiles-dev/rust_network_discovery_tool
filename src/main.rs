@@ -35,11 +35,6 @@ async fn main() -> io::Result<()> {
         handles.push(result);
     }
 
-    // Wait for either all tasks to complete or shutdown signal
-    tokio::select! {
-        _ = futures::future::join_all(handles) => println!("All packet captures completed"),
-    }
-
     Ok(())
 }
 
