@@ -21,11 +21,6 @@
   </style>
    <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
 
-    <!-- for testing with local version of cytoscape.js -->
-    <!--<script src="../cytoscape.js/build/cytoscape.js"></script>-->
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.10/lodash.js"></script>
-    <script src="cytoscape-edgehandles.js"></script>
 </head>
 <body>
   <div>
@@ -64,7 +59,10 @@
       boxSelectionEnabled: false,
       autounselectify: true,
       layout: {
-        name: 'concentric',
+        name: 'cose',
+        nodeRepulsion: 200000, // A higher value increases the repulsion between nodes
+        nodeDimensionsIncludeLabels: true, // Prevents node labels from overlapping
+        padding: 50 // Adds padding around the graph
       },
       elements: [
         {% for endpoint in endpoints %}
@@ -89,7 +87,7 @@
           style: {
             'content': 'data(id)',
             'background-color': '#61bffc',
-            'font-size': 6,
+            'font-size': 10,
           }
         },
       {
@@ -107,7 +105,7 @@
             'width': '1px',
             'opacity': 0.5,
             'line-color': '#AAAAAA',
-            'font-size': 4,
+            'font-size': 6,
           }
         }
       ],
