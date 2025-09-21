@@ -1,62 +1,67 @@
 use num_derive::FromPrimitive;
 
-#[derive(Debug, FromPrimitive)]
-pub enum ProtocolPort {
-    // Web protocols
-    HTTP = 80,
-    HTTPS = 443,
-    // File transfer
-    FTP = 21,
-    FTPS = 990,
-    // Email
-    SMTP = 25,
-    POP3 = 110,
-    IMAP = 143,
-    // Domain and network services
-    DNS = 53,
-    DhcpServer = 67,
-    DhcpClient = 68,
-    NTP = 123,
-    // Remote access
-    SSH = 22,
-    Telnet = 23,
-    RDP = 3389,
-    // Windows networking
-    SMB = 445,
-    NBNS = 137,
-    NBDG = 138,
-    NBSS = 139,
-    MDNS = 5353,
-    Valve = 27020,
-    Dota2 = 27015,
-    AppleXServerAid = 3722,
+// Macro to define all protocol ports and implementations at once
+macro_rules! define_protocol_ports {
+    ($(($variant:ident, $port:expr, $display:expr)),* $(,)?) => {
+        #[derive(Debug, FromPrimitive)]
+        pub enum ProtocolPort {
+            $(
+                $variant = $port,
+            )*
+        }
+
+        impl ProtocolPort {
+            pub fn get_all_protocols() -> Vec<String> {
+                vec![
+                    $(
+                        Self::$variant.to_string(),
+                    )*
+                ]
+            }
+        }
+
+        impl std::fmt::Display for ProtocolPort {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    $(
+                        Self::$variant => write!(f, $display),
+                    )*
+                }
+            }
+        }
+    };
 }
 
-impl std::fmt::Display for ProtocolPort {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ProtocolPort::HTTP => write!(f, "HTTP"),
-            ProtocolPort::HTTPS => write!(f, "HTTPS"),
-            ProtocolPort::FTP => write!(f, "FTP"),
-            ProtocolPort::FTPS => write!(f, "FTPS"),
-            ProtocolPort::SMTP => write!(f, "SMTP"),
-            ProtocolPort::POP3 => write!(f, "POP3"),
-            ProtocolPort::IMAP => write!(f, "IMAP"),
-            ProtocolPort::DNS => write!(f, "DNS"),
-            ProtocolPort::DhcpServer => write!(f, "DHCP Server"),
-            ProtocolPort::DhcpClient => write!(f, "DHCP Client"),
-            ProtocolPort::NTP => write!(f, "NTP"),
-            ProtocolPort::SSH => write!(f, "SSH"),
-            ProtocolPort::Telnet => write!(f, "Telnet"),
-            ProtocolPort::RDP => write!(f, "RDP"),
-            ProtocolPort::SMB => write!(f, "SMB"),
-            ProtocolPort::NBNS => write!(f, "NetBIOS Name Service"),
-            ProtocolPort::NBDG => write!(f, "NetBIOS Datagram Service"),
-            ProtocolPort::NBSS => write!(f, "NetBIOS Session Service"),
-            ProtocolPort::MDNS => write!(f, "mDNS"),
-            ProtocolPort::Valve => write!(f, "Valve"),
-            ProtocolPort::Dota2 => write!(f, "Dota 2"),
-            ProtocolPort::AppleXServerAid => write!(f, "Apple X Server AID"),
-        }
-    }
+// Use the macro to define everything in one place
+define_protocol_ports! {
+    // Web protocols
+    (HTTP, 80, "HTTP"),
+    (HTTPS, 443, "HTTPS"),
+    // File transfer
+    (FTP, 21, "FTP"),
+    (FTPS, 990, "FTPS"),
+    // Email
+    (SMTP, 25, "SMTP"),
+    (POP3, 110, "POP3"),
+    (IMAP, 143, "IMAP"),
+    // Domain and network services
+    (DNS, 53, "DNS"),
+    (DhcpServer, 67, "DHCP Server"),
+    (DhcpClient, 68, "DHCP Client"),
+    (NTP, 123, "NTP"),
+    // Remote access
+    (SSH, 22, "SSH"),
+    (Telnet, 23, "Telnet"),
+    (RDP, 3389, "RDP"),
+    // Windows networking
+    (SMB, 445, "SMB"),
+    (NBNS, 137, "NetBIOS Name Service"),
+    (NBDG, 138, "NetBIOS Datagram Service"),
+    (NBSS, 139, "NetBIOS Session Service"),
+    (MDNS, 5353, "mDNS"),
+    (Valve, 27020, "Valve"),
+    (Dota2, 27015, "Dota 2"),
+    (AppleXServerAid, 3722, "Apple X Server AID"),
+    (OAS, 58726, "OAS"),
+    (WMI, 59632, "Windows Management Instrumentation"),
 }

@@ -46,9 +46,9 @@
 
     <br>
 
-    <input type="checkbox" id="tcp" checked /> TCP <br>
-    <input type="checkbox" id="udp" checked /> UDP <br>
-    <input type="checkbox" id="icmp" checked /> ICMP
+    {% for protocol in protocols %}
+      - <input type="checkbox" id="{{ protocol }}" checked /> {{ protocol }} <br>
+    {% endfor %}
 
   </div>
   <div id="container"></div>

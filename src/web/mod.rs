@@ -1,8 +1,9 @@
-use actix_web::{HttpResponse, Responder, get, http::header, web::Data};
+use actix_web::{HttpResponse, Responder, get, web::Data};
 use dns_lookup::get_hostname;
 use tera::{Context, Tera};
 
-use crate::{network::communication, writer::new_connection};
+use crate::network::protocol::ProtocolPort;
+use crate::writer::new_connection;
 
 use serde::Serialize;
 
@@ -118,6 +119,7 @@ async fn index(tera: Data<Tera>) -> impl Responder {
     let endpoints = get_endpoints(&communications);
     let interfaces = get_interfaces();
     let hostname = get_hostname().unwrap_or_else(|_| "Unknown".to_string());
+    let protocols = ProtocolPort::get_all_protocols();
 
     // format!("Hello, Actix!, {:?}", rows_string)
     let mut context = Context::new();
@@ -126,6 +128,7 @@ async fn index(tera: Data<Tera>) -> impl Responder {
     context.insert("endpoints", &endpoints);
     context.insert("interfaces", &interfaces);
     context.insert("hostname", &hostname);
+    context.insert("protocols", &protocols);
 
     let rendered = tera
         .render("index.html", &context)
