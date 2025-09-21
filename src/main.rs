@@ -32,7 +32,7 @@ async fn main() -> io::Result<()> {
 
     for interface in interfaces.into_iter() {
         let sender = sql_writer.sender.clone();
-        let result = task::spawn(async move { capture_packets(interface, sender).await });
+        let result = task::spawn_blocking(move || capture_packets(interface, sender));
         handles.push(result);
     }
 
@@ -63,7 +63,7 @@ async fn main() -> io::Result<()> {
     Ok(())
 }
 
-async fn capture_packets(
+fn capture_packets(
     interface: NetworkInterface,
     sender: tokio::sync::mpsc::Sender<Communication>,
 ) -> io::Result<()> {
@@ -83,8 +83,9 @@ async fn capture_packets(
                 let ethernet_packet: EthernetPacket<'_> = EthernetPacket::new(packet).unwrap();
                 let communication: Communication =
                     Communication::new(ethernet_packet, interface.name.clone());
-                //println!("{:?}", communication);
-                communication.write(sender.clone()).await;
+                if let Err(e) = sender.blocking_send(communication) {
+                    eprintln!("Failed to send communication to SQL writer: {}", e);
+                }
             }
             Err(e) => {
                 println!("An error occurred while reading: {}", e);

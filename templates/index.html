@@ -55,7 +55,7 @@
   <div id="left_toolbar">
     Interfaces:
 
-    <br>
+    <br><br>
 
     {% for interface in interfaces %}
       - <input type="checkbox" id="{{ interface }}" checked /> {{ interface }} <br>
@@ -66,7 +66,15 @@
   <div id="right_toolbar">
     Protocols:
 
-    <br>
+    <br><br>
+
+    - <input type="checkbox" id="tcp" checked /> TCP <br>
+    - <input type="checkbox" id="udp" checked /> UDP <br> 
+    - <input type="checkbox" id="icmp" checked /> ICMP <br>
+    - <input type="checkbox" id="igmp" checked /> IGMP <br>
+    - <input type="checkbox" id="arp" checked /> ARP <br>
+    
+    <hr>
 
     {% for protocol in protocols %}
       - <input type="checkbox" id="{{ protocol }}" checked /> {{ protocol }} <br>
