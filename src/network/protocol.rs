@@ -29,6 +29,7 @@ pub enum ProtocolPort {
     MDNS = 5353,
     Valve = 27020,
     Dota2 = 27015,
+    AppleXServerAid = 3722,
 }
 
 impl std::fmt::Display for ProtocolPort {
@@ -55,6 +56,7 @@ impl std::fmt::Display for ProtocolPort {
             ProtocolPort::MDNS => write!(f, "mDNS"),
             ProtocolPort::Valve => write!(f, "Valve"),
             ProtocolPort::Dota2 => write!(f, "Dota 2"),
+            ProtocolPort::AppleXServerAid => write!(f, "Apple X Server AID"),
         }
     }
 }
