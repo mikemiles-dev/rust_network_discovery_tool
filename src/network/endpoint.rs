@@ -54,7 +54,9 @@ impl EndPoint {
         let local_hostname = get_hostname().ok()?;
 
         Some(
-            if hostname != local_hostname && Self::is_local_ip(ip_str, interface) {
+            if hostname.to_lowercase() != local_hostname.to_lowercase()
+                && Self::is_local_ip(ip_str, interface)
+            {
                 local_hostname
             } else {
                 hostname
