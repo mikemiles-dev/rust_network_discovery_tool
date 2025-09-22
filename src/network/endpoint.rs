@@ -38,6 +38,7 @@ impl EndPoint {
 
         match hostname.clone() {
             Some(hostname) => {
+                println!("FOUND AN HOSTNAME: {:?}", hostname);
                 let mut stmt = conn
             .prepare("SELECT id FROM endpoints WHERE hostname = ?1 AND interface = ?2")?;
                 if let Some(id) = stmt
@@ -59,6 +60,8 @@ impl EndPoint {
                 }
             }
         }
+
+        println!("Inserting new endpoint: {:?}, {:?}, {:?}", mac, ip, hostname);
 
         conn.execute(
             "INSERT INTO endpoints (created_at, interface, mac, ip, hostname) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -120,6 +123,8 @@ impl EndPoint {
         let payload_str = String::from_utf8_lossy(payload);
         for line in payload_str.lines() {
             if line.to_lowercase().starts_with("host:") {
+                return Some(line[5..].trim().to_string());
+            } else if line.to_lowercase().starts_with("location:") {
                 return Some(line[5..].trim().to_string());
             } else if line.to_lowercase().starts_with("x-host:") {
                 return Some(line[7..].trim().to_string());
