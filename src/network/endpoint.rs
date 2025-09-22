@@ -64,17 +64,20 @@ impl EndPoint {
     }
 
     fn lookup_dns(ip: Option<String>, interface: String) -> Option<String> {
-        let ip_str = ip.clone()?;
+        let ip_str = ip?;
         let ip_addr = ip_str.parse().ok()?;
         let is_local = Self::is_local_ip(ip_str.clone(), interface);
         let local_hostname = get_hostname().unwrap_or_default();
+
+        // Get hostname via DNS or fallback to mDNS/IP
         let hostname = match lookup_addr(&ip_addr) {
             Ok(name) if name != ip_str && !is_local => name,
-            _ => MDnsLookup::lookup(&ip_str.clone()).unwrap_or(ip_str),
+            _ => MDnsLookup::lookup(&ip_str).unwrap_or(ip_str),
         };
 
+        // Use local hostname for local IPs with different names
         Some(
-            if (hostname.to_lowercase() != local_hostname.to_lowercase()) && is_local {
+            if is_local && !hostname.eq_ignore_ascii_case(&local_hostname) {
                 local_hostname
             } else {
                 hostname
