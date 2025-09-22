@@ -111,11 +111,7 @@ impl EndPoint {
     ) -> Option<String> {
         match protocol.as_deref() {
             Some("HTTP") => Self::get_http_host(payload),
-            Some("HTTPS") => {
-                let result = Self::find_sni(payload);
-                println!("Found SNI: {:?}", result);
-                result
-            },
+            Some("HTTPS") => Self::find_sni(payload),
             _ => Self::lookup_dns(ip.clone(), interface.clone()),
         }
     }
