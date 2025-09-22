@@ -26,6 +26,27 @@ fn get_interfaces() -> Vec<String> {
     interfaces.into_iter().map(|iface| iface.name).collect()
 }
 
+fn get_all_endpoint_nodes() -> Vec<String> {
+    let conn = new_connection();
+    let mut stmt = conn
+        .prepare("SELECT DISTINCT hostname FROM endpoints WHERE hostname IS NOT NULL")
+        .expect("Failed to prepare statement");
+
+    let rows = stmt
+        .query_map([], |row| row.get(0))
+        .expect("Failed to execute query");
+
+    rows.filter_map(|row| row.ok())
+        .filter_map(|hostname: String| {
+            if hostname.is_empty() {
+                None
+            } else {
+                Some(hostname)
+            }
+        })
+        .collect::<Vec<String>>()
+}
+
 fn get_nodes(current_node: Option<String>) -> Vec<Node> {
     let current_node = match current_node {
         Some(hostname) => hostname,
@@ -137,6 +158,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let interfaces = get_interfaces();
     let hostname = get_hostname().unwrap_or_else(|_| "Unknown".to_string());
     let protocols = ProtocolPort::get_all_protocols();
+    let all_endpoint_nodes = get_all_endpoint_nodes();
 
     let mut context = Context::new();
     context.insert("communications", &communications);
@@ -145,6 +167,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     context.insert("hostname", &hostname);
     context.insert("protocols", &protocols);
     context.insert("selected_node", &query.node);
+    context.insert("all_endpoint_nodes", &all_endpoint_nodes);
 
     let rendered = tera
         .render("index.html", &context)

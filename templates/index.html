@@ -53,7 +53,19 @@
   <div id="top_toolbar">
     <b>Network Discovery Tool</b>
     <br>
-    Selected Node: <b>{{ selected_node }}</b>
+    Node: <select id="nodeSelector" onchange="selectNode(this.value)">
+      {% for node in all_endpoint_nodes %}
+      <option value="{{ node }}" {% if node == selected_node %}selected{% endif %}>{{ node }}</option>
+      {% endfor %}
+    </select>
+
+    <script>
+      function selectNode(nodeId) {
+      var url = new URL(window.location.href);
+      url.searchParams.set('node', nodeId);
+      window.location.href = url.toString();
+      }
+    </script>
   </div>
 
   <div id="left_toolbar">
