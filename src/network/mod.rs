@@ -1,5 +1,6 @@
 pub mod communication;
 pub mod endpoint;
+pub mod mdns_lookup;
 pub mod protocol;
 
 use num_traits::FromPrimitive;

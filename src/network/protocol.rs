@@ -58,6 +58,7 @@ define_protocol_ports! {
     (Nbns, 137, "NetBIOS Name Service"),
     (Nbdg, 138, "NetBIOS Datagram Service"),
     (Nbss, 139, "NetBIOS Session Service"),
+    (Immich, 2238, "Immich"),
     (Mdns, 5353, "mDNS"),
     (Valve, 27020, "Valve"),
     (Dota2, 27015, "Dota 2"),

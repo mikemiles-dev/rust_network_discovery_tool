@@ -1,7 +1,8 @@
 use dns_lookup::{get_hostname, lookup_addr};
-use mdns_sd::{ServiceDaemon, ServiceEvent};
 use pnet::datalink::interfaces;
 use rusqlite::{Connection, OptionalExtension, Result, params};
+
+use crate::network::mdns_lookup::MDnsLookup;
 
 #[derive(Default, Debug)]
 pub struct EndPoint;
@@ -39,7 +40,15 @@ impl EndPoint {
             return Ok(id);
         }
 
+        println!(
+            "Inserting new endpoint: interface={}, mac={:?}, ip={:?}",
+            interface, mac, ip
+        );
         let hostname = Self::lookup_dns(ip.clone(), interface.clone());
+        println!(
+            "Inserting new endpoint: interface={}, mac={:?}, ip={:?}, hostname={:?}",
+            interface, mac, ip, hostname
+        );
 
         conn.execute(
             "INSERT INTO endpoints (created_at, interface, mac, ip, hostname) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -48,57 +57,37 @@ impl EndPoint {
         Ok(conn.last_insert_rowid())
     }
 
+    pub fn update_hostname_by_ip(
+        conn: &Connection,
+        ip: Option<String>,
+        hostname: Option<String>,
+    ) -> Result<()> {
+        if let Some(ip_addr) = ip {
+            conn.execute(
+                "UPDATE endpoints SET hostname = ?1 WHERE ip = ?2",
+                params![hostname, ip_addr],
+            )?;
+        }
+        Ok(())
+    }
+
     fn lookup_dns(ip: Option<String>, interface: String) -> Option<String> {
         let ip_str = ip.clone()?;
         let ip_addr = ip_str.parse().ok()?;
         let is_local = Self::is_local_ip(ip_str.clone(), interface);
-        let hostname = match lookup_addr(&ip_addr) {
-            Ok(name) if name != ip_str || is_local => name,
-            _ => Self::lookup_mdns(ip)?,
-        };
         let local_hostname = get_hostname().unwrap_or_default();
+        let hostname = match lookup_addr(&ip_addr) {
+            Ok(name) if name != ip_str && !is_local => name,
+            _ => MDnsLookup::lookup(&ip_str.clone()).unwrap_or(ip_str),
+        };
 
         Some(
-            if hostname.to_lowercase() != local_hostname.to_lowercase() && is_local {
+            if (hostname.to_lowercase() != local_hostname.to_lowercase()) && is_local {
                 local_hostname
             } else {
                 hostname
             },
         )
-    }
-
-    fn lookup_mdns(ip: Option<String>) -> Option<String> {
-        // The service you are interested in (e.g., all services)
-        let ip = ip?;
-        let service_type = "_services._dns-sd._udp.local.";
-
-        // Create a new mDNS daemon. This spawns a background thread.
-        let mdns = ServiceDaemon::new().ok()?;
-
-        // Browse for the specified service type.
-        let receiver = mdns.browse(service_type).ok()?;
-
-        // Use a loop to wait for events from the channel
-        for event in receiver.iter() {
-            match event {
-                // The `ServiceResolved` event contains the discovered service information
-                ServiceEvent::ServiceFound(_, _) => break,
-                ServiceEvent::ServiceResolved(service_info) => {
-                    // Check if the service's IP addresses match our target
-                    if service_info
-                        .addresses
-                        .iter()
-                        .any(|scoped_ip| scoped_ip.to_string() == ip)
-                    {
-                        return Some(service_info.get_hostname().to_string());
-                    }
-                }
-                ServiceEvent::SearchStopped(_) => break,
-                _ => {}
-            }
-        }
-
-        None
     }
 
     fn is_local_ip(target_ip: String, interface: String) -> bool {

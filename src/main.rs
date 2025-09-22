@@ -9,7 +9,7 @@ use pnet::packet::ethernet::EthernetPacket;
 use tokio::{io, task};
 
 use db::SQLWriter;
-use network::communication::Communication;
+use {network::communication::Communication, network::mdns_lookup::MDnsLookup};
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
@@ -27,6 +27,7 @@ async fn main() -> io::Result<()> {
     })
     .expect("Error setting Ctrl+C handler");
 
+    MDnsLookup::start_daemon();
     web::start();
 
     for interface in interfaces.into_iter() {
