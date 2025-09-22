@@ -16,9 +16,7 @@ impl EndPoint {
                 interface TEXT,
                 mac TEXT,
                 ip TEXT,
-                hostname TEXT,
-                UNIQUE(interface, ip),
-                UNIQUE(interface, mac)
+                hostname TEXT
             )",
             [],
         )?;
@@ -38,7 +36,6 @@ impl EndPoint {
 
         match hostname.clone() {
             Some(hostname) => {
-                println!("FOUND AN HOSTNAME: {:?}", hostname);
                 let mut stmt = conn
             .prepare("SELECT id FROM endpoints WHERE hostname = ?1 AND interface = ?2")?;
                 if let Some(id) = stmt

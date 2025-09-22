@@ -51,10 +51,10 @@ impl SQLWriter {
             while let Some(communication) = rx.blocking_recv() {
                 if let Err(e) = communication.insert_communication(&conn) {
                     match e {
-                        rusqlite::Error::SqliteFailure(err, Some(_msg))
+                        rusqlite::Error::SqliteFailure(err, Some(msg))
                             if err.code == rusqlite::ErrorCode::ConstraintViolation =>
                         {
-                            //eprintln!("Constraint violation: {}", msg);
+                            eprintln!("Constraint violation: {}", msg);
                         }
                         _ => {
                             eprintln!("Failed to insert communication: {}", e);
