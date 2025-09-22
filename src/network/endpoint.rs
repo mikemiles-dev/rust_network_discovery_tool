@@ -51,16 +51,15 @@ impl EndPoint {
     fn lookup_dns(ip: Option<String>, interface: String) -> Option<String> {
         let ip_str = ip.clone()?;
         let ip_addr = ip_str.parse().ok()?;
+        let is_local = Self::is_local_ip(ip_str.clone(), interface);
         let hostname = match lookup_addr(&ip_addr) {
-            Ok(name) => name,
-            Err(_) => Self::lookup_mdns(ip)?,
+            Ok(name) if name != ip_str || is_local => name,
+            _ => Self::lookup_mdns(ip)?,
         };
-        let local_hostname = get_hostname().ok()?;
+        let local_hostname = get_hostname().unwrap_or_default();
 
         Some(
-            if hostname.to_lowercase() != local_hostname.to_lowercase()
-                && Self::is_local_ip(ip_str, interface)
-            {
+            if hostname.to_lowercase() != local_hostname.to_lowercase() && is_local {
                 local_hostname
             } else {
                 hostname
@@ -79,13 +78,11 @@ impl EndPoint {
         // Browse for the specified service type.
         let receiver = mdns.browse(service_type).ok()?;
 
-        print!("Searching for services on the network for IP: {}...", ip);
-
         // Use a loop to wait for events from the channel
         for event in receiver.iter() {
-            print!(".");
             match event {
                 // The `ServiceResolved` event contains the discovered service information
+                ServiceEvent::ServiceFound(_, _) => break,
                 ServiceEvent::ServiceResolved(service_info) => {
                     // Check if the service's IP addresses match our target
                     if service_info
