@@ -32,7 +32,7 @@ impl EndPoint {
         payload: &[u8],
     ) -> Result<i64> {
         let hostname =
-            Self::lookup_hostname(ip.clone(), interface.clone(), protocol.clone(), payload);
+            Self::lookup_hostname(ip.clone(), mac.clone(), interface.clone(), protocol.clone(), payload);
 
         match hostname.clone() {
             Some(hostname) => {
@@ -81,10 +81,11 @@ impl EndPoint {
         Ok(())
     }
 
-    fn lookup_dns(ip: Option<String>, interface: String) -> Option<String> {
+    fn lookup_dns(ip: Option<String>, mac: Option<String>, interface: String) -> Option<String> {
         let ip_str = ip?;
+        let mac_str = mac?;
         let ip_addr = ip_str.parse().ok()?;
-        let is_local = Self::is_local_ip(ip_str.clone(), interface);
+        let is_local = Self::is_local(ip_str.clone(), mac_str.clone(), interface);
         let local_hostname = get_hostname().unwrap_or_default();
 
         // Get hostname via DNS or fallback to mDNS/IP
@@ -105,6 +106,7 @@ impl EndPoint {
 
     fn lookup_hostname(
         ip: Option<String>,
+        mac: Option<String>,
         interface: String,
         protocol: Option<String>,
         payload: &[u8],
@@ -112,7 +114,7 @@ impl EndPoint {
         match protocol.as_deref() {
             Some("HTTP") => Self::get_http_host(payload),
             Some("HTTPS") => Self::find_sni(payload),
-            _ => Self::lookup_dns(ip.clone(), interface.clone()),
+            _ => Self::lookup_dns(ip.clone(), mac.clone(), interface.clone()),
         }
     }
 
@@ -173,7 +175,7 @@ impl EndPoint {
         None
     }
 
-    fn is_local_ip(target_ip: String, interface: String) -> bool {
+    fn is_local(target_ip: String, mac: String, interface: String) -> bool {
         if target_ip == "127.0.0.1"
             || target_ip == "::1"
             || target_ip == "localhost"
@@ -197,6 +199,6 @@ impl EndPoint {
         matching_interface
             .ips
             .iter()
-            .any(|ip_network| ip_network.ip().to_string() == target_ip)
+            .any(|ip_network| ip_network.ip().to_string() == target_ip || mac == matching_interface.mac.unwrap_or_default().to_string())
     }
 }
