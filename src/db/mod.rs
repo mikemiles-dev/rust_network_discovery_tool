@@ -5,6 +5,7 @@ use std::env;
 
 use crate::network::communication::Communication;
 use crate::network::endpoint::EndPoint;
+use crate::network::endpoint_attribute::EndPointAttribute;
 
 const MAX_CHANNEL_BUFFER_SIZE: usize = 10_000_000;
 
@@ -45,16 +46,18 @@ impl SQLWriter {
 
             EndPoint::create_table_if_not_exists(&conn)
                 .expect("Failed to create table if not exists");
+            EndPointAttribute::create_table_if_not_exists(&conn)
+                .expect("Failed to create table if not exists");
             Communication::create_table_if_not_exists(&conn)
                 .expect("Failed to create table if not exists");
 
             while let Some(communication) = rx.blocking_recv() {
                 if let Err(e) = communication.insert_communication(&conn) {
                     match e {
-                        rusqlite::Error::SqliteFailure(err, Some(msg))
+                        rusqlite::Error::SqliteFailure(err, Some(_msg))
                             if err.code == rusqlite::ErrorCode::ConstraintViolation =>
                         {
-                            eprintln!("Constraint violation: {}", msg);
+                            //eprintln!("Constraint violation: {}", msg);
                         }
                         _ => {
                             eprintln!("Failed to insert communication: {}", e);

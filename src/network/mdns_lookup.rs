@@ -3,9 +3,6 @@ use std::collections::HashMap;
 use std::sync::{OnceLock, RwLock};
 use tokio::task;
 
-use crate::db::new_connection;
-use crate::network::endpoint::EndPoint;
-
 static MDNS_LOOKUPS: OnceLock<std::sync::RwLock<HashMap<String, String>>> = OnceLock::new();
 
 pub struct MDnsLookup;
@@ -38,8 +35,6 @@ impl MDnsLookup {
                 .browse(service_type)
                 .expect("Failed to browse for services");
 
-            let conn = new_connection();
-
             task::spawn_blocking(move || {
                 loop {
                     for event in receiver.iter() {
@@ -59,24 +54,6 @@ impl MDnsLookup {
                                     {
                                         lookups.insert(addr.to_string(), host.to_string());
                                         println!("mDNS lookup added: {} -> {}", addr, host);
-                                        match EndPoint::update_hostname_by_ip(
-                                            &conn,
-                                            Some(addr.to_string()),
-                                            Some(host.to_string()),
-                                        ) {
-                                            Ok(_) => {
-                                                println!(
-                                                    "Successfully updated hostname for {}: {}",
-                                                    addr, host
-                                                );
-                                            }
-                                            Err(e) => {
-                                                eprintln!(
-                                                    "Failed to update hostname for {}: {}",
-                                                    addr, e
-                                                )
-                                            }
-                                        }
                                     }
                                 }
                                 // Check if the service's IP addresses match our target
@@ -103,7 +80,6 @@ impl MDnsLookup {
     }
 
     pub fn lookup(ip: &str) -> Option<String> {
-        println!("Looking up mDNS for IP: {}", ip);
         let lookups = MDNS_LOOKUPS.get_or_init(|| RwLock::new(HashMap::new()));
         let map = lookups.read().ok()?;
         map.get(ip).cloned()

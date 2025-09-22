@@ -300,7 +300,6 @@ dependencies = [
  "futures",
  "mdns-sd",
  "num-derive",
- "num-traits",
  "pnet",
  "rusqlite",
  "serde",

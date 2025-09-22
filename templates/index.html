@@ -4,38 +4,61 @@
   <title>Network Discovery Tool</title>
   <style>
     body {
-      font-family: Arial, sans-serif;
+      font-family:'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
+      font-size: 14px;
       margin: 0;
       padding: 0;
       background-color: #ffffff;
     }
+    input select {
+      padding: 5px;
+      margin-bottom: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    .background_gradient {
+      background: #f5f5f5;
+      background: linear-gradient(180deg,rgba(245, 245, 245, 1) 0%, rgba(224, 224, 224, 1) 50%, rgba(209, 209, 209, 1) 100%);
+    }
     #top_toolbar {
+      line-height: 1.5;
       padding: 5px;
       border-bottom: #c0c0c0 2px solid;
       position: relative;
       text-align: left;
       margin-bottom: 10px;
-      background-color: #c0c0c0;
     }
-    #left_toolbar {
+    #left_toolbar_wrapper {
+      width: 260px;
       position: absolute; /* Positioned within the container */
       z-index: 1; /* Lower z-index means it's underneath */
       left: 20px;
-      border: 1px solid black;
+    }
+    #left_toolbar_wrapper select {
+      width: 200px;
+    } 
+    #left_toolbar_wrapper input[type="text"] {
+      width: 190px;
+    }
+    #left_toolbar_top {
+      border: 1px solid rgb(186, 186, 186);
+      box-shadow: 1px 5px #888888;
       padding: 20px;
       background-color: #c0c0c0;
       opacity: 0.9;
       border-radius: 15px; /* Applies a 15px radius to all four corners */
+      margin-bottom: 20px;
     }
     #right_toolbar {
       position: absolute; /* Positioned within the container */
       z-index: 1; /* Lower z-index means it's underneath */
       right: 20px;
-      border: 1px solid black;
       padding: 20px;
       background-color: #c0c0c0;
       opacity: 0.9;
       border-radius: 15px; /* Applies a 15px radius to all four corners */
+      border: 1px solid rgb(186, 186, 186);
+      box-shadow: 1px 5px #888888;
     }
     #container {
       position: relative;
@@ -50,11 +73,11 @@
 </head>
 <body>
 
-  <div id="top_toolbar">
+  <div id="top_toolbar" class="background_gradient">
     <b>Network Discovery Tool</b>
     <br>
-    Node: <select id="nodeSelector" onchange="selectNode(this.value)">
-      {% for node in all_endpoint_nodes %}
+    Endpoint: <select id="nodeSelector" onchange="selectNode(this.value)" autofocus>
+      {% for node in dropdown_endpoints %}
       <option value="{{ node }}" {% if node == selected_node %}selected{% endif %}>{{ node }}</option>
       {% endfor %}
     </select>
@@ -77,18 +100,59 @@
     </script>
   </div>
 
-  <div id="left_toolbar">
-    Interfaces:
+  <div id="left_toolbar_wrapper">
+    <div id="left_toolbar_top" class="background_gradient">
+      <b>Endpoint Info</b><br><br><input type="text" value="{{ hostname }}">
+      <br><input type="button" value="Update"><br><br>
+      <b>Macs:</b><br>
+      <select id="mac" multiple>
+        {% for mac in macs %}
+          <option value="{{ mac }}">{{ mac }}</option>
+        {% endfor %}
+      </select>
+      <br><br>
+      <b>Hostnames:</b><br>
+      <select id="hostname" multiple>
+        {% for hostname in hostnames %}
+          <option value="{{ hostname }}">{{ hostname }}</option>
+        {% endfor %}
+      </select>
+      <br><br>
+      <b>Ips:</b><br>
+      <select id="ip" multiple>
+        {% for ip in ips %}
+          <option value="{{ ip }}">{{ ip }}</option>
+        {% endfor %}
+      </select>
+      <br><br>
+      <b>Ports:</b><br>
+      <select id="port" multiple>
+        {% for port in ports %}
+          <option value="{{ port }}">{{ port }}</option>
+        {% endfor %}
+      </select>
+      <br><br>
+      <b>Protocols:</b><br>
+      <select id="protocol" multiple>
+        {% for protocol in protocols %}
+          <option value="{{ protocol }}">{{ protocol }}</option>
+        {% endfor %}
+      </select>
+    </div>
 
-    <br><br>
+    <!-- <div id="left_toolbar_bottom">
+      Interfaces:
 
-    {% for interface in interfaces %}
-      - <input type="checkbox" id="{{ interface }}" checked /> {{ interface }} <br>
-    {% endfor %}
+      <br><br>
 
+      {% for interface in interfaces %}
+        - <input type="checkbox" id="{{ interface }}" checked /> {{ interface }} <br>
+      {% endfor %}
+
+    </div> -->
   </div>
 
-  <div id="right_toolbar">
+  <div id="right_toolbar" class="background_gradient">
     Protocols:
 
     <br><br>
@@ -101,7 +165,7 @@
     
     <hr>
 
-    {% for protocol in protocols %}
+    {% for protocol in supported_protocols %}
       - <input type="checkbox" id="{{ protocol }}" checked /> {{ protocol }} <br>
     {% endfor %}
   </div>
@@ -182,6 +246,7 @@
 
       // Set the 'node' parameter to the clicked node's ID
       currentUrl.searchParams.set('node', nodeId);
+      currentUrl.searchParams.set('prev_node', currentNodeParam || '');
 
       // Redirect to the new URL
       window.location.href = currentUrl.toString();

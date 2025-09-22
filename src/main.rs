@@ -57,8 +57,7 @@ fn capture_packets(
         match rx.next() {
             Ok(packet) => {
                 let ethernet_packet: EthernetPacket<'_> = EthernetPacket::new(packet).unwrap();
-                let communication: Communication =
-                    Communication::new(ethernet_packet, interface.name.clone());
+                let communication: Communication = Communication::new(ethernet_packet);
                 if let Err(e) = sender.blocking_send(communication) {
                     eprintln!("Failed to send communication to SQL writer: {}", e);
                 }

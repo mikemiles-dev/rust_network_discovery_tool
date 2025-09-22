@@ -1,11 +1,13 @@
 use pnet::packet::ethernet::EthernetPacket;
 use rusqlite::{Connection, Result, params};
 
-use crate::network::{PacketWrapper, endpoint::EndPoint};
+use crate::network::{
+    endpoint::{EndPoint, InsertEndpointError},
+    packet_wrapper::PacketWrapper,
+};
 
 #[derive(Default, Debug)]
 pub struct Communication {
-    pub interface: String,
     pub source_mac: Option<String>,
     pub destination_mac: Option<String>,
     pub source_ip: Option<String>,
@@ -19,11 +21,10 @@ pub struct Communication {
 }
 
 impl Communication {
-    pub fn new(ethernet_packet: EthernetPacket, interface: String) -> Self {
+    pub fn new(ethernet_packet: EthernetPacket) -> Self {
         let packet_wrapper = PacketWrapper::new(&ethernet_packet);
 
         let mut communication = Communication {
-            interface,
             source_mac: Some(ethernet_packet.get_source().to_string()),
             destination_mac: Some(ethernet_packet.get_destination().to_string()),
             source_ip: packet_wrapper.get_source_ip(),
@@ -67,26 +68,59 @@ impl Communication {
             )",
             [],
         )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_communications_created_at ON communications (created_at);",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_communications_src_endpoint_id ON communications (src_endpoint_id);",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_communications_dst_endpoint_id ON communications (dst_endpoint_id);",
+            [],
+        )?;
         Ok(())
     }
 
     pub fn insert_communication(&self, conn: &Connection) -> Result<()> {
-        let src_endpoint_id = EndPoint::get_or_insert_endpoint(
+        let src_endpoint_id = match EndPoint::get_or_insert_endpoint(
             conn,
             self.source_mac.clone(),
             self.source_ip.clone(),
-            self.interface.clone(),
             self.sub_protocol.clone(),
-            &self.payload,
-        )?; // Ensure endpoint exists and get its ID
-        let dst_endpoint_id = EndPoint::get_or_insert_endpoint(
+            &[],
+        ) {
+            Ok(id) => id,
+            Err(InsertEndpointError::BothMacAndIpNone) => {
+                return Ok(()); // Skip insertion if both MAC and IP are None
+            }
+            Err(InsertEndpointError::ConstraintViolation) => {
+                return Ok(()); // Skip insertion on constraint violation
+            }
+            Err(InsertEndpointError::DatabaseError(e)) => {
+                return Err(e);
+            }
+        };
+        let dst_endpoint_id = match EndPoint::get_or_insert_endpoint(
             conn,
             self.destination_mac.clone(),
             self.destination_ip.clone(),
-            self.interface.clone(),
             self.sub_protocol.clone(),
             &self.payload,
-        )?; // Ensure endpoint exists and get its ID
+        ) {
+            Ok(id) => id,
+            Err(InsertEndpointError::BothMacAndIpNone) => {
+                return Ok(()); // Skip insertion if both MAC and IP are None
+            }
+            Err(InsertEndpointError::ConstraintViolation) => {
+                return Ok(()); // Skip insertion on constraint violation
+            }
+            Err(InsertEndpointError::DatabaseError(e)) => {
+                // Handle the database error (e.g., log it, return a specific error, etc.)
+                return Err(e);
+            }
+        };
 
         conn.execute(
             "INSERT INTO communications (

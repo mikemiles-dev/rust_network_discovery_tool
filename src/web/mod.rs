@@ -6,6 +6,7 @@ use actix_web::{
 use actix_web::{HttpResponse, Responder, get};
 use dns_lookup::get_hostname;
 use pnet::datalink;
+use std::collections::HashSet;
 use tera::{Context, Tera};
 use tokio::task;
 
@@ -26,10 +27,15 @@ fn get_interfaces() -> Vec<String> {
     interfaces.into_iter().map(|iface| iface.name).collect()
 }
 
-fn get_all_endpoint_nodes() -> Vec<String> {
+fn dropdown_endpoints() -> Vec<String> {
     let conn = new_connection();
     let mut stmt = conn
-        .prepare("SELECT DISTINCT hostname FROM endpoints WHERE hostname IS NOT NULL")
+        .prepare(
+            "
+            SELECT NAME FROM endpoints
+            WHERE NAME IS NOT NULL AND NAME != ''
+        ",
+        )
         .expect("Failed to prepare statement");
 
     let rows = stmt
@@ -47,6 +53,49 @@ fn get_all_endpoint_nodes() -> Vec<String> {
         .collect::<Vec<String>>()
 }
 
+fn get_all_ips_macs_and_hostnames_from_single_hostname(
+    hostname: String,
+) -> (Vec<String>, Vec<String>, Vec<String>) {
+    let conn = new_connection();
+    let mut stmt = conn
+        .prepare("SELECT  ip, mac, hostname FROM endpoint_attributes WHERE endpoint_id = (SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(hostname) = LOWER(?1) LIMIT 1)
+        ")
+        .expect("Failed to prepare statement");
+
+    let rows = stmt
+        .query_map([hostname], |row| {
+            Ok((
+                row.get::<_, Option<String>>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        })
+        .expect("Failed to execute query");
+
+    let mut ips = HashSet::new();
+    let mut macs = HashSet::new();
+    let mut hostnames = HashSet::new();
+
+    for (ip, mac, hostname) in rows.flatten() {
+        ips.insert(ip.unwrap_or_default());
+        macs.insert(mac.unwrap_or_default());
+        if ips.contains(&hostname.clone().unwrap_or_default()) {
+            continue;
+        }
+        hostnames.insert(hostname.unwrap_or_default());
+    }
+
+    let mut ips: Vec<String> = ips.into_iter().filter(|s| !s.is_empty()).collect();
+    let mut macs: Vec<String> = macs.into_iter().filter(|s| !s.is_empty()).collect();
+    let mut hostnames: Vec<String> = hostnames.into_iter().filter(|s| !s.is_empty()).collect();
+
+    ips.sort();
+    macs.sort();
+    hostnames.sort();
+
+    (ips, macs, hostnames)
+}
+
 fn get_nodes(current_node: Option<String>) -> Vec<Node> {
     let current_node = match current_node {
         Some(hostname) => hostname,
@@ -55,29 +104,21 @@ fn get_nodes(current_node: Option<String>) -> Vec<Node> {
 
     let query = format!(
         "
-        SELECT
-            src_e.hostname AS src_hostname,
-            dst_e.hostname AS dst_hostname,
-            c.destination_port AS dst_port,
-            c.ip_header_protocol as header_protocol,
-            c.sub_protocol
-        FROM
-            communications AS c
-        LEFT JOIN
-            endpoints AS src_e
-            ON c.src_endpoint_id = src_e.id
-        LEFT JOIN
-            endpoints AS dst_e
-            ON c.dst_endpoint_id = dst_e.id
-        WHERE c.created_at BETWEEN (STRFTIME('%s', 'now') - 3600) AND STRFTIME('%s', 'now')
-        AND c.ip_header_protocol IS NOT 'unknown'
-        AND c.source_port is NOT NULL
-        AND c.destination_port is NOT NULL
-        AND (src_e.hostname = '{}' OR dst_e.hostname = '{}')
-        GROUP BY
-            src_hostname,
-            dst_hostname,
-            sub_protocol;
+SELECT
+    src_endpoint.name AS src_hostname,
+    dst_endpoint.name AS dst_hostname,
+    c.destination_port as dst_port,
+    c.ip_header_protocol as header_protocol,
+    c.sub_protocol
+FROM communications AS c
+LEFT JOIN endpoints AS src_endpoint
+    ON c.src_endpoint_id = src_endpoint.id
+LEFT JOIN endpoints AS dst_endpoint
+    ON c.dst_endpoint_id = dst_endpoint.id
+WHERE (LOWER(src_endpoint.name) = LOWER('{}') OR LOWER(dst_endpoint.name) = LOWER('{}'))
+    AND c.created_at >= (strftime('%s', 'now') - 3600)
+    AND src_endpoint.name != '' AND dst_endpoint.name != ''
+    AND src_endpoint.name IS NOT NULL AND dst_endpoint.name IS NOT NULL
     ",
         current_node, current_node
     );
@@ -159,18 +200,27 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let endpoints = get_endpoints(&communications);
     let interfaces = get_interfaces();
     let hostname = get_hostname().unwrap_or_else(|_| "Unknown".to_string());
-    let protocols = ProtocolPort::get_all_protocols();
-    let all_endpoint_nodes = get_all_endpoint_nodes();
+    let supported_protocols = ProtocolPort::get_supported_protocols();
+    let dropdown_endpoints = dropdown_endpoints();
+    let (ips, macs, hostnames) =
+        get_all_ips_macs_and_hostnames_from_single_hostname(query.node.clone().unwrap_or_default());
+    let ports: Vec<String> = vec![];
+    let protocols: Vec<String> = vec![];
 
     let mut context = Context::new();
     context.insert("communications", &communications);
     context.insert("endpoints", &endpoints);
     context.insert("interfaces", &interfaces);
     context.insert("hostname", &hostname);
-    context.insert("protocols", &protocols);
+    context.insert("supported_protocols", &supported_protocols);
     context.insert("selected_node", &query.node);
-    context.insert("all_endpoint_nodes", &all_endpoint_nodes);
+    context.insert("dropdown_endpoints", &dropdown_endpoints);
     context.insert("scan_interval", &query.scan_interval.unwrap_or(60));
+    context.insert("ips", &ips);
+    context.insert("macs", &macs);
+    context.insert("hostnames", &hostnames);
+    context.insert("ports", &ports);
+    context.insert("protocols", &protocols);
 
     let rendered = tera
         .render("index.html", &context)

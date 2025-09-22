@@ -13,7 +13,6 @@ dns-lookup = "1.0"
 futures ={ version = "0.3.31", features = ["async-await"] }
 mdns-sd = "0.15" 
 num-derive = "0.4.2"
-num-traits = "0.2.18"
 pnet = "0.35.0"
 rusqlite = { version = "0.29.0", features = ["bundled"] }
 tera = "1"
