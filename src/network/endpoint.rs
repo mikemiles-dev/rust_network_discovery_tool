@@ -31,18 +31,34 @@ impl EndPoint {
         ip: Option<String>,
         interface: String,
         protocol: Option<String>,
-        payload: &[u8]
+        payload: &[u8],
     ) -> Result<i64> {
-        let mut stmt = conn
-            .prepare("SELECT id FROM endpoints WHERE (mac = ?1 OR ip = ?2) AND interface = ?3")?;
-        if let Some(id) = stmt
-            .query_row(params![mac, ip, interface], |row| row.get(0))
-            .optional()?
-        {
-            return Ok(id);
-        }
+        let hostname =
+            Self::lookup_hostname(ip.clone(), interface.clone(), protocol.clone(), payload);
 
-        let hostname = Self::lookup_hostname(ip.clone(), interface.clone(), protocol.clone(), payload);
+        match hostname.clone() {
+            Some(hostname) => {
+                let mut stmt = conn
+            .prepare("SELECT id FROM endpoints WHERE (hostname = ?1 OR mac = ?2 OR ip = ?3) AND interface = ?4")?;
+                if let Some(id) = stmt
+                    .query_row(params![hostname, mac, ip, interface], |row| row.get(0))
+                    .optional()?
+                {
+                    return Ok(id);
+                }
+            }
+            None => {
+                let mut stmt = conn.prepare(
+                    "SELECT id FROM endpoints WHERE ( mac = ?1 OR ip = ?2) AND interface = ?3",
+                )?;
+                if let Some(id) = stmt
+                    .query_row(params![mac, ip, interface], |row| row.get(0))
+                    .optional()?
+                {
+                    return Ok(id);
+                }
+            }
+        }
 
         conn.execute(
             "INSERT INTO endpoints (created_at, interface, mac, ip, hostname) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -93,9 +109,13 @@ impl EndPoint {
         protocol: Option<String>,
         payload: &[u8],
     ) -> Option<String> {
-        println!("Looking up hostname for IP: {:?}, Protocol: {:?}", ip, protocol);
         match protocol.as_deref() {
             Some("HTTP") => Self::get_http_host(payload),
+            Some("HTTPS") => {
+                let result = Self::find_sni(payload);
+                println!("Found SNI: {:?}", result);
+                result
+            },
             _ => Self::lookup_dns(ip.clone(), interface.clone()),
         }
     }
@@ -105,6 +125,49 @@ impl EndPoint {
         for line in payload_str.lines() {
             if line.to_lowercase().starts_with("host:") {
                 return Some(line[5..].trim().to_string());
+            } else if line.to_lowercase().starts_with("x-host:") {
+                return Some(line[7..].trim().to_string());
+            } else if line.to_lowercase().starts_with("x-forwarded-host:") {
+                return Some(line[17..].trim().to_string());
+            } else if line.to_lowercase().starts_with("x-forwarded-server:") {
+                return Some(line[18..].trim().to_string());
+            } else if line.to_lowercase().starts_with("referer:") {
+                // Extract hostname from referer URL
+                if let Ok(url) = url::Url::parse(line[8..].trim()) {
+                    if let Some(host) = url.host_str() {
+                        return Some(host.to_string());
+                    }
+                }
+            } else if line.to_lowercase().starts_with("report-uri") {
+                // Extract hostname from report-uri URL
+                if let Ok(url) = url::Url::parse(line[10..].trim()) {
+                    if let Some(host) = url.host_str() {
+                        return Some(host.to_string());
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    // This is a simplified function to find the SNI.
+    // The real implementation would be more robust.
+    fn find_sni(payload: &[u8]) -> Option<String> {
+        // The TLS Client Hello message starts with specific bytes.
+        // This is a simplified check. A full parser would be more complex.
+        if payload.len() > 5 && payload[0] == 0x16 && payload[1] == 0x03 {
+            // Find the "server_name" extension (type 0x0000)
+            // This is a simplified search for the extension type in the raw payload.
+            if let Some(pos) = payload.windows(2).position(|window| window == [0x00, 0x00]) {
+                let offset = pos + 2; // Move past the extension type bytes
+                if payload.len() > offset + 2 {
+                    let name_len = (payload[offset] as usize) << 8 | (payload[offset + 1] as usize);
+                    let name_start = offset + 2;
+                    let name_end = name_start + name_len;
+                    if payload.len() >= name_end {
+                        return String::from_utf8(payload[name_start..name_end].to_vec()).ok();
+                    }
+                }
             }
         }
         None

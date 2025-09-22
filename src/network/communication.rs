@@ -77,7 +77,7 @@ impl Communication {
             self.source_ip.clone(),
             self.interface.clone(),
             self.sub_protocol.clone(),
-            &self.payload
+            &self.payload,
         )?; // Ensure endpoint exists and get its ID
         let dst_endpoint_id = EndPoint::get_or_insert_endpoint(
             conn,
@@ -85,7 +85,7 @@ impl Communication {
             self.destination_ip.clone(),
             self.interface.clone(),
             self.sub_protocol.clone(),
-            &self.payload
+            &self.payload,
         )?; // Ensure endpoint exists and get its ID
 
         conn.execute(

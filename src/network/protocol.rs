@@ -65,4 +65,5 @@ define_protocol_ports! {
     (AppleXServerAid, 3722, "Apple X Server AID"),
     (Oas, 58726, "OAS"),
     (Wmi, 59632, "WMI"),
+    (LLMNR , 5355, "LLMNR"),
 }
