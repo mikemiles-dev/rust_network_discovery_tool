@@ -40,15 +40,7 @@ impl EndPoint {
             return Ok(id);
         }
 
-        println!(
-            "Inserting new endpoint: interface={}, mac={:?}, ip={:?}",
-            interface, mac, ip
-        );
         let hostname = Self::lookup_dns(ip.clone(), interface.clone());
-        println!(
-            "Inserting new endpoint: interface={}, mac={:?}, ip={:?}, hostname={:?}",
-            interface, mac, ip, hostname
-        );
 
         conn.execute(
             "INSERT INTO endpoints (created_at, interface, mac, ip, hostname) VALUES (?1, ?2, ?3, ?4, ?5)",
