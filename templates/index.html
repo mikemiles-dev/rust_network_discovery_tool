@@ -10,6 +10,8 @@
       background-color: #ffffff;
     }
     #top_toolbar {
+      padding: 5px;
+      border-bottom: #c0c0c0 2px solid;
       position: relative;
       text-align: left;
       margin-bottom: 10px;
@@ -50,6 +52,8 @@
 
   <div id="top_toolbar">
     <b>Network Discovery Tool</b>
+    <br>
+    Selected Node: <b>{{ selected_node }}</b>
   </div>
 
   <div id="left_toolbar">
@@ -118,7 +122,6 @@
             'content': 'data(id)',
             'background-color': '#61bffc',
             'font-size': 10,
-            'cursor': 'pointer'
           }
         },
       {
