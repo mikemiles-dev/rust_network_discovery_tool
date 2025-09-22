@@ -168,6 +168,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     context.insert("protocols", &protocols);
     context.insert("selected_node", &query.node);
     context.insert("all_endpoint_nodes", &all_endpoint_nodes);
+    context.insert("scan_interval", &query.scan_interval.unwrap_or(60));
 
     let rendered = tera
         .render("index.html", &context)
@@ -179,4 +180,5 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
 #[derive(Deserialize)]
 struct NodeQuery {
     node: Option<String>,
+    scan_interval: Option<u64>,
 }

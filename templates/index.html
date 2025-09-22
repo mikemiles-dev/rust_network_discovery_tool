@@ -59,6 +59,15 @@
       {% endfor %}
     </select>
 
+    Last: <select id="scanInterval" onchange="selectScanInterval(this.value)">
+      <option value="5" {% if scan_interval == 5 %}selected{% endif %}>5 Minutes</option>
+      <option value="15" {% if scan_interval == 15 %}selected{% endif %}>15 Minutes</option>
+      <option value="30" {% if scan_interval == 30 %}selected{% endif %}>30 Minutes</option>
+      <option value="60" {% if scan_interval == 60 %}selected{% endif %}>1 Hour</option>
+      <option value="240" {% if scan_interval == 240 %}selected{% endif %}>4 Hours</option>
+      <option value="1440" {% if scan_interval == 1440 %}selected{% endif %}>1 Day</option>
+    </select>
+
     <script>
       function selectNode(nodeId) {
       var url = new URL(window.location.href);
