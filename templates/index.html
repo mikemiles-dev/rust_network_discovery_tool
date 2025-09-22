@@ -118,6 +118,7 @@
             'content': 'data(id)',
             'background-color': '#61bffc',
             'font-size': 10,
+            'cursor': 'pointer'
           }
         },
       {
@@ -140,6 +141,42 @@
         }
       ],
     });
+    cy.on('tap', 'node', function(event) {
+      var clickedNode = event.target; // The node that was clicked
+      var nodeId = clickedNode.id(); // Get the ID of the clicked node
+
+      // Check if the clicked node's ID matches the current 'node' parameter in the URL
+      var currentUrl = new URL(window.location.href);
+      var currentNodeParam = currentUrl.searchParams.get('node');
+      if (currentNodeParam && currentNodeParam === nodeId) {
+        // We're already on this node's page, no need to redirect
+        return;
+      }
+
+      // Get the current URL
+      var currentUrl = new URL(window.location.href);
+
+      // Set the 'node' parameter to the clicked node's ID
+      currentUrl.searchParams.set('node', nodeId);
+
+      // Redirect to the new URL
+      window.location.href = currentUrl.toString();
+
+      // console.log('Tapped on node: ' + nodeId);
+
+      // // Example actions:
+      // // 1. Change the node's color
+      // clickedNode.style('background-color', 'red');
+
+      // // 2. Alert the user
+      // alert('You clicked on node ' + nodeId + '!');
+
+      // // 3. Highlight neighboring nodes
+      // clickedNode.neighborhood().style({
+      //   'background-color': 'blue',
+      //   'line-color': 'blue'
+      // });
+  });
   </script>
 </body>
 </html>

@@ -1,5 +1,8 @@
 use actix_files::Files;
-use actix_web::{App, HttpServer, web::Data};
+use actix_web::{
+    App, HttpServer,
+    web::{Data, Query},
+};
 use actix_web::{HttpResponse, Responder, get};
 use dns_lookup::get_hostname;
 use pnet::datalink;
@@ -9,9 +12,9 @@ use tokio::task;
 use crate::db::new_connection;
 use crate::network::protocol::ProtocolPort;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Default, Debug, Serialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Node {
     src_hostname: String,
     dst_hostname: String,
@@ -23,8 +26,14 @@ fn get_interfaces() -> Vec<String> {
     interfaces.into_iter().map(|iface| iface.name).collect()
 }
 
-fn get_nodes() -> Vec<Node> {
-    let query = r#"
+fn get_nodes(current_node: Option<String>) -> Vec<Node> {
+    let current_node = match current_node {
+        Some(hostname) => hostname,
+        None => get_hostname().unwrap(),
+    };
+
+    let query = format!(
+        "
         SELECT
             src_e.hostname AS src_hostname,
             dst_e.hostname AS dst_hostname,
@@ -40,15 +49,18 @@ fn get_nodes() -> Vec<Node> {
             endpoints AS dst_e
             ON c.dst_endpoint_id = dst_e.id
         WHERE c.created_at BETWEEN (STRFTIME('%s', 'now') - 3600) AND STRFTIME('%s', 'now')
-        AND c.ip_header_protocol IS NOT "Icmpv6"
+        AND (src_e.hostname = '{}' OR dst_e.hostname = '{}')
+        AND c.ip_header_protocol IS NOT 'Icmpv6'
         GROUP BY
             src_hostname,
             dst_hostname,
             sub_protocol;
-    "#;
+    ",
+        current_node, current_node
+    );
 
     let conn = new_connection();
-    let mut stmt = conn.prepare(query).expect("Failed to prepare statement");
+    let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
 
     let rows = stmt
         .query_map([], |row| {
@@ -119,25 +131,29 @@ pub fn start() {
 
 // Define a handler function for the web request
 #[get("/")]
-async fn index(tera: Data<Tera>) -> impl Responder {
-    let communications = get_nodes();
+async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
+    let communications = get_nodes(query.node.clone());
     let endpoints = get_endpoints(&communications);
     let interfaces = get_interfaces();
     let hostname = get_hostname().unwrap_or_else(|_| "Unknown".to_string());
     let protocols = ProtocolPort::get_all_protocols();
 
-    // format!("Hello, Actix!, {:?}", rows_string)
     let mut context = Context::new();
-
     context.insert("communications", &communications);
     context.insert("endpoints", &endpoints);
     context.insert("interfaces", &interfaces);
     context.insert("hostname", &hostname);
     context.insert("protocols", &protocols);
+    context.insert("selected_node", &query.node);
 
     let rendered = tera
         .render("index.html", &context)
         .expect("Failed to render template");
 
     HttpResponse::Ok().body(rendered)
+}
+
+#[derive(Deserialize)]
+struct NodeQuery {
+    node: Option<String>,
 }
