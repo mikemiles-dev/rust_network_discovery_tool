@@ -131,9 +131,32 @@ impl<'a> PacketWrapper<'a> {
 
     pub fn get_payload(&self) -> Option<Vec<u8>> {
         match self {
-            PacketWrapper::Ipv4(packet) => Some(packet.payload().to_vec()),
-            PacketWrapper::Ipv6(packet) => Some(packet.payload().to_vec()),
-            _ => None,
+            PacketWrapper::Ipv4(packet) => match packet.get_next_level_protocol() {
+                proto if proto == IpNextHeaderProtocols::Tcp => {
+                    let tcp_packet = TcpPacket::new(packet.payload())?;
+                    tcp_packet.payload().to_vec().into()
+                }
+                proto if proto == IpNextHeaderProtocols::Udp => {
+                    let udp_packet = UdpPacket::new(packet.payload())?;
+                    udp_packet.payload().to_vec().into()
+                }
+                _ => None,
+            },
+            PacketWrapper::Ipv6(packet) => {
+                match packet.get_next_header() {
+                    IpNextHeaderProtocols::Tcp => {
+                        let tcp_packet = TcpPacket::new(packet.payload())?;
+                        tcp_packet.payload().to_vec().into()
+                    },
+                    IpNextHeaderProtocols::Udp => {
+                        let udp_packet = UdpPacket::new(packet.payload())?;
+                        udp_packet.payload().to_vec().into()
+                    },
+                    _ => None,
+                }
+            }
+            PacketWrapper::Ethernet(packet) => Some(packet.payload().to_vec()),
+            PacketWrapper::Unknown => None,
         }
     }
 

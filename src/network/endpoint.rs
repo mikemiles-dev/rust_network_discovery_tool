@@ -39,9 +39,9 @@ impl EndPoint {
         match hostname.clone() {
             Some(hostname) => {
                 let mut stmt = conn
-            .prepare("SELECT id FROM endpoints WHERE (hostname = ?1 OR mac = ?2 OR ip = ?3) AND interface = ?4")?;
+            .prepare("SELECT id FROM endpoints WHERE hostname = ?1 AND interface = ?2")?;
                 if let Some(id) = stmt
-                    .query_row(params![hostname, mac, ip, interface], |row| row.get(0))
+                    .query_row(params![hostname, interface], |row| row.get(0))
                     .optional()?
                 {
                     return Ok(id);
@@ -161,7 +161,9 @@ impl EndPoint {
                     let name_start = offset + 2;
                     let name_end = name_start + name_len;
                     if payload.len() >= name_end {
-                        return String::from_utf8(payload[name_start..name_end].to_vec()).ok();
+                        let result = String::from_utf8(payload[name_start..name_end].to_vec()).ok()?;   
+                        let result = result.chars().filter(|c| c.is_ascii() && !c.is_control()).collect();
+                        return Some(result);
                     }
                 }
             }
