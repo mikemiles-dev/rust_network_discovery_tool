@@ -15,6 +15,7 @@ pub struct Communication {
     pub ip_version: Option<u8>,
     pub ip_header_protocol: Option<String>,
     pub sub_protocol: Option<String>,
+    pub payload: Vec<u8>,
 }
 
 impl Communication {
@@ -32,6 +33,7 @@ impl Communication {
             ip_version: packet_wrapper.get_ip_version(),
             ip_header_protocol: packet_wrapper.get_header_protocol(),
             sub_protocol: None,
+            payload: packet_wrapper.get_payload().unwrap_or_default().to_vec(),
         };
         if let Some(ip_header_protocol) = &communication.ip_header_protocol
             && (ip_header_protocol == "Tcp" || ip_header_protocol == "Udp")
@@ -75,6 +77,7 @@ impl Communication {
             self.source_ip.clone(),
             self.interface.clone(),
             self.sub_protocol.clone(),
+            &self.payload
         )?; // Ensure endpoint exists and get its ID
         let dst_endpoint_id = EndPoint::get_or_insert_endpoint(
             conn,
@@ -82,6 +85,7 @@ impl Communication {
             self.destination_ip.clone(),
             self.interface.clone(),
             self.sub_protocol.clone(),
+            &self.payload
         )?; // Ensure endpoint exists and get its ID
 
         conn.execute(

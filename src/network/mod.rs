@@ -129,6 +129,14 @@ impl<'a> PacketWrapper<'a> {
         }
     }
 
+    pub fn get_payload(&self) -> Option<Vec<u8>> {
+        match self {
+            PacketWrapper::Ipv4(packet) => Some(packet.payload().to_vec()),
+            PacketWrapper::Ipv6(packet) => Some(packet.payload().to_vec()),
+            _ => None,
+        }
+    }
+
     fn get_sub_protocol(&self, port: u16) -> Option<String> {
         ProtocolPort::from_u16(port).map(|protocol_port| format!("{}", protocol_port))
     }

@@ -31,6 +31,7 @@ impl EndPoint {
         ip: Option<String>,
         interface: String,
         protocol: Option<String>,
+        payload: &[u8]
     ) -> Result<i64> {
         let mut stmt = conn
             .prepare("SELECT id FROM endpoints WHERE (mac = ?1 OR ip = ?2) AND interface = ?3")?;
@@ -41,7 +42,7 @@ impl EndPoint {
             return Ok(id);
         }
 
-        let hostname = Self::lookup_hostname(ip.clone(), interface.clone(), protocol.clone());
+        let hostname = Self::lookup_hostname(ip.clone(), interface.clone(), protocol.clone(), payload);
 
         conn.execute(
             "INSERT INTO endpoints (created_at, interface, mac, ip, hostname) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -90,11 +91,23 @@ impl EndPoint {
         ip: Option<String>,
         interface: String,
         protocol: Option<String>,
+        payload: &[u8],
     ) -> Option<String> {
+        println!("Looking up hostname for IP: {:?}, Protocol: {:?}", ip, protocol);
         match protocol.as_deref() {
-            Some("HTTP") | Some("HTTPS") => None,
+            Some("HTTP") => Self::get_http_host(payload),
             _ => Self::lookup_dns(ip.clone(), interface.clone()),
         }
+    }
+
+    fn get_http_host(payload: &[u8]) -> Option<String> {
+        let payload_str = String::from_utf8_lossy(payload);
+        for line in payload_str.lines() {
+            if line.to_lowercase().starts_with("host:") {
+                return Some(line[5..].trim().to_string());
+            }
+        }
+        None
     }
 
     fn is_local_ip(target_ip: String, interface: String) -> bool {
