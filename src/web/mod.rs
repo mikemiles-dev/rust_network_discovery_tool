@@ -70,6 +70,9 @@ fn get_nodes(current_node: Option<String>) -> Vec<Node> {
             endpoints AS dst_e
             ON c.dst_endpoint_id = dst_e.id
         WHERE c.created_at BETWEEN (STRFTIME('%s', 'now') - 3600) AND STRFTIME('%s', 'now')
+        AND c.ip_header_protocol IS NOT 'unknown'
+        AND c.source_port is NOT NULL
+        AND c.destination_port is NOT NULL
         AND (src_e.hostname = '{}' OR dst_e.hostname = '{}')
         AND c.ip_header_protocol IS NOT 'Icmpv6'
         GROUP BY
