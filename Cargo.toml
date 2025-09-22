@@ -11,6 +11,7 @@ ctrlc = "3.2.3"
 chrono = { version = "0.4", features = ["serde"] }
 dns-lookup = "1.0"
 futures ={ version = "0.3.31", features = ["async-await"] }
+mdns-sd = "0.15" 
 num-derive = "0.4.2"
 num-traits = "0.2.18"
 pnet = "0.35.0"

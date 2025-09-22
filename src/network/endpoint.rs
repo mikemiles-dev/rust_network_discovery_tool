@@ -1,4 +1,5 @@
 use dns_lookup::{get_hostname, lookup_addr};
+use mdns_sd::{ServiceDaemon, ServiceEvent};
 use pnet::datalink::interfaces;
 use rusqlite::{Connection, OptionalExtension, Result, params};
 
@@ -48,9 +49,12 @@ impl EndPoint {
     }
 
     fn lookup_dns(ip: Option<String>, interface: String) -> Option<String> {
-        let ip_str = ip?;
+        let ip_str = ip.clone()?;
         let ip_addr = ip_str.parse().ok()?;
-        let hostname = lookup_addr(&ip_addr).ok()?;
+        let hostname = match lookup_addr(&ip_addr) {
+            Ok(name) => name,
+            Err(_) => Self::lookup_mdns(ip)?,
+        };
         let local_hostname = get_hostname().ok()?;
 
         Some(
@@ -62,6 +66,42 @@ impl EndPoint {
                 hostname
             },
         )
+    }
+
+    fn lookup_mdns(ip: Option<String>) -> Option<String> {
+        // The service you are interested in (e.g., all services)
+        let ip = ip?;
+        let service_type = "_services._dns-sd._udp.local.";
+
+        // Create a new mDNS daemon. This spawns a background thread.
+        let mdns = ServiceDaemon::new().ok()?;
+
+        // Browse for the specified service type.
+        let receiver = mdns.browse(service_type).ok()?;
+
+        print!("Searching for services on the network for IP: {}...", ip);
+
+        // Use a loop to wait for events from the channel
+        for event in receiver.iter() {
+            print!(".");
+            match event {
+                // The `ServiceResolved` event contains the discovered service information
+                ServiceEvent::ServiceResolved(service_info) => {
+                    // Check if the service's IP addresses match our target
+                    if service_info
+                        .addresses
+                        .iter()
+                        .any(|scoped_ip| scoped_ip.to_string() == ip)
+                    {
+                        return Some(service_info.get_hostname().to_string());
+                    }
+                }
+                ServiceEvent::SearchStopped(_) => break,
+                _ => {}
+            }
+        }
+
+        None
     }
 
     fn is_local_ip(target_ip: String, interface: String) -> bool {
