@@ -74,7 +74,6 @@ fn get_nodes(current_node: Option<String>) -> Vec<Node> {
         AND c.source_port is NOT NULL
         AND c.destination_port is NOT NULL
         AND (src_e.hostname = '{}' OR dst_e.hostname = '{}')
-        AND c.ip_header_protocol IS NOT 'Icmpv6'
         GROUP BY
             src_hostname,
             dst_hostname,
