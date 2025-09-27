@@ -136,7 +136,7 @@ WHERE (LOWER(src_endpoint.name) = LOWER('{}') OR LOWER(dst_endpoint.name) = LOWE
                     if dst_port == 0 {
                         header_protocol
                     } else {
-                        format!("Unknown({})", dst_port)
+                        "Unknown".to_string()
                     }
                 }
             };
@@ -212,6 +212,10 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     context.insert("endpoints", &endpoints);
     context.insert("interfaces", &interfaces);
     context.insert("hostname", &hostname);
+    context.insert(
+        "endpoint",
+        &query.node.clone().unwrap_or_else(|| hostname.clone()),
+    );
     context.insert("supported_protocols", &supported_protocols);
     context.insert("selected_node", &query.node);
     context.insert("dropdown_endpoints", &dropdown_endpoints);

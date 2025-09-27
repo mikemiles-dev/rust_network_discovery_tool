@@ -143,7 +143,7 @@ impl std::fmt::Display for ProtocolPort {
             ProtocolPort::Oas => "OAS",
             ProtocolPort::Wmi => "WMI",
             ProtocolPort::Llmnr => "LLMNR",
-            ProtocolPort::Unknown(port) => return write!(f, "Unknown ({})", port),
+            ProtocolPort::Unknown(_port) => "Unknown",
         };
         write!(f, "{}", protocol_name)
     }
