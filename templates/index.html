@@ -102,7 +102,7 @@
 
   <div id="left_toolbar_wrapper">
     <div id="left_toolbar_top" class="background_gradient">
-      <b>Endpoint Info</b><br><br><input type="text" value="{{ endpoint }}">
+      <b>Endpoint Info</b><br><br><input name="endpoint_name" type="text" value="{{ endpoint }}">
       <br><input type="button" value="Update"><br><br>
       <b>Macs:</b><br>
       <select id="mac" multiple>
@@ -117,7 +117,39 @@
           <option value="{{ hostname }}">{{ hostname }}</option>
         {% endfor %}
       </select>
-      <br><input type="button" value="Set Name"><br><br>
+      <br>
+      <input type="button" value="Copy" onclick="copySelectedHostname()">
+      <script>
+        function copySelectedHostname() {
+          const hostnameSelect = document.getElementById('hostname');
+          if (hostnameSelect.selectedIndex === -1) {
+        alert('Please select a hostname first');
+        return;
+          }
+          
+          const selectedText = hostnameSelect.options[hostnameSelect.selectedIndex].text;
+          navigator.clipboard.writeText(selectedText)
+        .then(() => {
+          // Optional: visual feedback
+          const copyBtn = event.target;
+          const originalText = copyBtn.value;
+          copyBtn.value = 'Copied!';
+          setTimeout(() => { copyBtn.value = originalText; }, 1500);
+        })
+        .catch(err => {
+          console.error('Failed to copy: ', err);
+        });
+        }
+      </script>
+      <input type="button" value="Set Endpoint Name" onclick="setEndpointName()">
+      <script>
+        function setEndpointName() {
+          const nodeSelector = document.getElementById('hostname');
+          const selectedNode = nodeSelector.value;
+          document.querySelector('input[name="endpoint_name"]').value = selectedNode;
+        }
+      </script>
+      <br><br>
       <b>Ips:</b><br>
       <select id="ip" multiple>
         {% for ip in ips %}
