@@ -51,12 +51,17 @@ impl EndPoint {
         hostname: Option<String>,
     ) -> Result<i64, InsertEndpointError> {
         conn.execute(
-            "INSERT INTO endpoints (created_at) VALUES (strftime('%s', 'now'))",
-            params![],
+            "INSERT INTO endpoints (created_at, name) VALUES (strftime('%s', 'now'), ?)",
+            params![hostname.clone()],
         )?;
         let endpoint_id = conn.last_insert_rowid();
-        let hostname = hostname.unwrap_or(ip.clone().unwrap_or_default());
-        EndPointAttribute::insert_endpoint_attribute(conn, endpoint_id, mac, ip, hostname)?;
+        EndPointAttribute::insert_endpoint_attribute(
+            conn,
+            endpoint_id,
+            mac,
+            ip,
+            hostname.unwrap_or_default(),
+        )?;
         Ok(endpoint_id)
     }
 
