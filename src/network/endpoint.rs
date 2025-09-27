@@ -125,7 +125,7 @@ impl EndPoint {
         } else if hostname.parse::<std::net::IpAddr>().is_err() {
             // Only update if hostname is not an IPv4 or IPv6 address
             conn.execute(
-                "UPDATE endpoints SET name = ? WHERE id = ? AND (name IS NULL OR name = '')",
+                "UPDATE endpoints SET name = ? WHERE id = ?",
                 params![hostname, endpoint_id],
             )?;
         }
