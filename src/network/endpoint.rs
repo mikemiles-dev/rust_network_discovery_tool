@@ -51,17 +51,12 @@ impl EndPoint {
         hostname: Option<String>,
     ) -> Result<i64, InsertEndpointError> {
         conn.execute(
-            "INSERT INTO endpoints (created_at, name) VALUES (strftime('%s', 'now'), ?)",
-            params![hostname.clone()],
+            "INSERT INTO endpoints (created_at) VALUES (strftime('%s', 'now'))",
+            params![],
         )?;
         let endpoint_id = conn.last_insert_rowid();
-        EndPointAttribute::insert_endpoint_attribute(
-            conn,
-            endpoint_id,
-            mac,
-            ip,
-            hostname.unwrap_or_default(),
-        )?;
+        let hostname = hostname.unwrap_or(ip.clone().unwrap_or_default());
+        EndPointAttribute::insert_endpoint_attribute(conn, endpoint_id, mac, ip, hostname)?;
         Ok(endpoint_id)
     }
 
@@ -129,10 +124,19 @@ impl EndPoint {
             )?;
         } else if hostname.parse::<std::net::IpAddr>().is_err() {
             // Only update if hostname is not an IPv4 or IPv6 address
-            conn.execute(
-                "UPDATE endpoints SET name = ? WHERE id = ?",
-                params![hostname, endpoint_id],
+            // First check if current name is an IP address
+            let current_name: String = conn.query_row(
+                "SELECT COALESCE(name, '') FROM endpoints WHERE id = ?",
+                params![endpoint_id],
+                |row| row.get(0),
             )?;
+
+            if current_name.is_empty() || current_name.parse::<std::net::IpAddr>().is_ok() {
+                conn.execute(
+                    "UPDATE endpoints SET name = ? WHERE id = ?",
+                    params![hostname, endpoint_id],
+                )?;
+            }
         }
 
         Ok(())
