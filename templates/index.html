@@ -162,6 +162,9 @@
           .then(response => {
             if (response.ok) {
               alert('Endpoint name updated successfully!');
+              const url = new URL(window.location.href);
+              url.searchParams.set('node', newHostname);
+              window.location.href = url.toString();
               // Optionally, refresh the page or update the UI
             } else {
               alert('Failed to update endpoint name.');
