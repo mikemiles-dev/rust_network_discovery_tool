@@ -97,6 +97,12 @@
       url.searchParams.set('node', nodeId);
       window.location.href = url.toString();
       }
+
+      function selectScanInterval(interval) {
+      var url = new URL(window.location.href);
+      url.searchParams.set('scan_interval', interval);
+      window.location.href = url.toString();
+      }
     </script>
   </div>
 

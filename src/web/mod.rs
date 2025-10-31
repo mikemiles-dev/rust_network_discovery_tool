@@ -6,6 +6,7 @@ use actix_web::{
 use actix_web::{HttpResponse, Responder, get};
 use dns_lookup::get_hostname;
 use pnet::datalink;
+use rusqlite::named_params;
 use std::collections::HashSet;
 use tera::{Context, Tera};
 use tokio::task;
@@ -27,7 +28,7 @@ fn get_interfaces() -> Vec<String> {
     interfaces.into_iter().map(|iface| iface.name).collect()
 }
 
-fn dropdown_endpoints() -> Vec<String> {
+fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
     let conn = new_connection();
     let mut stmt = conn
         .prepare(
@@ -36,14 +37,14 @@ fn dropdown_endpoints() -> Vec<String> {
             FROM endpoints e
             INNER JOIN communications c
                 ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
-                WHERE c.created_at >= (strftime('%s', 'now') - 3600)
+                WHERE c.created_at >= (strftime('%s', 'now') - (?1 * 60))
                 AND e.NAME IS NOT NULL AND e.NAME != ''
         ",
         )
         .expect("Failed to prepare statement");
 
     let rows = stmt
-        .query_map([], |row| row.get(0))
+        .query_map([internal_minutes], |row| row.get(0))
         .expect("Failed to execute query");
 
     rows.filter_map(|row| row.ok())
@@ -59,6 +60,7 @@ fn dropdown_endpoints() -> Vec<String> {
 
 fn get_all_ips_macs_and_hostnames_from_single_hostname(
     hostname: String,
+    internal_minutes: u64,
 ) -> (Vec<String>, Vec<String>, Vec<String>) {
     let conn = new_connection();
     let mut stmt = conn
@@ -69,20 +71,24 @@ fn get_all_ips_macs_and_hostnames_from_single_hostname(
             FROM endpoints e
             INNER JOIN communications c
                 ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
-                WHERE c.created_at >= (strftime('%s', 'now') - 3600)
+                WHERE c.created_at >= (strftime('%s', 'now') - (:internal_minutes * 60))
             )
-            AND endpoint_id = (SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(hostname) = LOWER(?1) LIMIT 1)
+            AND endpoint_id = (SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(hostname) = LOWER(:hostname) LIMIT 1)
+            AND created_at >= (strftime('%s', 'now') - (:internal_minutes * 60))
         ")
         .expect("Failed to prepare statement");
 
     let rows = stmt
-        .query_map([hostname], |row| {
-            Ok((
-                row.get::<_, Option<String>>(0)?,
-                row.get::<_, Option<String>>(1)?,
-                row.get::<_, Option<String>>(2)?,
-            ))
-        })
+        .query_map(
+            named_params! { ":hostname": hostname, ":internal_minutes": internal_minutes },
+            |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            },
+        )
         .expect("Failed to execute query");
 
     let mut ips = HashSet::new();
@@ -109,7 +115,7 @@ fn get_all_ips_macs_and_hostnames_from_single_hostname(
     (ips, macs, hostnames)
 }
 
-fn get_nodes(current_node: Option<String>) -> Vec<Node> {
+fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
     let current_node = match current_node {
         Some(hostname) => hostname,
         None => get_hostname().unwrap(),
@@ -129,7 +135,7 @@ fn get_nodes(current_node: Option<String>) -> Vec<Node> {
     LEFT JOIN endpoints AS dst_endpoint
     ON c.dst_endpoint_id = dst_endpoint.id
     WHERE (LOWER(src_endpoint.name) = LOWER('{}') OR LOWER(dst_endpoint.name) = LOWER('{}'))
-    AND c.created_at >= (strftime('%s', 'now') - 3600)
+    AND c.created_at >= (strftime('%s', 'now') - (?1 * 60))
     AND src_endpoint.name != '' AND dst_endpoint.name != ''
     AND src_endpoint.name IS NOT NULL AND dst_endpoint.name IS NOT NULL
     ",
@@ -140,7 +146,7 @@ fn get_nodes(current_node: Option<String>) -> Vec<Node> {
     let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
 
     let rows = stmt
-        .query_map([], |row| {
+        .query_map([internal_minutes], |row| {
             let dst_port = row.get::<_, Option<u16>>("dst_port")?.unwrap_or(0);
             let header_protocol = row.get::<_, String>("header_protocol")?;
             let sub_protocol = match row.get::<_, String>("sub_protocol") {
@@ -209,14 +215,16 @@ pub fn start() {
 // Define a handler function for the web request
 #[get("/")]
 async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
-    let communications = get_nodes(query.node.clone());
+    let communications = get_nodes(query.node.clone(), query.scan_interval.unwrap_or(60));
     let endpoints = get_endpoints(&communications);
     let interfaces = get_interfaces();
     let hostname = get_hostname().unwrap_or_else(|_| "Unknown".to_string());
     let supported_protocols = ProtocolPort::get_supported_protocols();
-    let dropdown_endpoints = dropdown_endpoints();
-    let (ips, macs, hostnames) =
-        get_all_ips_macs_and_hostnames_from_single_hostname(query.node.clone().unwrap_or_default());
+    let dropdown_endpoints = dropdown_endpoints(query.scan_interval.unwrap_or(60));
+    let (ips, macs, hostnames) = get_all_ips_macs_and_hostnames_from_single_hostname(
+        query.node.clone().unwrap_or_default(),
+        query.scan_interval.unwrap_or(60),
+    );
     let ports: Vec<String> = vec![];
     let protocols: Vec<String> = vec![];
 
