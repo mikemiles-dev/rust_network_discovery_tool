@@ -36,7 +36,7 @@ fn dropdown_endpoints() -> Vec<String> {
             FROM endpoints e
             INNER JOIN communications c
                 ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
-            WHERE c.created_at >= (strftime('%s', 'now') - 3600)
+                WHERE c.created_at >= (strftime('%s', 'now') - 3600)
                 AND e.NAME IS NOT NULL AND e.NAME != ''
         ",
         )
@@ -69,7 +69,7 @@ fn get_all_ips_macs_and_hostnames_from_single_hostname(
             FROM endpoints e
             INNER JOIN communications c
                 ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
-            WHERE c.created_at >= (strftime('%s', 'now') - 3600)
+                WHERE c.created_at >= (strftime('%s', 'now') - 3600)
             )
             AND endpoint_id = (SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(hostname) = LOWER(?1) LIMIT 1)
         ")
@@ -117,18 +117,18 @@ fn get_nodes(current_node: Option<String>) -> Vec<Node> {
 
     let query = format!(
         "
-SELECT
+    SELECT
     src_endpoint.name AS src_hostname,
     dst_endpoint.name AS dst_hostname,
     c.destination_port as dst_port,
     c.ip_header_protocol as header_protocol,
     c.sub_protocol
-FROM communications AS c
-LEFT JOIN endpoints AS src_endpoint
+    FROM communications AS c
+    LEFT JOIN endpoints AS src_endpoint
     ON c.src_endpoint_id = src_endpoint.id
-LEFT JOIN endpoints AS dst_endpoint
+    LEFT JOIN endpoints AS dst_endpoint
     ON c.dst_endpoint_id = dst_endpoint.id
-WHERE (LOWER(src_endpoint.name) = LOWER('{}') OR LOWER(dst_endpoint.name) = LOWER('{}'))
+    WHERE (LOWER(src_endpoint.name) = LOWER('{}') OR LOWER(dst_endpoint.name) = LOWER('{}'))
     AND c.created_at >= (strftime('%s', 'now') - 3600)
     AND src_endpoint.name != '' AND dst_endpoint.name != ''
     AND src_endpoint.name IS NOT NULL AND dst_endpoint.name IS NOT NULL
