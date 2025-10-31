@@ -201,6 +201,7 @@ pub fn start() {
                 App::new()
                     .app_data(Data::new(tera.clone()))
                     .service(Files::new("/static", "static").show_files_listing())
+                    .service(update_endpoint)
                     .service(index)
             })
             .bind(("127.0.0.1", 8080))
@@ -210,6 +211,33 @@ pub fn start() {
         })
         .expect("Failed to start Web server");
     });
+}
+
+#[get("/update_endpoint")]
+async fn update_endpoint(query: Query<UpdateEndpointQuery>) -> impl Responder {
+    let conn = new_connection();
+    let mut stmt = match conn.prepare(
+        "
+            UPDATE endpoints
+            SET name = :new_hostname
+            WHERE LOWER(name) = LOWER(:hostname)
+        ",
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .body(format!("Failed to prepare statement: {}", e));
+        }
+    };
+
+    if let Err(e) = stmt.execute(
+        named_params! { ":hostname": &query.hostname, ":new_hostname": &query.new_hostname },
+    ) {
+        return HttpResponse::InternalServerError()
+            .body(format!("Failed to execute statement: {}", e));
+    }
+
+    HttpResponse::Ok().body("Endpoint updated")
 }
 
 // Define a handler function for the web request
@@ -252,6 +280,12 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         .expect("Failed to render template");
 
     HttpResponse::Ok().body(rendered)
+}
+
+#[derive(Deserialize)]
+struct UpdateEndpointQuery {
+    hostname: String,
+    new_hostname: String,
 }
 
 #[derive(Deserialize)]
