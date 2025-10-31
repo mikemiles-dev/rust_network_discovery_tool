@@ -32,8 +32,12 @@ fn dropdown_endpoints() -> Vec<String> {
     let mut stmt = conn
         .prepare(
             "
-            SELECT NAME FROM endpoints
-            WHERE NAME IS NOT NULL AND NAME != ''
+            SELECT DISTINCT e.NAME 
+            FROM endpoints e
+            INNER JOIN communications c
+                ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
+            WHERE c.created_at >= (strftime('%s', 'now') - 3600)
+                AND e.NAME IS NOT NULL AND e.NAME != ''
         ",
         )
         .expect("Failed to prepare statement");
@@ -58,7 +62,16 @@ fn get_all_ips_macs_and_hostnames_from_single_hostname(
 ) -> (Vec<String>, Vec<String>, Vec<String>) {
     let conn = new_connection();
     let mut stmt = conn
-        .prepare("SELECT  ip, mac, hostname FROM endpoint_attributes WHERE endpoint_id = (SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(hostname) = LOWER(?1) LIMIT 1)
+        .prepare("
+            SELECT ip, mac, hostname FROM endpoint_attributes
+            WHERE endpoint_id IN (
+            SELECT DISTINCT e.id
+            FROM endpoints e
+            INNER JOIN communications c
+                ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
+            WHERE c.created_at >= (strftime('%s', 'now') - 3600)
+            )
+            AND endpoint_id = (SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(hostname) = LOWER(?1) LIMIT 1)
         ")
         .expect("Failed to prepare statement");
 
