@@ -111,11 +111,12 @@
       <b>Endpoint Info</b><br><br><input name="endpoint_name" type="text" value="{{ endpoint }}">
       <br><input type="button" value="Update" onclick="updateEndpointName()"><br><br>
       <b>Macs:</b><br>
-      <select id="mac" multiple>
+      <select id="macs" multiple>
         {% for mac in macs %}
           <option value="{{ mac }}">{{ mac }}</option>
         {% endfor %}
       </select>
+      <input type="button" value="Copy" onclick="copySelected('macs')">
       <br><br>
       <b>Hostnames:</b><br>
       <select id="hostname" multiple>
@@ -124,16 +125,12 @@
         {% endfor %}
       </select>
       <br>
-      <input type="button" value="Copy" onclick="copySelectedHostname()">
+      <input type="button" value="Copy" onclick="copySelected('hostname')">
       <script>
-        function copySelectedHostname() {
-          const hostnameSelect = document.getElementById('hostname');
-          if (hostnameSelect.selectedIndex === -1) {
-        alert('Please select a hostname first');
-        return;
-          }
-          
-          const selectedText = hostnameSelect.options[hostnameSelect.selectedIndex].text;
+
+        function copySelected(elementName) {
+          const selectElement = document.getElementById(elementName);
+          const selectedText = selectElement.options[selectElement.selectedIndex].text;
           navigator.clipboard.writeText(selectedText)
         .then(() => {
           // Optional: visual feedback
@@ -184,6 +181,7 @@
           <option value="{{ ip }}">{{ ip }}</option>
         {% endfor %}
       </select>
+      <input type="button" value="Copy" onclick="copySelected('ip')">
       <br><br>
       <!-- <b>Ports:</b><br>
       <select id="port" multiple>
