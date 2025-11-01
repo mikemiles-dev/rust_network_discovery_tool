@@ -245,7 +245,8 @@
         {% for endpoint in endpoints %}
           { data: { 
               id: '{{ endpoint }}',
-              {% if endpoint == hostname %}type: 'local'{% endif %}
+              {% if endpoint == hostname %}type: 'local'
+              {% elif endpoint == selected_node %}type: 'selected'{% endif %}
             } 
           },
         {% endfor %}
@@ -272,6 +273,13 @@
       style: {
           'background-color': '#3333CC' // A specific color for these nodes
         }
+      },
+      {
+          selector: 'node[type = "selected"]',
+          style: {
+            'border-width': 3,
+            'border-color': '#11DD11'
+          }
       },
         {
           selector: 'edge',
