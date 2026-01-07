@@ -56,18 +56,18 @@ jobs:
           Invoke-WebRequest -Uri "https://npcap.com/dist/npcap-sdk-1.13.zip" -OutFile "npcap-sdk.zip"
           Expand-Archive -Path "npcap-sdk.zip" -DestinationPath "C:\npcap-sdk-temp"
 
-          # Debug: Show what was extracted
-          Write-Host "==== Contents of extraction ===="
-          Get-ChildItem "C:\npcap-sdk-temp" -Recurse -Depth 3 | Format-Table FullName
+          # Debug: Show what was extracted (full tree)
+          Write-Host "==== Contents of extraction (full tree) ===="
+          Get-ChildItem "C:\npcap-sdk-temp" -Recurse | Select-Object FullName, Length | Format-Table -AutoSize
 
           # Find and move the actual SDK folder
           $sdkFolder = Get-ChildItem "C:\npcap-sdk-temp" -Directory | Select-Object -First 1
           Write-Host "==== Moving $($sdkFolder.FullName) to C:\npcap-sdk ===="
           Move-Item -Path $sdkFolder.FullName -Destination "C:\npcap-sdk"
 
-          # Debug: Show what's in the final location
-          Write-Host "==== Contents of C:\npcap-sdk ===="
-          Get-ChildItem "C:\npcap-sdk" -Recurse -Depth 2 | Format-Table FullName
+          # Debug: Show what's in the final location (full tree)
+          Write-Host "==== Contents of C:\npcap-sdk (full tree) ===="
+          Get-ChildItem "C:\npcap-sdk" -Recurse | Where-Object { $_.Name -like "*.lib" -or $_.PSIsContainer } | Select-Object FullName, Length | Format-Table -AutoSize
 
           # Verify Packet.lib exists and set LIB path
           if (Test-Path "C:\npcap-sdk\Lib\x64\Packet.lib") {
