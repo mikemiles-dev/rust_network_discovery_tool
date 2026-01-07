@@ -63,7 +63,7 @@ Then open http://localhost:8080 in your browser (or the port you configured with
 ### Build from Source
 
 Requirements:
-- Rust 1.70+
+- Rust
 - libpcap (Linux/macOS) or Npcap (Windows)
 
 ```bash
