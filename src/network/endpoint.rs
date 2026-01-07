@@ -79,15 +79,17 @@ impl EndPoint {
     ) -> Result<i64, InsertEndpointError> {
         // Filter out broadcast/multicast MACs - these aren't real endpoints
         if let Some(ref mac_addr) = mac
-            && Self::is_broadcast_or_multicast_mac(mac_addr) {
-                return Err(InsertEndpointError::BothMacAndIpNone);
-            }
+            && Self::is_broadcast_or_multicast_mac(mac_addr)
+        {
+            return Err(InsertEndpointError::BothMacAndIpNone);
+        }
 
         // Filter out multicast/broadcast IPs - these aren't real endpoints
         if let Some(ref ip_addr) = ip
-            && Self::is_multicast_or_broadcast_ip(ip_addr) {
-                return Err(InsertEndpointError::BothMacAndIpNone);
-            }
+            && Self::is_multicast_or_broadcast_ip(ip_addr)
+        {
+            return Err(InsertEndpointError::BothMacAndIpNone);
+        }
 
         if (mac.is_none() || mac == Some("00:00:00:00:00:00".to_string())) && ip.is_none() {
             return Err(InsertEndpointError::BothMacAndIpNone);
@@ -173,9 +175,10 @@ impl EndPoint {
         // Check cache first to avoid slow DNS lookups
         if let Ok(cache) = DNS_CACHE.lock()
             && let Some((cached_name, cached_time)) = cache.get(&ip_str)
-            && cached_time.elapsed() < DNS_CACHE_TTL {
-                return Some(cached_name.clone());
-            }
+            && cached_time.elapsed() < DNS_CACHE_TTL
+        {
+            return Some(cached_name.clone());
+        }
 
         // Get hostname via DNS or fallback to mDNS/IP
         let hostname = match lookup_addr(&ip_addr) {
@@ -352,12 +355,12 @@ impl EndPoint {
                 if offset + name_len <= extensions_end
                     && let Ok(hostname) =
                         String::from_utf8(payload[offset..offset + name_len].to_vec())
-                    {
-                        let cleaned = Self::remove_all_but_alphanumeric_and_dots(hostname.as_str());
-                        if !cleaned.is_empty() {
-                            return Some(cleaned);
-                        }
+                {
+                    let cleaned = Self::remove_all_but_alphanumeric_and_dots(hostname.as_str());
+                    if !cleaned.is_empty() {
+                        return Some(cleaned);
                     }
+                }
                 return None;
             }
 
@@ -378,12 +381,13 @@ impl EndPoint {
         // Check if first octet indicates multicast (LSB of first byte is 1)
         // Multicast MACs: 01:xx:xx:xx:xx:xx, 03:xx:xx:xx:xx:xx, etc.
         if let Some(first_octet) = mac_lower.split(':').next()
-            && let Ok(byte) = u8::from_str_radix(first_octet, 16) {
-                // If LSB of first byte is 1, it's multicast
-                if (byte & 0x01) == 0x01 {
-                    return true;
-                }
+            && let Ok(byte) = u8::from_str_radix(first_octet, 16)
+        {
+            // If LSB of first byte is 1, it's multicast
+            if (byte & 0x01) == 0x01 {
+                return true;
             }
+        }
 
         false
     }

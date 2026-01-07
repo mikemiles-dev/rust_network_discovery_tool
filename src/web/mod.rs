@@ -5,8 +5,8 @@ use actix_web::{
 use actix_web::{HttpResponse, Responder, get};
 use dns_lookup::get_hostname;
 use pnet::datalink;
-use rust_embed::RustEmbed;
 use rusqlite::named_params;
+use rust_embed::RustEmbed;
 use std::collections::HashSet;
 use tera::{Context, Tera};
 use tokio::task;
@@ -250,7 +250,7 @@ fn get_endpoints(communications: &[Node]) -> Vec<String> {
     })
 }
 
-pub fn start() {
+pub fn start(preferred_port: u16) {
     task::spawn_blocking(move || {
         println!("Starting web server");
         let sys = actix_rt::System::new();
@@ -271,25 +271,54 @@ pub fn start() {
         }
 
         sys.block_on(async {
-            let server = match HttpServer::new(move || {
-                App::new()
-                    .app_data(Data::new(tera.clone()))
-                    .service(static_files)
-                    .service(update_endpoint)
-                    .service(index)
-            })
-            .bind(("127.0.0.1", 8080))
-            {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("Failed to bind web server to 127.0.0.1:8080: {}", e);
-                    return;
-                }
-            };
+            // Try to bind to the preferred port, then fallback ports
+            let fallback_ports = [preferred_port, 8081, 8082, 8083, 8084];
+            let mut bound_port = None;
+            let mut last_error = None;
 
-            println!("Web server listening on http://127.0.0.1:8080");
-            if let Err(e) = server.run().await {
-                eprintln!("Web server error: {}", e);
+            for port in fallback_ports {
+                let tera_clone = tera.clone();
+                match HttpServer::new(move || {
+                    App::new()
+                        .app_data(Data::new(tera_clone.clone()))
+                        .service(static_files)
+                        .service(update_endpoint)
+                        .service(index)
+                })
+                .bind(("127.0.0.1", port))
+                {
+                    Ok(server) => {
+                        if port != preferred_port {
+                            println!(
+                                "Port {} was already in use, using port {} instead",
+                                preferred_port, port
+                            );
+                        }
+                        println!("Web server listening on http://127.0.0.1:{}", port);
+
+                        if let Err(e) = server.run().await {
+                            eprintln!("Web server error: {}", e);
+                        }
+                        bound_port = Some(port);
+                        break;
+                    }
+                    Err(e) => {
+                        last_error = Some((port, e));
+                    }
+                }
+            }
+
+            if bound_port.is_none()
+                && let Some((port, e)) = last_error
+            {
+                eprintln!("Failed to bind web server to any port.");
+                eprintln!("Tried ports: {:?}", fallback_ports);
+                eprintln!("Last error on port {}: {}", port, e);
+                eprintln!();
+                eprintln!("Possible solutions:");
+                eprintln!("  1. Stop any other processes using these ports");
+                eprintln!("  2. Set a different port using the WEB_PORT environment variable");
+                eprintln!("     Example: WEB_PORT=9000 ./awareness");
             }
         })
     });

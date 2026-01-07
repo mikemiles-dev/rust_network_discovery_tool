@@ -43,7 +43,7 @@ sudo mv awareness /usr/local/bin/
 sudo awareness
 ```
 
-Then open http://localhost:8080 in your browser.
+Then open http://localhost:8080 in your browser (or the port you configured with `WEB_PORT`).
 
 #### Windows Installation
 
@@ -56,7 +56,7 @@ Then open http://localhost:8080 in your browser.
 3. Run PowerShell or Command Prompt as Administrator
 4. Navigate to the extracted folder and run `awareness.exe`
 
-Then open http://localhost:8080 in your browser.
+Then open http://localhost:8080 in your browser (or the port you configured with `WEB_PORT`).
 
 **Important for Windows users**: While the `awareness.exe` binary is fully statically linked (no DLL dependencies for Rust code), it still requires Npcap/WinPcap drivers to be installed on your system. These are kernel-mode drivers that enable packet capture on Windows and cannot be bundled with the application.
 
@@ -95,8 +95,11 @@ DATABASE_URL="my_network.db" cargo run
 # Custom data retention (in days)
 DATA_RETENTION_DAYS=30 cargo run
 
+# Custom web server port
+WEB_PORT=9000 cargo run
+
 # Combine options
-MONITOR_INTERFACES="en0" DATA_RETENTION_DAYS=14 DATABASE_URL="network.db" cargo run
+MONITOR_INTERFACES="en0" DATA_RETENTION_DAYS=14 DATABASE_URL="network.db" WEB_PORT=3000 cargo run
 ```
 
 ## Environment Variables
@@ -106,6 +109,7 @@ MONITOR_INTERFACES="en0" DATA_RETENTION_DAYS=14 DATABASE_URL="network.db" cargo 
 | `MONITOR_INTERFACES` | Auto-detect | Comma-separated list of interfaces to monitor (e.g., "en0,eth0") |
 | `DATABASE_URL` | `test.db` | Path to SQLite database file |
 | `DATA_RETENTION_DAYS` | `7` | Number of days to keep historical data |
+| `WEB_PORT` | `8080` | Web server port (automatically tries fallback ports 8081-8084 if unavailable) |
 | `CHANNEL_BUFFER_SIZE` | `10000000` | Internal packet buffer size |
 
 ## How It Works

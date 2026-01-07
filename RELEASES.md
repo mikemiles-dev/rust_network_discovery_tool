@@ -1,7 +1,11 @@
 # Release Notes
 
-## [0.1.0] - TBD
+## [0.1.1] 
 
+### Added
+- Ability to configure web server port
+
+## [0.1.0] 
 
 ### Added
 - Pre-built binaries for macOS (Intel & Apple Silicon), Linux, and Windows

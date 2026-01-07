@@ -27,7 +27,14 @@ async fn main() -> io::Result<()> {
     .expect("Error setting Ctrl+C handler");
 
     MDnsLookup::start_daemon();
-    web::start();
+
+    // Read web server port from environment variable, default to 8080
+    let web_port = env::var("WEB_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(8080);
+
+    web::start(web_port);
 
     // Check for specific interface selection via environment variable
     let selected_interfaces = env::var("MONITOR_INTERFACES").ok().map(|s| {
@@ -42,9 +49,10 @@ async fn main() -> io::Result<()> {
         .filter(|iface| {
             // If specific interfaces are configured, only monitor those
             if let Some(ref selected) = selected_interfaces
-                && !selected.contains(&iface.name) {
-                    return false;
-                }
+                && !selected.contains(&iface.name)
+            {
+                return false;
+            }
 
             let name = iface.name.to_lowercase();
             // Skip loopback, docker, virtual interfaces, etc.
