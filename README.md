@@ -4,13 +4,16 @@ A lightweight network traffic monitoring tool that captures and visualizes netwo
 
 ## Features
 
+- **Modern Dark UI**: Professional, responsive web interface with real-time updates
 - **Smart Interface Filtering**: Automatically monitors only real network interfaces (skips loopback, Docker, VPN)
 - **Connection Deduplication**: Tracks unique connections instead of individual packets (reduces DB size by 99%+)
 - **Automatic Data Retention**: Keeps data for 7 days by default (configurable)
 - **Privacy-Focused**: Doesn't store packet payloads, only connection metadata
-- **Real-time Web UI**: View network graph at http://127.0.0.1:8080
+- **Interactive Network Graph**: Click-to-navigate network visualization powered by Cytoscape.js
 - **Protocol Detection**: Identifies HTTP, HTTPS, DNS, SSH, and 20+ other protocols
 - **Hostname Resolution**: Uses DNS, mDNS, and deep packet inspection (SNI, HTTP Host headers)
+- **DNS Caching**: Prevents slow lookups with intelligent 5-minute TTL cache
+- **High Performance**: Optimized with database indexes, transaction batching, and connection pooling
 
 ## Usage
 
