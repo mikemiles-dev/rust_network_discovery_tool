@@ -1,4 +1,3 @@
-use actix_files::Files;
 use actix_web::{
     App, HttpServer,
     web::{Data, Query},
@@ -6,6 +5,7 @@ use actix_web::{
 use actix_web::{HttpResponse, Responder, get};
 use dns_lookup::get_hostname;
 use pnet::datalink;
+use rust_embed::RustEmbed;
 use rusqlite::named_params;
 use std::collections::HashSet;
 use tera::{Context, Tera};
@@ -15,6 +15,14 @@ use crate::db::new_connection;
 use crate::network::protocol::ProtocolPort;
 
 use serde::{Deserialize, Serialize};
+
+#[derive(RustEmbed)]
+#[folder = "templates/"]
+struct Templates;
+
+#[derive(RustEmbed)]
+#[folder = "static/"]
+struct StaticAssets;
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Node {
@@ -246,19 +254,27 @@ pub fn start() {
     task::spawn_blocking(move || {
         println!("Starting web server");
         let sys = actix_rt::System::new();
-        let tera = match Tera::new("templates/**/*") {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("Failed to load templates: {}", e);
-                eprintln!("Web server will not start");
-                return;
+
+        // Load templates from embedded files
+        let mut tera = Tera::default();
+        for file in Templates::iter() {
+            let file_name = file.as_ref();
+            if let Some(content) = Templates::get(file_name) {
+                let template_str = std::str::from_utf8(content.data.as_ref())
+                    .expect("Template file is not valid UTF-8");
+                if let Err(e) = tera.add_raw_template(file_name, template_str) {
+                    eprintln!("Failed to load template {}: {}", file_name, e);
+                    eprintln!("Web server will not start");
+                    return;
+                }
             }
-        };
+        }
+
         sys.block_on(async {
             let server = match HttpServer::new(move || {
                 App::new()
                     .app_data(Data::new(tera.clone()))
-                    .service(Files::new("/static", "static").show_files_listing())
+                    .service(static_files)
                     .service(update_endpoint)
                     .service(index)
             })
@@ -277,6 +293,22 @@ pub fn start() {
             }
         })
     });
+}
+
+#[get("/static/{filename:.*}")]
+async fn static_files(path: actix_web::web::Path<String>) -> impl Responder {
+    let filename = path.into_inner();
+    match StaticAssets::get(&filename) {
+        Some(content) => {
+            let mime_type = mime_guess::from_path(&filename)
+                .first_or_octet_stream()
+                .to_string();
+            HttpResponse::Ok()
+                .content_type(mime_type)
+                .body(content.data.into_owned())
+        }
+        None => HttpResponse::NotFound().body("File not found"),
+    }
 }
 
 #[get("/update_endpoint")]
