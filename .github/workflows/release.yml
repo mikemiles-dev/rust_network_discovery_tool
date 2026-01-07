@@ -53,8 +53,13 @@ jobs:
         run: |
           # Download and install Npcap SDK for building
           curl -L -o npcap-sdk.zip https://npcap.com/dist/npcap-sdk-1.13.zip
-          7z x npcap-sdk.zip -o"C:\npcap-sdk"
+          7z x npcap-sdk.zip -o"C:\npcap-sdk-temp"
+          # Move contents up one level (SDK extracts with wrapper folder)
+          move "C:\npcap-sdk-temp\npcap-sdk-*" "C:\npcap-sdk"
+          # Set LIB environment variable for linker
           echo "LIB=C:\npcap-sdk\Lib\x64" >> $GITHUB_ENV
+          # Verify Packet.lib exists
+          dir "C:\npcap-sdk\Lib\x64"
 
       - name: Build release binary
         run: |
