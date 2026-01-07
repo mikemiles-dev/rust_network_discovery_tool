@@ -56,28 +56,17 @@ jobs:
           Invoke-WebRequest -Uri "https://npcap.com/dist/npcap-sdk-1.13.zip" -OutFile "npcap-sdk.zip"
           Expand-Archive -Path "npcap-sdk.zip" -DestinationPath "C:\npcap-sdk-temp"
 
-          # Debug: Show what was extracted (full tree)
-          Write-Host "==== Contents of extraction (full tree) ===="
-          Get-ChildItem "C:\npcap-sdk-temp" -Recurse | Select-Object FullName, Length | Format-Table -AutoSize
+          # Move all SDK contents to C:\npcap-sdk
+          Write-Host "Moving SDK contents to C:\npcap-sdk"
+          Move-Item -Path "C:\npcap-sdk-temp" -Destination "C:\npcap-sdk"
 
-          # Find and move the actual SDK folder
-          $sdkFolder = Get-ChildItem "C:\npcap-sdk-temp" -Directory | Select-Object -First 1
-          Write-Host "==== Moving $($sdkFolder.FullName) to C:\npcap-sdk ===="
-          Move-Item -Path $sdkFolder.FullName -Destination "C:\npcap-sdk"
-
-          # Debug: Show what's in the final location (full tree)
-          Write-Host "==== Contents of C:\npcap-sdk (full tree) ===="
-          Get-ChildItem "C:\npcap-sdk" -Recurse | Where-Object { $_.Name -like "*.lib" -or $_.PSIsContainer } | Select-Object FullName, Length | Format-Table -AutoSize
-
-          # Verify Packet.lib exists and set LIB path
+          # Verify Packet.lib exists and set LIB environment variable
           if (Test-Path "C:\npcap-sdk\Lib\x64\Packet.lib") {
-            Write-Host "Found Packet.lib at C:\npcap-sdk\Lib\x64\Packet.lib"
+            Write-Host "SUCCESS: Found Packet.lib at C:\npcap-sdk\Lib\x64\Packet.lib"
             Add-Content -Path $env:GITHUB_ENV -Value "LIB=C:\npcap-sdk\Lib\x64"
-          } elseif (Test-Path "C:\npcap-sdk\Lib\Packet.lib") {
-            Write-Host "Found Packet.lib at C:\npcap-sdk\Lib\Packet.lib"
-            Add-Content -Path $env:GITHUB_ENV -Value "LIB=C:\npcap-sdk\Lib"
           } else {
-            Write-Host "ERROR: Cannot find Packet.lib in expected locations"
+            Write-Host "ERROR: Cannot find Packet.lib"
+            Get-ChildItem "C:\npcap-sdk" -Recurse | Where-Object { $_.Name -like "*.lib" } | Format-Table FullName
             exit 1
           }
 
