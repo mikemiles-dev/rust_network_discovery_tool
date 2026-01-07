@@ -1,18 +1,19 @@
 Rust Network Discovery Tool
 
+![Screenshot](screenshot.png)
+
 A lightweight network traffic monitoring tool that captures and visualizes network connections on your local network. Shows "what's talking to what" in an easy-to-use web interface.
 
 ## Features
 
-- **Modern Dark UI**: Professional, responsive web interface with real-time updates
 - **Smart Interface Filtering**: Automatically monitors only real network interfaces (skips loopback, Docker, VPN)
-- **Connection Deduplication**: Tracks unique connections instead of individual packets (reduces DB size by 99%+)
+- **Connection Deduplication**: Tracks unique connections instead of individual packets 
 - **Automatic Data Retention**: Keeps data for 7 days by default (configurable)
 - **Privacy-Focused**: Doesn't store packet payloads, only connection metadata
 - **Interactive Network Graph**: Click-to-navigate network visualization powered by Cytoscape.js
 - **Protocol Detection**: Identifies HTTP, HTTPS, DNS, SSH, and 20+ other protocols
 - **Hostname Resolution**: Uses DNS, mDNS, and deep packet inspection (SNI, HTTP Host headers)
-- **DNS Caching**: Prevents slow lookups with intelligent 5-minute TTL cache
+- **DNS Caching**: Prevents slow lookups with DNS cache
 - **High Performance**: Optimized with database indexes, transaction batching, and connection pooling
 
 ## Installation
@@ -116,26 +117,11 @@ MONITOR_INTERFACES="en0" DATA_RETENTION_DAYS=14 DATABASE_URL="network.db" cargo 
 5. **Displays in web UI** with interactive graph visualization
 6. **Cleans up old data** automatically based on retention policy
 
-## Performance Optimizations
-
-Unlike traditional packet capture tools that store every packet, this tool:
-- ✅ Stores connections, not packets (1 row per connection instead of millions)
-- ✅ Monitors only real network interfaces (not loopback/docker)
-- ✅ Doesn't store packet payloads (privacy + storage savings)
-- ✅ Auto-cleans old data (prevents unbounded growth)
-- ✅ Uses database indexes for fast queries
-
-**Example**: Downloading a 1GB file creates **1 database row** instead of **~700,000 rows**.
-
 ## Platform Support
 
 - **macOS**: Full support (Intel and Apple Silicon)
 - **Linux**: Full support (x86_64)
 - **Windows**: Full support - requires [Npcap](https://npcap.com/#download) drivers to be installed (see Installation section above)
-
-## Screenshot
-
-![Screenshot](screenshot.png)
 
 ## Privacy & Security
 
