@@ -521,24 +521,29 @@
         {
           selector: 'node',
           style: {
-            'content': 'data(id)',
-            'background-color': '#3b82f6',
-            'color': '#f1f5f9',
-            'font-size': 12,
+            'label': function(ele) { return '💻\n' + ele.data('id'); },
+            'shape': 'round-rectangle',
+            'background-color': '#1e293b',
+            'font-size': 11,
             'font-weight': 600,
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'text-wrap': 'wrap',
+            'text-max-width': '120px',
             'text-outline-width': 2,
             'text-outline-color': '#0f172a',
-            'width': 40,
-            'height': 40,
+            'color': '#f1f5f9',
+            'width': 60,
+            'height': 60,
             'border-width': 2,
-            'border-color': '#1e293b'
+            'border-color': '#3b82f6'
           }
         },
         {
           selector: 'node[type = "local"]',
           style: {
-            'background-color': '#8b5cf6',
-            'border-color': '#6d28d9',
+            'label': function(ele) { return '🖥️\n' + ele.data('id'); },
+            'border-color': '#8b5cf6',
             'border-width': 3
           }
         },
@@ -546,8 +551,7 @@
           selector: 'node[type = "selected"]',
           style: {
             'border-width': 4,
-            'border-color': '#10b981',
-            'background-color': '#3b82f6'
+            'border-color': '#10b981'
           }
         },
         {
