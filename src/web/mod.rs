@@ -97,10 +97,12 @@ fn get_all_ips_macs_and_hostnames_from_single_hostname(
     for (ip, mac, hostname) in rows.flatten() {
         ips.insert(ip.unwrap_or_default());
         macs.insert(mac.unwrap_or_default());
-        if ips.contains(&hostname.clone().unwrap_or_default()) {
+        let hostname_str = hostname.unwrap_or_default();
+        if ips.contains(&hostname_str) {
             continue;
         }
-        hostnames.insert(hostname.unwrap_or_default());
+        // Normalize to lowercase to prevent case-sensitive duplicates
+        hostnames.insert(hostname_str.to_lowercase());
     }
 
     let mut ips: Vec<String> = ips.into_iter().filter(|s| !s.is_empty()).collect();
