@@ -1,253 +1,485 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Network Discovery Tool</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Awareness - Network Discovery</title>
+  <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
   <style>
-    body {
-      font-family:'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
-      font-size: 14px;
+    * {
       margin: 0;
       padding: 0;
-      background-color: #ffffff;
+      box-sizing: border-box;
     }
-    input select {
-      padding: 5px;
-      margin-bottom: 10px;
-      border: 1px solid #ccc;
+
+    :root {
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-tertiary: #334155;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --accent-primary: #3b82f6;
+      --accent-secondary: #8b5cf6;
+      --accent-success: #10b981;
+      --border-color: #334155;
+      --shadow: rgba(0, 0, 0, 0.3);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      overflow: hidden;
+    }
+
+    /* Header */
+    header {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px var(--shadow);
+      z-index: 100;
+    }
+
+    .logo {
+      font-size: 1.5rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .controls {
+      display: flex;
+      gap: 1.5rem;
+      align-items: center;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .control-label {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 500;
+    }
+
+    select {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      min-width: 150px;
+    }
+
+    select:hover {
+      border-color: var(--accent-primary);
+      background: var(--bg-secondary);
+    }
+
+    select:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    /* Main Layout */
+    .container {
+      display: flex;
+      height: calc(100vh - 73px);
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 320px;
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border-color);
+      padding: 1.5rem;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .card {
+      background: var(--bg-tertiary);
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+      border: 1px solid var(--border-color);
+    }
+
+    .card-title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+      margin-bottom: 1rem;
+    }
+
+    .input-group {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+
+    input[type="text"]:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    button {
+      background: var(--accent-primary);
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    button:hover {
+      background: #2563eb;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button.secondary {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+    }
+
+    button.secondary:hover {
+      background: var(--bg-tertiary);
+      border-color: var(--accent-primary);
+      box-shadow: none;
+    }
+
+    .list-box {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 0.5rem;
+      padding: 0.5rem;
+      max-height: 120px;
+      overflow-y: auto;
+      margin-bottom: 0.5rem;
+    }
+
+    .list-item {
+      padding: 0.5rem;
+      border-radius: 0.375rem;
+      font-size: 0.875rem;
+      font-family: 'Monaco', 'Courier New', monospace;
+      cursor: pointer;
+      transition: all 0.15s;
+      color: var(--text-secondary);
+    }
+
+    .list-item:hover {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .list-item:active {
+      background: var(--accent-primary);
+      color: white;
+    }
+
+    .section {
+      margin-bottom: 1rem;
+    }
+
+    .section:last-child {
+      margin-bottom: 0;
+    }
+
+    /* Graph Container */
+    #graph-container {
+      flex: 1;
+      position: relative;
+      background: var(--bg-primary);
+    }
+
+    #cy {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Stats Badge */
+    .stats {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .stat-badge {
+      background: var(--bg-primary);
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.375rem;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .stat-number {
+      color: var(--accent-primary);
+      font-weight: 600;
+    }
+
+    /* Auto-refresh indicator */
+    .refresh-indicator {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      padding: 0.75rem 1rem;
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      z-index: 50;
+    }
+
+    .pulse {
+      width: 8px;
+      height: 8px;
+      background: var(--accent-success);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-secondary);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--bg-tertiary);
       border-radius: 4px;
     }
-    .background_gradient {
-      background: #f5f5f5;
-      background: linear-gradient(180deg,rgba(245, 245, 245, 1) 0%, rgba(224, 224, 224, 1) 50%, rgba(209, 209, 209, 1) 100%);
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--border-color);
     }
-    #top_toolbar {
-      line-height: 1.5;
-      padding: 5px;
-      border-bottom: #c0c0c0 2px solid;
-      position: relative;
-      text-align: left;
-      margin-bottom: 10px;
-    }
-    #left_toolbar_wrapper {
-      width: 260px;
-      position: absolute; /* Positioned within the container */
-      z-index: 1; /* Lower z-index means it's underneath */
-      left: 20px;
-    }
-    #left_toolbar_wrapper select {
-      width: 200px;
-    } 
-    #left_toolbar_wrapper input[type="text"] {
-      width: 190px;
-    }
-    #left_toolbar_top {
-      border: 1px solid rgb(186, 186, 186);
-      box-shadow: 1px 5px #888888;
-      padding: 20px;
-      background-color: #c0c0c0;
-      opacity: 0.9;
-      border-radius: 15px; /* Applies a 15px radius to all four corners */
-      margin-bottom: 20px;
-    }
-    #right_toolbar {
-      position: absolute; /* Positioned within the container */
-      z-index: 1; /* Lower z-index means it's underneath */
-      right: 20px;
-      padding: 20px;
-      background-color: #c0c0c0;
-      opacity: 0.9;
-      border-radius: 15px; /* Applies a 15px radius to all four corners */
-      border: 1px solid rgb(186, 186, 186);
-      box-shadow: 1px 5px #888888;
-    }
-    #container {
-      position: relative;
-      margin: 0 auto;
-      width: 80%;
-      height: 90vh;
-      background-color: #ffffff;
+
+    /* Empty state */
+    .empty-state {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      font-style: italic;
+      padding: 0.5rem;
     }
   </style>
-   <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
-
 </head>
 <body>
-
-  <div id="top_toolbar" class="background_gradient">
-    <b>Network Discovery Tool</b>
-    <br>
-    Endpoint: <select id="nodeSelector" onchange="selectNode(this.value)" autofocus>
-      {% for node in dropdown_endpoints %}
-      <option value="{{ node }}" {% if node == selected_node %}selected{% endif %}>{{ node }}</option>
-      {% endfor %}
-    </select>
-
-    Last: <select id="scanInterval" onchange="selectScanInterval(this.value)">
-      <option value="5" {% if scan_interval == 5 %}selected{% endif %}>5 Minutes</option>
-      <option value="15" {% if scan_interval == 15 %}selected{% endif %}>15 Minutes</option>
-      <option value="30" {% if scan_interval == 30 %}selected{% endif %}>30 Minutes</option>
-      <option value="60" {% if scan_interval == 60 %}selected{% endif %}>1 Hour</option>
-      <option value="240" {% if scan_interval == 240 %}selected{% endif %}>4 Hours</option>
-      <option value="1440" {% if scan_interval == 1440 %}selected{% endif %}>1 Day</option>
-    </select>
-
-    <script>
-      function selectNode(nodeId) {
-      var url = new URL(window.location.href);
-      url.searchParams.set('node', nodeId);
-      window.location.href = url.toString();
-      }
-
-      function selectScanInterval(interval) {
-      var url = new URL(window.location.href);
-      url.searchParams.set('scan_interval', interval);
-      window.location.href = url.toString();
-      }
-    </script>
-  </div>
-
-  <div id="left_toolbar_wrapper">
-    <div id="left_toolbar_top" class="background_gradient">
-      <b>Endpoint Info</b><br><br><input name="endpoint_name" type="text" value="{{ endpoint }}">
-      <br><input type="button" value="Update" onclick="updateEndpointName()"><br><br>
-      <b>Macs:</b><br>
-      <select id="macs" multiple>
-        {% for mac in macs %}
-          <option value="{{ mac }}">{{ mac }}</option>
-        {% endfor %}
-      </select>
-      <input type="button" value="Copy" onclick="copySelected('macs')">
-      <br><br>
-      <b>Hostnames:</b><br>
-      <select id="hostname" multiple>
-        {% for hostname in hostnames %}
-          <option value="{{ hostname }}">{{ hostname }}</option>
-        {% endfor %}
-      </select>
-      <br>
-      <input type="button" value="Copy" onclick="copySelected('hostname')">
-      <script>
-
-        function copySelected(elementName) {
-          const selectElement = document.getElementById(elementName);
-          const selectedText = selectElement.options[selectElement.selectedIndex].text;
-          navigator.clipboard.writeText(selectedText)
-        .then(() => {
-          // Optional: visual feedback
-          const copyBtn = event.target;
-          const originalText = copyBtn.value;
-          copyBtn.value = 'Copied!';
-          setTimeout(() => { copyBtn.value = originalText; }, 1500);
-        })
-        .catch(err => {
-          console.error('Failed to copy: ', err);
-        });
-        }
-        function setEndpointName() {
-          const nodeSelector = document.getElementById('hostname');
-          const selectedNode = nodeSelector.value;
-          document.querySelector('input[name="endpoint_name"]').value = selectedNode;
-        }
-        function updateEndpointName() {
-          const endpointNameInput = document.querySelector('input[name="endpoint_name"]');
-          const newHostname = endpointNameInput.value;
-          const currentHostname = "{{ endpoint }}";
-
-          fetch(`/update_endpoint?hostname=${encodeURIComponent(currentHostname)}&new_hostname=${encodeURIComponent(newHostname)}`, {
-            method: 'GET',
-          })
-          .then(response => {
-            if (response.ok) {
-              alert('Endpoint name updated successfully!');
-              const url = new URL(window.location.href);
-              url.searchParams.set('node', newHostname);
-              window.location.href = url.toString();
-              // Optionally, refresh the page or update the UI
-            } else {
-              alert('Failed to update endpoint name.');
-            }
-          })
-          .catch(error => {
-            console.error('Error updating endpoint name:', error);
-            alert('An error occurred while updating the endpoint name.');
-          });
-        }
-      </script>
-      <input type="button" value="Set Endpoint Name" onclick="setEndpointName()">
-      <br><br>
-      <b>Ips:</b><br>
-      <select id="ip" multiple>
-        {% for ip in ips %}
-          <option value="{{ ip }}">{{ ip }}</option>
-        {% endfor %}
-      </select>
-      <input type="button" value="Copy" onclick="copySelected('ip')">
-      <br><br>
-      <!-- <b>Ports:</b><br>
-      <select id="port" multiple>
-        {% for port in ports %}
-          <option value="{{ port }}">{{ port }}</option>
-        {% endfor %}
-      </select>
-      <br><br>
-      <b>Protocols:</b><br>
-      <select id="protocol" multiple>
-        {% for protocol in protocols %}
-          <option value="{{ protocol }}">{{ protocol }}</option>
-        {% endfor %}
-      </select> -->
+  <header>
+    <div class="logo">⚡ Awareness</div>
+    <div class="controls">
+      <div class="control-group">
+        <label class="control-label">Endpoint</label>
+        <select id="nodeSelector" onchange="selectNode(this.value)" autofocus>
+          {% for node in dropdown_endpoints %}
+          <option value="{{ node }}" {% if node == selected_node %}selected{% endif %}>{{ node }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="control-group">
+        <label class="control-label">Time Range</label>
+        <select id="scanInterval" onchange="selectScanInterval(this.value)">
+          <option value="5" {% if scan_interval == 5 %}selected{% endif %}>5 Minutes</option>
+          <option value="15" {% if scan_interval == 15 %}selected{% endif %}>15 Minutes</option>
+          <option value="30" {% if scan_interval == 30 %}selected{% endif %}>30 Minutes</option>
+          <option value="60" {% if scan_interval == 60 %}selected{% endif %}>1 Hour</option>
+          <option value="240" {% if scan_interval == 240 %}selected{% endif %}>4 Hours</option>
+          <option value="1440" {% if scan_interval == 1440 %}selected{% endif %}>1 Day</option>
+        </select>
+      </div>
     </div>
+  </header>
 
-    <!-- <div id="left_toolbar_bottom">
-      Interfaces:
+  <div class="container">
+    <aside class="sidebar">
+      <div class="card">
+        <div class="card-title">Endpoint Details</div>
+        <div class="input-group">
+          <input name="endpoint_name" type="text" value="{{ endpoint }}" placeholder="Endpoint name">
+          <button onclick="updateEndpointName()">Update</button>
+        </div>
+        <div class="stats">
+          <div class="stat-badge">IPs: <span class="stat-number">{{ ips|length }}</span></div>
+          <div class="stat-badge">MACs: <span class="stat-number">{{ macs|length }}</span></div>
+          <div class="stat-badge">Hosts: <span class="stat-number">{{ hostnames|length }}</span></div>
+        </div>
+      </div>
 
-      <br><br>
+      <div class="card">
+        <div class="section">
+          <div class="card-title">MAC Addresses</div>
+          <div class="list-box" id="macs-container">
+            {% if macs %}
+              {% for mac in macs %}
+              <div class="list-item" onclick="copyToClipboard('{{ mac }}', this)">{{ mac }}</div>
+              {% endfor %}
+            {% else %}
+              <div class="empty-state">No MAC addresses</div>
+            {% endif %}
+          </div>
+        </div>
 
-      {% for interface in interfaces %}
-        - <input type="checkbox" id="{{ interface }}" checked /> {{ interface }} <br>
-      {% endfor %}
+        <div class="section">
+          <div class="card-title">Hostnames</div>
+          <div class="list-box" id="hostnames-container">
+            {% if hostnames %}
+              {% for hostname in hostnames %}
+              <div class="list-item" onclick="copyToClipboard('{{ hostname }}', this)">{{ hostname }}</div>
+              {% endfor %}
+            {% else %}
+              <div class="empty-state">No hostnames</div>
+            {% endif %}
+          </div>
+        </div>
 
-    </div> -->
+        <div class="section">
+          <div class="card-title">IP Addresses</div>
+          <div class="list-box" id="ips-container">
+            {% if ips %}
+              {% for ip in ips %}
+              <div class="list-item" onclick="copyToClipboard('{{ ip }}', this)">{{ ip }}</div>
+              {% endfor %}
+            {% else %}
+              <div class="empty-state">No IP addresses</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main id="graph-container">
+      <div id="cy"></div>
+    </main>
   </div>
-<!-- 
-  <div id="right_toolbar" class="background_gradient">
-    Protocols:
 
-    <br><br>
-
-    - <input type="checkbox" id="tcp" checked /> TCP <br>
-    - <input type="checkbox" id="udp" checked /> UDP <br> 
-    - <input type="checkbox" id="icmp" checked /> ICMP <br>
-    - <input type="checkbox" id="igmp" checked /> IGMP <br>
-    - <input type="checkbox" id="arp" checked /> ARP <br>
-    
-    <hr>
-
-    {% for protocol in supported_protocols %}
-      - <input type="checkbox" id="{{ protocol }}" checked /> {{ protocol }} <br>
-    {% endfor %}
-  </div> -->
-
-  <div id="container"></div>
+  <div class="refresh-indicator">
+    <div class="pulse"></div>
+    <span>Live monitoring</span>
+  </div>
 
   <script>
+    // Navigation functions
+    function selectNode(nodeId) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('node', nodeId);
+      window.location.href = url.toString();
+    }
+
+    function selectScanInterval(interval) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('scan_interval', interval);
+      window.location.href = url.toString();
+    }
+
+    // Copy to clipboard with visual feedback
+    function copyToClipboard(text, element) {
+      navigator.clipboard.writeText(text).then(() => {
+        const originalBg = element.style.background;
+        element.style.background = 'var(--accent-success)';
+        element.style.color = 'white';
+        setTimeout(() => {
+          element.style.background = originalBg;
+          element.style.color = '';
+        }, 500);
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+      });
+    }
+
+    // Update endpoint name
+    function updateEndpointName() {
+      const endpointNameInput = document.querySelector('input[name="endpoint_name"]');
+      const newHostname = endpointNameInput.value;
+      const currentHostname = "{{ endpoint }}";
+
+      fetch(`/update_endpoint?hostname=${encodeURIComponent(currentHostname)}&new_hostname=${encodeURIComponent(newHostname)}`, {
+        method: 'GET',
+      })
+      .then(response => {
+        if (response.ok) {
+          const url = new URL(window.location.href);
+          url.searchParams.set('node', newHostname);
+          window.location.href = url.toString();
+        } else {
+          alert('Failed to update endpoint name.');
+        }
+      })
+      .catch(error => {
+        console.error('Error updating endpoint name:', error);
+        alert('An error occurred while updating the endpoint name.');
+      });
+    }
+
+    // Initialize Cytoscape graph
     var cy = cytoscape({
-      container: document.getElementById('container'),
+      container: document.getElementById('cy'),
       boxSelectionEnabled: false,
       autounselectify: true,
       layout: {
         name: 'cose',
-        nodeRepulsion: 200000, // A higher value increases the repulsion between nodes
-        nodeDimensionsIncludeLabels: true, // Prevents node labels from overlapping
-        padding: 50 // Adds padding around the graph
+        nodeRepulsion: 400000,
+        nodeDimensionsIncludeLabels: true,
+        padding: 80,
+        animate: true,
+        animationDuration: 500
       },
       elements: [
         {% for endpoint in endpoints %}
-          { data: { 
+          { data: {
               id: '{{ endpoint }}',
               {% if endpoint == hostname %}type: 'local'
               {% elif endpoint == selected_node %}type: 'selected'{% endif %}
-            } 
+            }
           },
         {% endfor %}
         {% for comm in communications %}
@@ -264,74 +496,69 @@
           selector: 'node',
           style: {
             'content': 'data(id)',
-            'background-color': '#61bffc',
-            'font-size': 10,
+            'background-color': '#3b82f6',
+            'color': '#f1f5f9',
+            'font-size': 12,
+            'font-weight': 600,
+            'text-outline-width': 2,
+            'text-outline-color': '#0f172a',
+            'width': 40,
+            'height': 40,
+            'border-width': 2,
+            'border-color': '#1e293b'
           }
         },
-      {
-      selector: 'node[type = "local"]',
-      style: {
-          'background-color': '#3333CC' // A specific color for these nodes
-        }
-      },
-      {
+        {
+          selector: 'node[type = "local"]',
+          style: {
+            'background-color': '#8b5cf6',
+            'border-color': '#6d28d9',
+            'border-width': 3
+          }
+        },
+        {
           selector: 'node[type = "selected"]',
           style: {
-            'border-width': 3,
-            'border-color': '#11DD11'
+            'border-width': 4,
+            'border-color': '#10b981',
+            'background-color': '#3b82f6'
           }
-      },
+        },
         {
           selector: 'edge',
           style: {
             'target-arrow-shape': 'triangle',
             'label': 'data(label)',
             'curve-style': 'bezier',
-            'width': '1px',
-            'opacity': 0.5,
-            'line-color': '#AAAAAA',
-            'font-size': 6,
+            'width': 2,
+            'opacity': 0.6,
+            'line-color': '#475569',
+            'target-arrow-color': '#475569',
+            'font-size': 10,
+            'color': '#94a3b8',
+            'text-outline-width': 2,
+            'text-outline-color': '#0f172a'
           }
         }
       ],
     });
-    cy.on('tap', 'node', function(event) {
-      var clickedNode = event.target; // The node that was clicked
-      var nodeId = clickedNode.id(); // Get the ID of the clicked node
 
-      // Check if the clicked node's ID matches the current 'node' parameter in the URL
+    // Node click handler
+    cy.on('tap', 'node', function(event) {
+      var nodeId = event.target.id();
       var currentUrl = new URL(window.location.href);
       var currentNodeParam = currentUrl.searchParams.get('node');
-      if (currentNodeParam && currentNodeParam === nodeId) {
-        // We're already on this node's page, no need to redirect
-        return;
+
+      if (currentNodeParam !== nodeId) {
+        currentUrl.searchParams.set('node', nodeId);
+        window.location.href = currentUrl.toString();
       }
+    });
 
-      // Get the current URL
-      var currentUrl = new URL(window.location.href);
-
-      // Set the 'node' parameter to the clicked node's ID
-      currentUrl.searchParams.set('node', nodeId);
-      currentUrl.searchParams.set('prev_node', currentNodeParam || '');
-
-      // Redirect to the new URL
-      window.location.href = currentUrl.toString();
-
-      // console.log('Tapped on node: ' + nodeId);
-
-      // // Example actions:
-      // // 1. Change the node's color
-      // clickedNode.style('background-color', 'red');
-
-      // // 2. Alert the user
-      // alert('You clicked on node ' + nodeId + '!');
-
-      // // 3. Highlight neighboring nodes
-      // clickedNode.neighborhood().style({
-      //   'background-color': 'blue',
-      //   'line-color': 'blue'
-      // });
-  });
+    // Auto-refresh every 5 seconds
+    setInterval(() => {
+      window.location.reload();
+    }, 5000);
   </script>
 </body>
 </html>

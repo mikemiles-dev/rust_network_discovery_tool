@@ -298,6 +298,7 @@ dependencies = [
  "ctrlc",
  "dns-lookup",
  "futures",
+ "lazy_static",
  "mdns-sd",
  "num-derive",
  "pnet",

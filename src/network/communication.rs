@@ -17,7 +17,8 @@ pub struct Communication {
     pub ip_version: Option<u8>,
     pub ip_header_protocol: Option<String>,
     pub sub_protocol: Option<String>,
-    pub payload: Vec<u8>,
+    // Note: payload is used only for parsing hostnames (SNI/HTTP), not stored in DB
+    payload: Vec<u8>,
 }
 
 impl Communication {
@@ -51,6 +52,10 @@ impl Communication {
         communication
     }
 
+    pub fn get_payload(&self) -> &[u8] {
+        &self.payload
+    }
+
     pub fn create_table_if_not_exists(conn: &Connection) -> Result<()> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS communications (
@@ -58,6 +63,8 @@ impl Communication {
                 src_endpoint_id INTEGER,
                 dst_endpoint_id INTEGER,
                 created_at INTEGER NOT NULL,
+                last_seen_at INTEGER NOT NULL,
+                packet_count INTEGER DEFAULT 1,
                 source_port INTEGER,
                 destination_port INTEGER,
                 ip_version INTEGER,
@@ -73,11 +80,26 @@ impl Communication {
             [],
         )?;
         conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_communications_last_seen_at ON communications (last_seen_at);",
+            [],
+        )?;
+        conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_communications_src_endpoint_id ON communications (src_endpoint_id);",
             [],
         )?;
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_communications_dst_endpoint_id ON communications (dst_endpoint_id);",
+            [],
+        )?;
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_communications_unique ON communications (
+                src_endpoint_id,
+                dst_endpoint_id,
+                COALESCE(source_port, 0),
+                COALESCE(destination_port, 0),
+                COALESCE(ip_header_protocol, ''),
+                COALESCE(sub_protocol, '')
+            );",
             [],
         )?;
         Ok(())
@@ -107,7 +129,7 @@ impl Communication {
             self.destination_mac.clone(),
             self.destination_ip.clone(),
             self.sub_protocol.clone(),
-            &self.payload,
+            self.get_payload(),
         ) {
             Ok(id) => id,
             Err(InsertEndpointError::BothMacAndIpNone) => {
@@ -122,21 +144,31 @@ impl Communication {
             }
         };
 
+        let now = chrono::Utc::now().timestamp();
+
+        // Use INSERT OR REPLACE to update existing communication or insert new one
+        // This deduplicates connections and just updates last_seen_at + packet_count
         conn.execute(
             "INSERT INTO communications (
                 src_endpoint_id,
                 dst_endpoint_id,
                 created_at,
+                last_seen_at,
+                packet_count,
                 source_port,
                 destination_port,
                 ip_version,
                 ip_header_protocol,
                 sub_protocol
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            ) VALUES (?1, ?2, ?3, ?3, 1, ?4, ?5, ?6, ?7, ?8)
+            ON CONFLICT(src_endpoint_id, dst_endpoint_id, COALESCE(source_port, 0), COALESCE(destination_port, 0), COALESCE(ip_header_protocol, ''), COALESCE(sub_protocol, ''))
+            DO UPDATE SET
+                last_seen_at = ?3,
+                packet_count = packet_count + 1",
             params![
                 src_endpoint_id,
                 dst_endpoint_id,
-                chrono::Utc::now().timestamp(),
+                now,
                 self.source_port,
                 self.destination_port,
                 self.ip_version,

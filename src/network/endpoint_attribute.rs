@@ -26,6 +26,14 @@ impl EndPointAttribute {
             "CREATE INDEX IF NOT EXISTS idx_endpoint_attributes_hostname ON endpoint_attributes (hostname);",
             [],
         )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_endpoint_attributes_mac ON endpoint_attributes (mac);",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_endpoint_attributes_ip ON endpoint_attributes (ip);",
+            [],
+        )?;
         Ok(())
     }
 
@@ -33,13 +41,35 @@ impl EndPointAttribute {
         conn: &Connection,
         mac: Option<String>,
         ip: Option<String>,
-        hostname: Option<String>,
+        _hostname: Option<String>,
     ) -> Option<i64> {
-        let mut stmt =
-            conn.prepare("SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(mac) = LOWER(?1) OR LOWER(ip) = LOWER(?2) OR LOWER(hostname) = LOWER(?3)").ok()?;
-        stmt.query_row(rusqlite::params![mac, ip, hostname], |row| row.get(0))
-            .optional()
-            .ok()?
+        // Strategy: Match by MAC first (most reliable), then IP if no MAC
+        // Never match by hostname alone (too unreliable - collisions common)
+
+        // Try 1: Match by MAC (best identifier)
+        if let Some(ref mac_addr) = mac {
+            if let Ok(mut stmt) = conn.prepare(
+                "SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(mac) = LOWER(?1) LIMIT 1",
+            ) {
+                if let Ok(Some(id)) = stmt.query_row([mac_addr], |row| row.get(0)).optional() {
+                    return Some(id);
+                }
+            }
+        }
+
+        // Try 2: Match by IP if no MAC match (less reliable - DHCP can reuse IPs)
+        if let Some(ref ip_addr) = ip {
+            if let Ok(mut stmt) = conn.prepare(
+                "SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(ip) = LOWER(?1) LIMIT 1",
+            ) {
+                if let Ok(Some(id)) = stmt.query_row([ip_addr], |row| row.get(0)).optional() {
+                    return Some(id);
+                }
+            }
+        }
+
+        // No match found
+        None
     }
 
     pub fn insert_endpoint_attribute(

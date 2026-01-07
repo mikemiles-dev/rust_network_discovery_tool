@@ -33,11 +33,11 @@ fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
     let mut stmt = conn
         .prepare(
             "
-            SELECT DISTINCT e.NAME 
+            SELECT DISTINCT e.NAME
             FROM endpoints e
             INNER JOIN communications c
                 ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
-                WHERE c.created_at >= (strftime('%s', 'now') - (?1 * 60))
+                WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
                 AND e.NAME IS NOT NULL AND e.NAME != ''
         ",
         )
@@ -71,10 +71,9 @@ fn get_all_ips_macs_and_hostnames_from_single_hostname(
             FROM endpoints e
             INNER JOIN communications c
                 ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
-                WHERE c.created_at >= (strftime('%s', 'now') - (:internal_minutes * 60))
+                WHERE c.last_seen_at >= (strftime('%s', 'now') - (:internal_minutes * 60))
             )
             AND endpoint_id = (SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(hostname) = LOWER(:hostname) LIMIT 1)
-            AND created_at >= (strftime('%s', 'now') - (:internal_minutes * 60))
         ")
         .expect("Failed to prepare statement");
 
@@ -121,8 +120,7 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
         None => get_hostname().unwrap(),
     };
 
-    let query = format!(
-        "
+    let query = "
     SELECT
     src_endpoint.name AS src_hostname,
     dst_endpoint.name AS dst_hostname,
@@ -134,19 +132,17 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
     ON c.src_endpoint_id = src_endpoint.id
     LEFT JOIN endpoints AS dst_endpoint
     ON c.dst_endpoint_id = dst_endpoint.id
-    WHERE (LOWER(src_endpoint.name) = LOWER('{}') OR LOWER(dst_endpoint.name) = LOWER('{}'))
-    AND c.created_at >= (strftime('%s', 'now') - (?1 * 60))
+    WHERE (LOWER(src_endpoint.name) = LOWER(?1) OR LOWER(dst_endpoint.name) = LOWER(?1))
+    AND c.last_seen_at >= (strftime('%s', 'now') - (?2 * 60))
     AND src_endpoint.name != '' AND dst_endpoint.name != ''
     AND src_endpoint.name IS NOT NULL AND dst_endpoint.name IS NOT NULL
-    ",
-        current_node, current_node
-    );
+    ";
 
     let conn = new_connection();
-    let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
+    let mut stmt = conn.prepare(query).expect("Failed to prepare statement");
 
     let rows = stmt
-        .query_map([internal_minutes], |row| {
+        .query_map([&current_node, &internal_minutes.to_string()], |row| {
             let dst_port = row.get::<_, Option<u16>>("dst_port")?.unwrap_or(0);
             let header_protocol = row.get::<_, String>("header_protocol")?;
             let sub_protocol = match row.get::<_, String>("sub_protocol") {
@@ -195,9 +191,16 @@ pub fn start() {
     task::spawn_blocking(move || {
         println!("Starting web server");
         let sys = actix_rt::System::new();
-        let tera = Tera::new("templates/**/*").unwrap();
+        let tera = match Tera::new("templates/**/*") {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("Failed to load templates: {}", e);
+                eprintln!("Web server will not start");
+                return;
+            }
+        };
         sys.block_on(async {
-            HttpServer::new(move || {
+            let server = match HttpServer::new(move || {
                 App::new()
                     .app_data(Data::new(tera.clone()))
                     .service(Files::new("/static", "static").show_files_listing())
@@ -205,11 +208,19 @@ pub fn start() {
                     .service(index)
             })
             .bind(("127.0.0.1", 8080))
-            .unwrap()
-            .run()
-            .await
+            {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("Failed to bind web server to 127.0.0.1:8080: {}", e);
+                    return;
+                }
+            };
+
+            println!("Web server listening on http://127.0.0.1:8080");
+            if let Err(e) = server.run().await {
+                eprintln!("Web server error: {}", e);
+            }
         })
-        .expect("Failed to start Web server");
     });
 }
 

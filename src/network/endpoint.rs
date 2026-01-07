@@ -1,9 +1,19 @@
 use dns_lookup::{get_hostname, lookup_addr};
 use pnet::datalink::interfaces;
 use rusqlite::{Connection, Result, params};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use crate::network::endpoint_attribute::EndPointAttribute;
 use crate::network::mdns_lookup::MDnsLookup;
+
+// Simple DNS cache to avoid repeated slow lookups
+lazy_static::lazy_static! {
+    static ref DNS_CACHE: Arc<Mutex<HashMap<String, (String, Instant)>>> = Arc::new(Mutex::new(HashMap::new()));
+}
+
+const DNS_CACHE_TTL: Duration = Duration::from_secs(300); // 5 minutes
 
 pub enum InsertEndpointError {
     BothMacAndIpNone,
@@ -67,6 +77,20 @@ impl EndPoint {
         protocol: Option<String>,
         payload: &[u8],
     ) -> Result<i64, InsertEndpointError> {
+        // Filter out broadcast/multicast MACs - these aren't real endpoints
+        if let Some(ref mac_addr) = mac {
+            if Self::is_broadcast_or_multicast_mac(mac_addr) {
+                return Err(InsertEndpointError::BothMacAndIpNone);
+            }
+        }
+
+        // Filter out multicast/broadcast IPs - these aren't real endpoints
+        if let Some(ref ip_addr) = ip {
+            if Self::is_multicast_or_broadcast_ip(ip_addr) {
+                return Err(InsertEndpointError::BothMacAndIpNone);
+            }
+        }
+
         if (mac.is_none() || mac == Some("00:00:00:00:00:00".to_string())) && ip.is_none() {
             return Err(InsertEndpointError::BothMacAndIpNone);
         }
@@ -75,21 +99,20 @@ impl EndPoint {
             conn,
             mac.clone(),
             ip.clone(),
-            hostname.clone(), // Hostname is not known at this point
+            hostname.clone(),
         ) {
             Some(id) => {
-                if !Self::is_local(
-                    ip.clone().unwrap_or_default(),
-                    mac.clone().unwrap_or_default(),
-                ) && ip != hostname
-                {
-                    EndPointAttribute::insert_endpoint_attribute(
+                // Always try to insert new hostname if it's different from IP
+                // This captures all hostnames seen at this endpoint (remote or local)
+                if ip != hostname && hostname.is_some() {
+                    // Attempt to insert - will be ignored if duplicate due to UNIQUE constraint
+                    let _ = EndPointAttribute::insert_endpoint_attribute(
                         conn,
                         id,
                         mac,
                         ip.clone(),
                         hostname.clone().unwrap_or(ip.clone().unwrap_or_default()),
-                    )?;
+                    );
                 }
                 id
             }
@@ -149,20 +172,38 @@ impl EndPoint {
         let is_local = Self::is_local(ip_str.clone(), mac_str.clone());
         let local_hostname = get_hostname().unwrap_or_default();
 
+        // Check cache first to avoid slow DNS lookups
+        if let Ok(cache) = DNS_CACHE.lock() {
+            if let Some((cached_name, cached_time)) = cache.get(&ip_str) {
+                if cached_time.elapsed() < DNS_CACHE_TTL {
+                    return Some(cached_name.clone());
+                }
+            }
+        }
+
         // Get hostname via DNS or fallback to mDNS/IP
         let hostname = match lookup_addr(&ip_addr) {
             Ok(name) if name != ip_str && !is_local => name,
-            _ => MDnsLookup::lookup(&ip_str).unwrap_or(ip_str),
+            _ => MDnsLookup::lookup(&ip_str).unwrap_or(ip_str.clone()),
         };
 
         // Use local hostname for local IPs with different names
-        Some(
-            if is_local && !hostname.eq_ignore_ascii_case(&local_hostname) {
-                local_hostname
-            } else {
-                hostname
-            },
-        )
+        let final_hostname = if is_local && !hostname.eq_ignore_ascii_case(&local_hostname) {
+            local_hostname
+        } else {
+            hostname
+        };
+
+        // Cache the result
+        if let Ok(mut cache) = DNS_CACHE.lock() {
+            cache.insert(ip_str, (final_hostname.clone(), Instant::now()));
+            // Limit cache size to prevent memory growth
+            if cache.len() > 10000 {
+                cache.clear();
+            }
+        }
+
+        Some(final_hostname)
     }
 
     fn lookup_hostname(
@@ -226,34 +267,157 @@ impl EndPoint {
         s
     }
 
-    // This is a simplified function to find the SNI.
-    // The real implementation would be more robust.
+    // Parse TLS ClientHello to extract SNI (Server Name Indication)
     fn find_sni(payload: &[u8]) -> Option<String> {
-        // The TLS Client Hello message starts with specific bytes.
-        // This is a simplified check. A full parser would be more complex.
-        if payload.len() > 5 && payload[0] == 0x16 && payload[1] == 0x03 {
-            // Find the "server_name" extension (type 0x0000)
-            // This is a simplified search for the extension type in the raw payload.
-            if let Some(pos) = payload.windows(2).position(|window| window == [0x00, 0x00]) {
-                let offset = pos + 2; // Move past the extension type bytes
-                if payload.len() > offset + 2 {
-                    let name_len = (payload[offset] as usize) << 8 | (payload[offset + 1] as usize);
-                    let name_start = offset + 2;
-                    let name_end = name_start + name_len;
-                    if payload.len() >= name_end {
-                        let result =
-                            String::from_utf8(payload[name_start..name_end].to_vec()).ok()?;
-                        let result: String = result
-                            .chars()
-                            .filter(|c| c.is_ascii() && !c.is_control())
-                            .collect();
-                        let result = Self::remove_all_but_alphanumeric_and_dots(result.as_str());
-                        return Some(result);
+        // Minimum TLS ClientHello size
+        if payload.len() < 44 {
+            return None;
+        }
+
+        // Check for TLS Handshake (0x16) and version (0x03 0x01, 0x03 0x02, or 0x03 0x03)
+        if payload[0] != 0x16 || payload[1] != 0x03 {
+            return None;
+        }
+
+        // Check for ClientHello (0x01)
+        if payload[5] != 0x01 {
+            return None;
+        }
+
+        // Skip to extensions section
+        // TLS record: 5 bytes
+        // Handshake header: 4 bytes
+        // Client version: 2 bytes
+        // Random: 32 bytes
+        let mut offset = 43;
+
+        // Session ID length (1 byte) + session ID
+        if offset >= payload.len() {
+            return None;
+        }
+        let session_id_len = payload[offset] as usize;
+        offset += 1 + session_id_len;
+
+        // Cipher suites length (2 bytes) + cipher suites
+        if offset + 2 > payload.len() {
+            return None;
+        }
+        let cipher_suites_len = ((payload[offset] as usize) << 8) | (payload[offset + 1] as usize);
+        offset += 2 + cipher_suites_len;
+
+        // Compression methods length (1 byte) + compression methods
+        if offset + 1 > payload.len() {
+            return None;
+        }
+        let compression_methods_len = payload[offset] as usize;
+        offset += 1 + compression_methods_len;
+
+        // Extensions length (2 bytes)
+        if offset + 2 > payload.len() {
+            return None;
+        }
+        let extensions_len = ((payload[offset] as usize) << 8) | (payload[offset + 1] as usize);
+        offset += 2;
+
+        let extensions_end = offset + extensions_len;
+        if extensions_end > payload.len() {
+            return None;
+        }
+
+        // Parse extensions
+        while offset + 4 <= extensions_end {
+            let ext_type = ((payload[offset] as u16) << 8) | (payload[offset + 1] as u16);
+            let ext_len = ((payload[offset + 2] as usize) << 8) | (payload[offset + 3] as usize);
+            offset += 4;
+
+            // Server Name extension (0x0000)
+            if ext_type == 0x0000 && offset + ext_len <= extensions_end {
+                // Server Name List Length (2 bytes)
+                if ext_len < 5 || offset + 2 > extensions_end {
+                    return None;
+                }
+                let _list_len = ((payload[offset] as usize) << 8) | (payload[offset + 1] as usize);
+                offset += 2;
+
+                // Server Name Type (1 byte, 0x00 for hostname)
+                if payload[offset] != 0x00 {
+                    return None;
+                }
+                offset += 1;
+
+                // Server Name Length (2 bytes)
+                if offset + 2 > extensions_end {
+                    return None;
+                }
+                let name_len = ((payload[offset] as usize) << 8) | (payload[offset + 1] as usize);
+                offset += 2;
+
+                // Extract hostname
+                if offset + name_len <= extensions_end {
+                    if let Ok(hostname) =
+                        String::from_utf8(payload[offset..offset + name_len].to_vec())
+                    {
+                        let cleaned = Self::remove_all_but_alphanumeric_and_dots(hostname.as_str());
+                        if !cleaned.is_empty() {
+                            return Some(cleaned);
+                        }
+                    }
+                }
+                return None;
+            }
+
+            offset += ext_len;
+        }
+
+        None
+    }
+
+    fn is_broadcast_or_multicast_mac(mac: &str) -> bool {
+        let mac_lower = mac.to_lowercase();
+
+        // Broadcast address
+        if mac_lower == "ff:ff:ff:ff:ff:ff" {
+            return true;
+        }
+
+        // Check if first octet indicates multicast (LSB of first byte is 1)
+        // Multicast MACs: 01:xx:xx:xx:xx:xx, 03:xx:xx:xx:xx:xx, etc.
+        if let Some(first_octet) = mac_lower.split(':').next() {
+            if let Ok(byte) = u8::from_str_radix(first_octet, 16) {
+                // If LSB of first byte is 1, it's multicast
+                if (byte & 0x01) == 0x01 {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    fn is_multicast_or_broadcast_ip(ip: &str) -> bool {
+        // Try to parse as IP address
+        if let Ok(addr) = ip.parse::<std::net::IpAddr>() {
+            match addr {
+                std::net::IpAddr::V4(ipv4) => {
+                    // IPv4 multicast: 224.0.0.0 - 239.255.255.255
+                    if ipv4.is_multicast() {
+                        return true;
+                    }
+                    // IPv4 broadcast
+                    if ipv4.is_broadcast() {
+                        return true;
+                    }
+                }
+                std::net::IpAddr::V6(ipv6) => {
+                    // IPv6 multicast: ff00::/8
+                    if ipv6.is_multicast() {
+                        return true;
                     }
                 }
             }
         }
-        None
+
+        false
     }
 
     fn is_local(target_ip: String, mac: String) -> bool {
