@@ -41,11 +41,10 @@ async fn main() -> io::Result<()> {
         .into_iter()
         .filter(|iface| {
             // If specific interfaces are configured, only monitor those
-            if let Some(ref selected) = selected_interfaces {
-                if !selected.iter().any(|s| iface.name == *s) {
+            if let Some(ref selected) = selected_interfaces
+                && !selected.contains(&iface.name) {
                     return false;
                 }
-            }
 
             let name = iface.name.to_lowercase();
             // Skip loopback, docker, virtual interfaces, etc.

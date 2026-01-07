@@ -47,26 +47,22 @@ impl EndPointAttribute {
         // Never match by hostname alone (too unreliable - collisions common)
 
         // Try 1: Match by MAC (best identifier)
-        if let Some(ref mac_addr) = mac {
-            if let Ok(mut stmt) = conn.prepare(
+        if let Some(ref mac_addr) = mac
+            && let Ok(mut stmt) = conn.prepare(
                 "SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(mac) = LOWER(?1) LIMIT 1",
-            ) {
-                if let Ok(Some(id)) = stmt.query_row([mac_addr], |row| row.get(0)).optional() {
-                    return Some(id);
-                }
+            )
+            && let Ok(Some(id)) = stmt.query_row([mac_addr], |row| row.get(0)).optional() {
+                return Some(id);
             }
-        }
 
         // Try 2: Match by IP if no MAC match (less reliable - DHCP can reuse IPs)
-        if let Some(ref ip_addr) = ip {
-            if let Ok(mut stmt) = conn.prepare(
+        if let Some(ref ip_addr) = ip
+            && let Ok(mut stmt) = conn.prepare(
                 "SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(ip) = LOWER(?1) LIMIT 1",
-            ) {
-                if let Ok(Some(id)) = stmt.query_row([ip_addr], |row| row.get(0)).optional() {
-                    return Some(id);
-                }
+            )
+            && let Ok(Some(id)) = stmt.query_row([ip_addr], |row| row.get(0)).optional() {
+                return Some(id);
             }
-        }
 
         // No match found
         None

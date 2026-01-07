@@ -58,6 +58,37 @@ fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
         .collect::<Vec<String>>()
 }
 
+fn get_protocols_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String> {
+    let conn = new_connection();
+    let mut stmt = conn
+        .prepare(
+            "
+            SELECT DISTINCT
+                CASE
+                    WHEN c.sub_protocol IS NOT NULL AND c.sub_protocol != ''
+                    THEN c.ip_header_protocol || ':' || c.sub_protocol
+                    ELSE c.ip_header_protocol
+                END as protocol
+            FROM communications c
+            INNER JOIN endpoints src ON c.src_endpoint_id = src.id
+            INNER JOIN endpoints dst ON c.dst_endpoint_id = dst.id
+            WHERE c.last_seen_at >= (strftime('%s', 'now') - (:internal_minutes * 60))
+                AND (LOWER(src.name) = LOWER(:hostname) OR LOWER(dst.name) = LOWER(:hostname))
+            ORDER BY protocol
+        ",
+        )
+        .expect("Failed to prepare statement");
+
+    let rows = stmt
+        .query_map(
+            named_params! { ":hostname": hostname, ":internal_minutes": internal_minutes },
+            |row| row.get::<_, String>(0),
+        )
+        .expect("Failed to execute query");
+
+    rows.filter_map(|row| row.ok()).collect::<Vec<String>>()
+}
+
 fn get_all_ips_macs_and_hostnames_from_single_hostname(
     hostname: String,
     internal_minutes: u64,
@@ -166,15 +197,37 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
         })
         .expect("Failed to execute query");
 
-    rows.filter_map(|row| match row.as_ref() {
-        Ok(r) => Some(Node {
-            src_hostname: r.0.clone(),
-            dst_hostname: r.1.clone(),
-            sub_protocol: r.2.clone(),
-        }),
-        Err(_e) => None,
-    })
-    .collect::<Vec<Node>>()
+    // Group communications by source and destination to reduce visual clutter
+    let mut comm_map: std::collections::HashMap<(String, String), Vec<String>> =
+        std::collections::HashMap::new();
+
+    for row in rows.flatten() {
+        let key = (row.0.clone(), row.1.clone());
+        comm_map.entry(key).or_default().push(row.2);
+    }
+
+    // Convert back to Node structs with aggregated protocols
+    comm_map
+        .into_iter()
+        .map(|((src, dst), mut protocols)| {
+            // Remove duplicates and sort
+            protocols.sort();
+            protocols.dedup();
+
+            // Limit to most important protocols to avoid clutter
+            let protocol_label = if protocols.len() > 3 {
+                format!("{} (+{})", protocols[..2].join(", "), protocols.len() - 2)
+            } else {
+                protocols.join(", ")
+            };
+
+            Node {
+                src_hostname: src,
+                dst_hostname: dst,
+                sub_protocol: protocol_label,
+            }
+        })
+        .collect::<Vec<Node>>()
 }
 
 fn get_endpoints(communications: &[Node]) -> Vec<String> {
@@ -266,8 +319,11 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         query.node.clone().unwrap_or_default(),
         query.scan_interval.unwrap_or(60),
     );
+    let protocols = get_protocols_for_endpoint(
+        query.node.clone().unwrap_or_default(),
+        query.scan_interval.unwrap_or(60),
+    );
     let ports: Vec<String> = vec![];
-    let protocols: Vec<String> = vec![];
 
     let mut context = Context::new();
     context.insert("communications", &communications);

@@ -240,6 +240,7 @@
     /* Stats Badge */
     .stats {
       display: flex;
+      flex-wrap: wrap;
       gap: 0.5rem;
       margin-top: 0.5rem;
     }
@@ -337,6 +338,17 @@
           <option value="1440" {% if scan_interval == 1440 %}selected{% endif %}>1 Day</option>
         </select>
       </div>
+      <div class="control-group">
+        <label class="control-label">Auto-Refresh</label>
+        <select id="refreshInterval" onchange="updateRefreshInterval(this.value)">
+          <option value="0">Off</option>
+          <option value="3">3 seconds</option>
+          <option value="5" selected>5 seconds</option>
+          <option value="10">10 seconds</option>
+          <option value="30">30 seconds</option>
+          <option value="60">1 minute</option>
+        </select>
+      </div>
     </div>
   </header>
 
@@ -352,6 +364,7 @@
           <div class="stat-badge">IPs: <span class="stat-number">{{ ips|length }}</span></div>
           <div class="stat-badge">MACs: <span class="stat-number">{{ macs|length }}</span></div>
           <div class="stat-badge">Hosts: <span class="stat-number">{{ hostnames|length }}</span></div>
+          <div class="stat-badge">Protocols: <span class="stat-number">{{ protocols|length }}</span></div>
         </div>
       </div>
 
@@ -391,6 +404,19 @@
               {% endfor %}
             {% else %}
               <div class="empty-state">No IP addresses</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="card-title">Protocols</div>
+          <div class="list-box" id="protocols-container">
+            {% if protocols %}
+              {% for protocol in protocols %}
+              <div class="list-item" onclick="copyToClipboard('{{ protocol }}', this)">{{ protocol }}</div>
+              {% endfor %}
+            {% else %}
+              <div class="empty-state">No protocols</div>
             {% endif %}
           </div>
         </div>
@@ -530,14 +556,22 @@
             'target-arrow-shape': 'triangle',
             'label': 'data(label)',
             'curve-style': 'bezier',
-            'width': 2,
-            'opacity': 0.6,
+            'width': 1.5,
+            'opacity': 0.4,
             'line-color': '#475569',
             'target-arrow-color': '#475569',
-            'font-size': 10,
+            'font-size': 0,
             'color': '#94a3b8',
             'text-outline-width': 2,
             'text-outline-color': '#0f172a'
+          }
+        },
+        {
+          selector: 'edge:selected',
+          style: {
+            'font-size': 9,
+            'opacity': 0.8,
+            'width': 2
           }
         }
       ],
@@ -555,10 +589,43 @@
       }
     });
 
-    // Auto-refresh every 5 seconds
-    setInterval(() => {
-      window.location.reload();
-    }, 5000);
+    // Auto-refresh management
+    let refreshIntervalId = null;
+
+    function updateRefreshInterval(seconds) {
+      // Save preference
+      localStorage.setItem('refreshInterval', seconds);
+
+      // Clear existing interval
+      if (refreshIntervalId) {
+        clearInterval(refreshIntervalId);
+        refreshIntervalId = null;
+      }
+
+      // Update indicator
+      const indicator = document.querySelector('.refresh-indicator span');
+      const pulse = document.querySelector('.pulse');
+
+      if (seconds == 0) {
+        indicator.textContent = 'Auto-refresh disabled';
+        pulse.style.display = 'none';
+      } else {
+        indicator.textContent = `Refreshing every ${seconds}s`;
+        pulse.style.display = 'block';
+
+        // Set new interval
+        refreshIntervalId = setInterval(() => {
+          window.location.reload();
+        }, seconds * 1000);
+      }
+    }
+
+    // Initialize refresh interval on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      const savedInterval = localStorage.getItem('refreshInterval') || '5';
+      document.getElementById('refreshInterval').value = savedInterval;
+      updateRefreshInterval(savedInterval);
+    });
   </script>
 </body>
 </html>
