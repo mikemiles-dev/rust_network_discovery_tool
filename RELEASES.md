@@ -1,25 +1,11 @@
 # Release Notes
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
-### Added
-- GitHub Actions workflow for automated cross-platform binary releases
-- Pre-built binaries for macOS (Intel & Apple Silicon), Linux, and Windows
-- Comprehensive installation documentation
-
-### Changed
-- Updated README with detailed installation instructions for all platforms
-- Clarified Windows Npcap requirements with direct download links
-
 ## [0.1.0] - TBD
 
+
 ### Added
-- Modern dark UI with responsive web interface
+- Pre-built binaries for macOS (Intel & Apple Silicon), Linux, and Windows
+- Comprehensive installation documentation
 - Real-time network traffic monitoring and visualization
 - Smart interface filtering (automatically skips loopback, Docker, VPN interfaces)
 - Connection deduplication (tracks unique connections instead of individual packets)
@@ -31,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Privacy-focused design (no packet payload storage)
 - High-performance database operations with indexes and connection pooling
 - SQLite database with bundled support (no external DB required)
+- GitHub Actions workflow for automated cross-platform binary releases
 - Configurable environment variables:
   - `MONITOR_INTERFACES`: Specify network interfaces to monitor
   - `DATABASE_URL`: Custom database location
