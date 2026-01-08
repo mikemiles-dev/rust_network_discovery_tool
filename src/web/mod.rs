@@ -85,11 +85,7 @@ fn get_protocols_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<St
         .prepare(
             "
             SELECT DISTINCT
-                CASE
-                    WHEN c.sub_protocol IS NOT NULL AND c.sub_protocol != ''
-                    THEN c.ip_header_protocol || ':' || c.sub_protocol
-                    ELSE c.ip_header_protocol
-                END as protocol
+                COALESCE(NULLIF(c.sub_protocol, ''), c.ip_header_protocol) as protocol
             FROM communications c
             INNER JOIN endpoints src ON c.src_endpoint_id = src.id
             INNER JOIN endpoints dst ON c.dst_endpoint_id = dst.id
@@ -212,18 +208,10 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
 
     let rows = stmt
         .query_map([&current_node, &internal_minutes.to_string()], |row| {
-            let dst_port = row.get::<_, Option<u16>>("dst_port")?.unwrap_or(0);
             let header_protocol = row.get::<_, String>("header_protocol")?;
-            let sub_protocol = match row.get::<_, String>("sub_protocol") {
-                Ok(proto) => format!("{}:{}", header_protocol, proto),
-                Err(_) => {
-                    if dst_port == 0 {
-                        header_protocol
-                    } else {
-                        "Unknown".to_string()
-                    }
-                }
-            };
+            let sub_protocol = row.get::<_, Option<String>>("sub_protocol")?
+                .filter(|s| !s.is_empty())
+                .unwrap_or(header_protocol);
 
             Ok(CommunicationRow {
                 src_hostname: row.get("src_hostname")?,
@@ -235,53 +223,36 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
         })
         .expect("Failed to execute query");
 
-    // Group communications by source and destination to reduce visual clutter
-    struct CommData {
-        protocols: Vec<String>,
-        src_ip: Option<String>,
-        dst_ip: Option<String>,
-    }
-
-    let mut comm_map: std::collections::HashMap<(String, String), CommData> =
+    // Group by source and destination, collecting all protocols
+    type CommKey = (String, String);
+    type CommData = (Vec<String>, Option<String>, Option<String>);
+    let mut comm_map: std::collections::HashMap<CommKey, CommData> =
         std::collections::HashMap::new();
 
     for row in rows.flatten() {
         let key = (row.src_hostname.clone(), row.dst_hostname.clone());
-        let entry = comm_map.entry(key).or_insert(CommData {
-            protocols: vec![],
-            src_ip: row.src_ip,
-            dst_ip: row.dst_ip,
-        });
-        entry.protocols.push(row.sub_protocol);
+        let entry = comm_map
+            .entry(key)
+            .or_insert((vec![], row.src_ip.clone(), row.dst_ip.clone()));
+        if !entry.0.contains(&row.sub_protocol) {
+            entry.0.push(row.sub_protocol);
+        }
     }
 
-    // Convert back to Node structs with aggregated protocols
+    // Convert to nodes with aggregated protocols
     comm_map
         .into_iter()
-        .map(|((src, dst), mut data)| {
-            // Remove duplicates and sort
-            data.protocols.sort();
-            data.protocols.dedup();
+        .map(|((src, dst), (protocols, src_ip, dst_ip))| {
+            let src_type = EndPoint::classify_endpoint(src_ip);
+            let dst_type = EndPoint::classify_endpoint(dst_ip);
 
-            // Limit to most important protocols to avoid clutter
-            let protocol_label = if data.protocols.len() > 3 {
-                format!(
-                    "{} (+{})",
-                    data.protocols[..2].join(", "),
-                    data.protocols.len() - 2
-                )
-            } else {
-                data.protocols.join(", ")
-            };
-
-            // Classify endpoints
-            let src_type = EndPoint::classify_endpoint(data.src_ip);
-            let dst_type = EndPoint::classify_endpoint(data.dst_ip);
+            // Join protocols with comma for display, but keep them separate for filtering
+            let sub_protocol = protocols.join(",");
 
             Node {
                 src_hostname: src,
                 dst_hostname: dst,
-                sub_protocol: protocol_label,
+                sub_protocol,
                 src_type,
                 dst_type,
             }
