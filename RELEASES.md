@@ -1,5 +1,10 @@
 # Release Notes
 
+## [0.1.2]
+
+## Fixed
+- Reworked how Windows interface monitoring works.
+
 ## [0.1.1] 
 
 ### Added

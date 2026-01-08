@@ -76,15 +76,68 @@ The binary will be in `target/release/awareness`.
 
 ## Usage
 
-Basic:
+### Command Line Options
+
 ```bash
-cargo run
+# Show help
+awareness --help
+
+# List all available network interfaces (recommended first step)
+awareness --list-interfaces
+
+# Monitor a specific interface by index number (easiest)
+awareness --interface 1
+
+# Monitor a specific interface by name
+awareness --interface "Wi-Fi"
+# On Windows: awareness --interface "\Device\NPF_{...}"
+
+# Monitor multiple interfaces
+awareness --interface "en0,eth0"
+
+# Use custom web server port
+awareness --port 9000
+
+# Combine options
+awareness --interface 1 --port 3000
 ```
 
-With configuration:
+### Windows-Specific Interface Selection
+
+On Windows, network interfaces have technical names like `\Device\NPF_{GUID}` which are hard to work with. We recommend using the index-based selection:
+
+1. First, list available interfaces:
+   ```powershell
+   awareness --list-interfaces
+   ```
+
+2. Find the interface with IP addresses assigned (usually your Ethernet or Wi-Fi adapter)
+   - **Note**: The status (UP/DOWN) may be unreliable on Windows due to limitations in the underlying `pnet` library
+   - Look for interfaces that have IP addresses assigned instead
+
+3. Use the index number in brackets:
+   ```powershell
+   awareness --interface 1
+   ```
+
+**Multiple Interface Warning**: If you run `awareness` without specifying an interface on Windows, it will monitor ALL interfaces that have IP addresses. This may include virtual adapters (VPN, Hyper-V, VMware, etc.). You'll see a warning like:
+
+```
+⚠️  Warning: Monitoring 3 interfaces simultaneously.
+   This may include virtual adapters (VPN, Hyper-V, VMware, etc.)
+   To monitor a specific interface, use: awareness --list-interfaces
+   Then select one with: awareness --interface <number>
+```
+
+To avoid monitoring unwanted virtual adapters, use `--list-interfaces` first and select your primary network adapter explicitly.
+
+### Environment Variables
+
+You can also configure the tool using environment variables:
+
 ```bash
-# Monitor specific interface(s)
-MONITOR_INTERFACES="en0" cargo run
+# Monitor specific interface(s) - supports index numbers or names
+MONITOR_INTERFACES="1" cargo run
 
 # Multiple interfaces
 MONITOR_INTERFACES="en0,eth0" cargo run
@@ -95,22 +148,23 @@ DATABASE_URL="my_network.db" cargo run
 # Custom data retention (in days)
 DATA_RETENTION_DAYS=30 cargo run
 
-# Custom web server port
+# Custom web server port (CLI --port flag takes precedence)
 WEB_PORT=9000 cargo run
 
 # Combine options
-MONITOR_INTERFACES="en0" DATA_RETENTION_DAYS=14 DATABASE_URL="network.db" WEB_PORT=3000 cargo run
+MONITOR_INTERFACES="1" DATA_RETENTION_DAYS=14 DATABASE_URL="network.db" WEB_PORT=3000 cargo run
 ```
 
-## Environment Variables
+### Configuration Reference
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MONITOR_INTERFACES` | Auto-detect | Comma-separated list of interfaces to monitor (e.g., "en0,eth0") |
-| `DATABASE_URL` | `test.db` | Path to SQLite database file |
-| `DATA_RETENTION_DAYS` | `7` | Number of days to keep historical data |
-| `WEB_PORT` | `8080` | Web server port (automatically tries fallback ports 8081-8084 if unavailable) |
-| `CHANNEL_BUFFER_SIZE` | `10000000` | Internal packet buffer size |
+| CLI Option | Environment Variable | Default | Description |
+|------------|---------------------|---------|-------------|
+| `--interface` / `-i` | `MONITOR_INTERFACES` | Auto-detect | Interface(s) to monitor (supports index numbers or names, comma-separated) |
+| `--port` / `-p` | `WEB_PORT` | `8080` | Web server port (CLI option takes precedence) |
+| `--list-interfaces` / `-l` | - | - | List all available interfaces and exit |
+| - | `DATABASE_URL` | `test.db` | Path to SQLite database file |
+| - | `DATA_RETENTION_DAYS` | `7` | Number of days to keep historical data |
+| - | `CHANNEL_BUFFER_SIZE` | `10000000` | Internal packet buffer size |
 
 ## How It Works
 
@@ -126,6 +180,70 @@ MONITOR_INTERFACES="en0" DATA_RETENTION_DAYS=14 DATABASE_URL="network.db" WEB_PO
 - **macOS**: Full support (Intel and Apple Silicon)
 - **Linux**: Full support (x86_64)
 - **Windows**: Full support - requires [Npcap](https://npcap.com/#download) drivers to be installed (see Installation section above)
+
+## Troubleshooting
+
+### Windows: "No suitable network interfaces found"
+
+If you see this error on Windows, try these steps:
+
+1. **Verify Npcap is installed and running:**
+   - Download from https://npcap.com/#download
+   - Install with default options
+   - Restart your computer after installation
+
+2. **Run as Administrator:**
+   - Right-click on PowerShell or Command Prompt
+   - Select "Run as Administrator"
+   - Navigate to the folder and run `awareness.exe`
+
+3. **Manually select your interface:**
+   ```powershell
+   # First, list all interfaces
+   awareness --list-interfaces
+
+   # Find your active network adapter (look for interfaces with IP addresses)
+   # Note: Status (UP/DOWN) may be unreliable on Windows
+   # Then use the index number:
+   awareness --interface 1
+   ```
+
+4. **Check your network adapter:**
+   - Open Network Connections (Windows Settings → Network & Internet)
+   - Ensure your Ethernet or Wi-Fi adapter is connected and has an IP address
+   - Disable and re-enable the adapter if needed
+
+### Windows: Monitoring Too Many Interfaces
+
+If you see a warning about monitoring multiple interfaces simultaneously:
+
+```
+⚠️  Warning: Monitoring 3 interfaces simultaneously.
+   This may include virtual adapters (VPN, Hyper-V, VMware, etc.)
+```
+
+**This is expected behavior** on Windows. The tool cannot reliably determine interface status due to `pnet` library limitations, so it monitors all interfaces with IP addresses. This may include:
+- VPN adapters
+- Hyper-V virtual switches
+- VMware network adapters
+- Docker adapters (though these are filtered out)
+
+**Solution**: Use `--list-interfaces` to see all available interfaces, then select your primary network adapter:
+```powershell
+awareness --interface 1
+```
+
+### macOS/Linux: Permission Denied
+
+Packet capture requires elevated privileges:
+
+```bash
+# Run with sudo
+sudo awareness
+
+# Or set capabilities (Linux only)
+sudo setcap cap_net_raw,cap_net_admin=eip ./awareness
+```
 
 ## Privacy & Security
 
