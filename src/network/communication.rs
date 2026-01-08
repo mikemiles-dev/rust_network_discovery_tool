@@ -1,3 +1,4 @@
+use pnet::packet::Packet;
 use pnet::packet::ethernet::EthernetPacket;
 use rusqlite::{Connection, Result, params};
 
@@ -18,6 +19,7 @@ pub struct Communication {
     pub ip_header_protocol: Option<String>,
     pub sub_protocol: Option<String>,
     pub source: Option<String>, // Source of the capture (e.g., "live", "capture.pcap", or custom label)
+    pub packet_size: u32,       // Size of the packet in bytes
     // Note: payload is used only for parsing hostnames (SNI/HTTP), not stored in DB
     payload: Vec<u8>,
 }
@@ -29,6 +31,7 @@ impl Communication {
 
     pub fn new_with_source(ethernet_packet: EthernetPacket, source: Option<String>) -> Self {
         let packet_wrapper = PacketWrapper::new(&ethernet_packet);
+        let packet_size = ethernet_packet.packet().len() as u32;
 
         let mut communication = Communication {
             source_mac: Some(ethernet_packet.get_source().to_string()),
@@ -41,6 +44,7 @@ impl Communication {
             ip_header_protocol: packet_wrapper.get_header_protocol(),
             sub_protocol: None,
             source,
+            packet_size,
             payload: packet_wrapper.get_payload().unwrap_or_default().to_vec(),
         };
         if let Some(ip_header_protocol) = &communication.ip_header_protocol
@@ -71,6 +75,7 @@ impl Communication {
                 created_at INTEGER NOT NULL,
                 last_seen_at INTEGER NOT NULL,
                 packet_count INTEGER DEFAULT 1,
+                bytes INTEGER DEFAULT 0,
                 source_port INTEGER,
                 destination_port INTEGER,
                 ip_version INTEGER,
@@ -154,7 +159,7 @@ impl Communication {
         let now = chrono::Utc::now().timestamp();
 
         // Use INSERT OR REPLACE to update existing communication or insert new one
-        // This deduplicates connections and just updates last_seen_at + packet_count
+        // This deduplicates connections and just updates last_seen_at + packet_count + bytes
         conn.execute(
             "INSERT INTO communications (
                 src_endpoint_id,
@@ -162,21 +167,24 @@ impl Communication {
                 created_at,
                 last_seen_at,
                 packet_count,
+                bytes,
                 source_port,
                 destination_port,
                 ip_version,
                 ip_header_protocol,
                 sub_protocol,
                 source
-            ) VALUES (?1, ?2, ?3, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9)
+            ) VALUES (?1, ?2, ?3, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
             ON CONFLICT(src_endpoint_id, dst_endpoint_id, COALESCE(source_port, 0), COALESCE(destination_port, 0), COALESCE(ip_header_protocol, ''), COALESCE(sub_protocol, ''))
             DO UPDATE SET
                 last_seen_at = ?3,
-                packet_count = packet_count + 1",
+                packet_count = packet_count + 1,
+                bytes = bytes + ?4",
             params![
                 src_endpoint_id,
                 dst_endpoint_id,
                 now,
+                self.packet_size,
                 self.source_port,
                 self.destination_port,
                 self.ip_version,

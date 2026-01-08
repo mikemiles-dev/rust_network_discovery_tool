@@ -14,6 +14,7 @@ use tokio::task;
 use crate::db::new_connection;
 use crate::network::endpoint::EndPoint;
 use crate::network::protocol::ProtocolPort;
+use rusqlite::params;
 
 use serde::{Deserialize, Serialize};
 
@@ -313,6 +314,47 @@ fn get_endpoint_types(communications: &[Node]) -> std::collections::HashMap<Stri
     types
 }
 
+#[derive(Serialize)]
+struct BytesStats {
+    bytes_in: i64,
+    bytes_out: i64,
+}
+
+fn get_bytes_for_endpoint(hostname: String, internal_minutes: u64) -> BytesStats {
+    let conn = new_connection();
+
+    // Bytes received (where this endpoint is the destination)
+    let bytes_in: i64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(c.bytes), 0)
+             FROM communications c
+             JOIN endpoints dst ON c.dst_endpoint_id = dst.id
+             WHERE LOWER(dst.name) = LOWER(?1)
+             AND c.last_seen_at >= (strftime('%s', 'now') - (?2 * 60))",
+            params![&hostname, &internal_minutes.to_string()],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    // Bytes sent (where this endpoint is the source)
+    let bytes_out: i64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(c.bytes), 0)
+             FROM communications c
+             JOIN endpoints src ON c.src_endpoint_id = src.id
+             WHERE LOWER(src.name) = LOWER(?1)
+             AND c.last_seen_at >= (strftime('%s', 'now') - (?2 * 60))",
+            params![&hostname, &internal_minutes.to_string()],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    BytesStats {
+        bytes_in,
+        bytes_out,
+    }
+}
+
 pub fn start(preferred_port: u16) {
     task::spawn_blocking(move || {
         println!("Starting web server");
@@ -467,6 +509,8 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     );
     let protocols =
         get_protocols_for_endpoint(selected_endpoint.clone(), query.scan_interval.unwrap_or(60));
+    let bytes_stats =
+        get_bytes_for_endpoint(selected_endpoint.clone(), query.scan_interval.unwrap_or(60));
     let ports: Vec<String> = vec![];
 
     let mut context = Context::new();
@@ -485,6 +529,8 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     context.insert("hostnames", &hostnames);
     context.insert("ports", &ports);
     context.insert("protocols", &protocols);
+    context.insert("bytes_in", &bytes_stats.bytes_in);
+    context.insert("bytes_out", &bytes_stats.bytes_out);
 
     let rendered = tera
         .render("index.html", &context)

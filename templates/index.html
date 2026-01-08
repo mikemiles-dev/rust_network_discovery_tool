@@ -423,6 +423,10 @@
           <div class="stat-badge">Hosts: <span class="stat-number">{{ hostnames|length }}</span></div>
           <div class="stat-badge">Protocols: <span class="stat-number">{{ protocols|length }}</span></div>
         </div>
+        <div class="stats" style="margin-top: 0.5rem;">
+          <div class="stat-badge">⬇️ In: <span class="stat-number" id="bytes-in">{{ bytes_in }}</span></div>
+          <div class="stat-badge">⬆️ Out: <span class="stat-number" id="bytes-out">{{ bytes_out }}</span></div>
+        </div>
       </div>
 
       <div class="card">
@@ -538,6 +542,31 @@
         icon.classList.toggle('expanded');
       }
     }
+
+    // Format bytes to human-readable format
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // Format byte displays on page load
+    document.addEventListener('DOMContentLoaded', function() {
+      const bytesInElem = document.getElementById('bytes-in');
+      const bytesOutElem = document.getElementById('bytes-out');
+
+      if (bytesInElem) {
+        const bytesIn = parseInt(bytesInElem.textContent);
+        bytesInElem.textContent = formatBytes(bytesIn);
+      }
+
+      if (bytesOutElem) {
+        const bytesOut = parseInt(bytesOutElem.textContent);
+        bytesOutElem.textContent = formatBytes(bytesOut);
+      }
+    });
 
     // Filter nodes by type
     function applyFilters() {
