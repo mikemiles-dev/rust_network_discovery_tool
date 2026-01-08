@@ -2,6 +2,7 @@ use dns_lookup::{get_hostname, lookup_addr};
 use pnet::datalink::interfaces;
 use rusqlite::{Connection, Result, params};
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -11,9 +12,15 @@ use crate::network::mdns_lookup::MDnsLookup;
 // Simple DNS cache to avoid repeated slow lookups
 lazy_static::lazy_static! {
     static ref DNS_CACHE: Arc<Mutex<HashMap<String, (String, Instant)>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref GATEWAY_INFO: Arc<Mutex<Option<(String, Instant)>>> = Arc::new(Mutex::new(None));
 }
 
 const DNS_CACHE_TTL: Duration = Duration::from_secs(300); // 5 minutes
+const GATEWAY_CACHE_TTL: Duration = Duration::from_secs(60); // 1 minute
+
+// Classification type constants
+const CLASSIFICATION_GATEWAY: &str = "gateway";
+const CLASSIFICATION_INTERNET: &str = "internet";
 
 pub enum InsertEndpointError {
     BothMacAndIpNone,
@@ -38,6 +45,26 @@ impl From<rusqlite::Error> for InsertEndpointError {
 pub struct EndPoint;
 
 impl EndPoint {
+    /// Classify an endpoint as Gateway, Internet, or LocalNetwork based on its IP address
+    pub fn classify_endpoint(ip: Option<String>) -> Option<&'static str> {
+        let ip_str = ip?;
+
+        // Check if it's the default gateway
+        if let Some(gateway_ip) = Self::get_default_gateway()
+            && gateway_ip == ip_str
+        {
+            return Some(CLASSIFICATION_GATEWAY);
+        }
+
+        // Check if it's on the local network
+        if Self::is_on_local_network(&ip_str) {
+            return None; // Local network device, no special classification
+        }
+
+        // If it's not local network and not gateway, it's internet
+        Some(CLASSIFICATION_INTERNET)
+    }
+
     pub fn create_table_if_not_exists(conn: &Connection) -> Result<()> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS endpoints (
@@ -163,6 +190,125 @@ impl EndPoint {
         }
 
         Ok(())
+    }
+
+    fn parse_windows_gateway(output: &str) -> Option<String> {
+        output.lines().find_map(|line| {
+            // Look for "0.0.0.0          0.0.0.0     <gateway_ip>"
+            if !line.contains("0.0.0.0") || line.split_whitespace().count() < 3 {
+                return None;
+            }
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts[0] == "0.0.0.0" && parts[1] == "0.0.0.0" {
+                Some(parts[2].to_string())
+            } else {
+                None
+            }
+        })
+    }
+
+    fn parse_macos_gateway(output: &str) -> Option<String> {
+        output.lines().find_map(|line| {
+            if line.contains("gateway:") {
+                line.split_whitespace().nth(1).map(String::from)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn parse_linux_gateway(output: &str) -> Option<String> {
+        // Expected format: "default via <gateway_ip> dev <interface>"
+        output
+            .lines()
+            .next()
+            .and_then(|line| line.split_whitespace().nth(2).map(String::from))
+    }
+
+    fn parse_linux_route_n(output: &str) -> Option<String> {
+        output.lines().find_map(|line| {
+            if line.starts_with("0.0.0.0") {
+                line.split_whitespace().nth(1).map(String::from)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn get_default_gateway() -> Option<String> {
+        // Check cache first
+        if let Ok(cache) = GATEWAY_INFO.lock()
+            && let Some((gateway_ip, cached_time)) = cache.as_ref()
+            && cached_time.elapsed() < GATEWAY_CACHE_TTL
+        {
+            return Some(gateway_ip.clone());
+        }
+
+        // Get default gateway using system commands
+        let gateway_ip = if cfg!(target_os = "windows") {
+            std::process::Command::new("route")
+                .args(["print", "0.0.0.0"])
+                .output()
+                .ok()
+                .and_then(|output| {
+                    Self::parse_windows_gateway(&String::from_utf8_lossy(&output.stdout))
+                })
+        } else if cfg!(target_os = "macos") {
+            std::process::Command::new("route")
+                .args(["-n", "get", "default"])
+                .output()
+                .ok()
+                .and_then(|output| {
+                    Self::parse_macos_gateway(&String::from_utf8_lossy(&output.stdout))
+                })
+        } else {
+            // Linux: try ip route first, fallback to route -n
+            std::process::Command::new("ip")
+                .args(["route", "show", "default"])
+                .output()
+                .ok()
+                .and_then(|output| {
+                    Self::parse_linux_gateway(&String::from_utf8_lossy(&output.stdout))
+                })
+                .or_else(|| {
+                    std::process::Command::new("route")
+                        .args(["-n"])
+                        .output()
+                        .ok()
+                        .and_then(|output| {
+                            Self::parse_linux_route_n(&String::from_utf8_lossy(&output.stdout))
+                        })
+                })
+        };
+
+        // Cache the result
+        if let Some(ref gw) = gateway_ip
+            && let Ok(mut cache) = GATEWAY_INFO.lock()
+        {
+            *cache = Some((gw.clone(), Instant::now()));
+        }
+
+        gateway_ip
+    }
+
+    fn is_on_local_network(ip: &str) -> bool {
+        // Parse the IP address
+        let ip_addr: IpAddr = match ip.parse() {
+            Ok(addr) => addr,
+            Err(_) => return false,
+        };
+
+        // Check all local interfaces to see if IP is on same subnet
+        for interface in interfaces() {
+            for ip_network in &interface.ips {
+                // Check if the IP is in the same subnet
+                if ip_network.contains(ip_addr) {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     fn lookup_dns(ip: Option<String>, mac: Option<String>) -> Option<String> {

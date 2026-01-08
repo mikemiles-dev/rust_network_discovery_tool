@@ -12,6 +12,7 @@ use tera::{Context, Tera};
 use tokio::task;
 
 use crate::db::new_connection;
+use crate::network::endpoint::EndPoint;
 use crate::network::protocol::ProtocolPort;
 
 use serde::{Deserialize, Serialize};
@@ -29,6 +30,17 @@ pub struct Node {
     src_hostname: String,
     dst_hostname: String,
     sub_protocol: String,
+    src_type: Option<&'static str>,
+    dst_type: Option<&'static str>,
+}
+
+// Internal struct for query results
+struct CommunicationRow {
+    src_hostname: String,
+    dst_hostname: String,
+    sub_protocol: String,
+    src_ip: Option<String>,
+    dst_ip: Option<String>,
 }
 
 fn get_interfaces() -> Vec<String> {
@@ -180,7 +192,9 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
     dst_endpoint.name AS dst_hostname,
     c.destination_port as dst_port,
     c.ip_header_protocol as header_protocol,
-    c.sub_protocol
+    c.sub_protocol,
+    (SELECT ip FROM endpoint_attributes WHERE endpoint_id = src_endpoint.id LIMIT 1) AS src_ip,
+    (SELECT ip FROM endpoint_attributes WHERE endpoint_id = dst_endpoint.id LIMIT 1) AS dst_ip
     FROM communications AS c
     LEFT JOIN endpoints AS src_endpoint
     ON c.src_endpoint_id = src_endpoint.id
@@ -210,42 +224,65 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
                 }
             };
 
-            Ok((
-                row.get::<_, String>("src_hostname")?,
-                row.get::<_, String>("dst_hostname")?,
+            Ok(CommunicationRow {
+                src_hostname: row.get("src_hostname")?,
+                dst_hostname: row.get("dst_hostname")?,
                 sub_protocol,
-            ))
+                src_ip: row.get::<_, Option<String>>("src_ip").ok().flatten(),
+                dst_ip: row.get::<_, Option<String>>("dst_ip").ok().flatten(),
+            })
         })
         .expect("Failed to execute query");
 
     // Group communications by source and destination to reduce visual clutter
-    let mut comm_map: std::collections::HashMap<(String, String), Vec<String>> =
+    struct CommData {
+        protocols: Vec<String>,
+        src_ip: Option<String>,
+        dst_ip: Option<String>,
+    }
+
+    let mut comm_map: std::collections::HashMap<(String, String), CommData> =
         std::collections::HashMap::new();
 
     for row in rows.flatten() {
-        let key = (row.0.clone(), row.1.clone());
-        comm_map.entry(key).or_default().push(row.2);
+        let key = (row.src_hostname.clone(), row.dst_hostname.clone());
+        let entry = comm_map.entry(key).or_insert(CommData {
+            protocols: vec![],
+            src_ip: row.src_ip,
+            dst_ip: row.dst_ip,
+        });
+        entry.protocols.push(row.sub_protocol);
     }
 
     // Convert back to Node structs with aggregated protocols
     comm_map
         .into_iter()
-        .map(|((src, dst), mut protocols)| {
+        .map(|((src, dst), mut data)| {
             // Remove duplicates and sort
-            protocols.sort();
-            protocols.dedup();
+            data.protocols.sort();
+            data.protocols.dedup();
 
             // Limit to most important protocols to avoid clutter
-            let protocol_label = if protocols.len() > 3 {
-                format!("{} (+{})", protocols[..2].join(", "), protocols.len() - 2)
+            let protocol_label = if data.protocols.len() > 3 {
+                format!(
+                    "{} (+{})",
+                    data.protocols[..2].join(", "),
+                    data.protocols.len() - 2
+                )
             } else {
-                protocols.join(", ")
+                data.protocols.join(", ")
             };
+
+            // Classify endpoints
+            let src_type = EndPoint::classify_endpoint(data.src_ip);
+            let dst_type = EndPoint::classify_endpoint(data.dst_ip);
 
             Node {
                 src_hostname: src,
                 dst_hostname: dst,
                 sub_protocol: protocol_label,
+                src_type,
+                dst_type,
             }
         })
         .collect::<Vec<Node>>()
@@ -261,6 +298,19 @@ fn get_endpoints(communications: &[Node]) -> Vec<String> {
         }
         acc
     })
+}
+
+fn get_endpoint_types(communications: &[Node]) -> std::collections::HashMap<String, &'static str> {
+    let mut types = std::collections::HashMap::new();
+    for comm in communications {
+        if let Some(src_type) = comm.src_type {
+            types.entry(comm.src_hostname.clone()).or_insert(src_type);
+        }
+        if let Some(dst_type) = comm.dst_type {
+            types.entry(comm.dst_hostname.clone()).or_insert(dst_type);
+        }
+    }
+    types
 }
 
 pub fn start(preferred_port: u16) {
@@ -407,6 +457,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
 
     let communications = get_nodes(query.node.clone(), query.scan_interval.unwrap_or(60));
     let endpoints = get_endpoints(&communications);
+    let endpoint_types = get_endpoint_types(&communications);
     let interfaces = get_interfaces();
     let supported_protocols = ProtocolPort::get_supported_protocols();
     let dropdown_endpoints = dropdown_endpoints(query.scan_interval.unwrap_or(60));
@@ -421,6 +472,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let mut context = Context::new();
     context.insert("communications", &communications);
     context.insert("endpoints", &endpoints);
+    context.insert("endpoint_types", &endpoint_types);
     context.insert("interfaces", &interfaces);
     context.insert("hostname", &hostname);
     context.insert("endpoint", &selected_endpoint);

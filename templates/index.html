@@ -349,6 +349,23 @@
           <option value="60">1 minute</option>
         </select>
       </div>
+      <div class="control-group">
+        <label class="control-label">Filter</label>
+        <div style="display: flex; gap: 0.75rem; align-items: center;">
+          <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.875rem; cursor: pointer;">
+            <input type="checkbox" id="filterLocal" checked onchange="applyFilters()" style="cursor: pointer;">
+            <span>🖥️ Local</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.875rem; cursor: pointer;">
+            <input type="checkbox" id="filterGateway" checked onchange="applyFilters()" style="cursor: pointer;">
+            <span>🌐 Gateway</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.875rem; cursor: pointer;">
+            <input type="checkbox" id="filterInternet" checked onchange="applyFilters()" style="cursor: pointer;">
+            <span>🌍 Internet</span>
+          </label>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -447,6 +464,46 @@
       window.location.href = url.toString();
     }
 
+    // Filter nodes by type
+    function applyFilters() {
+      const showLocal = document.getElementById('filterLocal').checked;
+      const showGateway = document.getElementById('filterGateway').checked;
+      const showInternet = document.getElementById('filterInternet').checked;
+
+      cy.nodes().forEach(node => {
+        const type = node.data('type');
+        let shouldShow = true;
+
+        if (type === 'local' && !showLocal) {
+          shouldShow = false;
+        } else if (type === 'gateway' && !showGateway) {
+          shouldShow = false;
+        } else if (type === 'internet' && !showInternet) {
+          shouldShow = false;
+        }
+
+        if (shouldShow) {
+          node.style('display', 'element');
+        } else {
+          node.style('display', 'none');
+        }
+      });
+
+      // Hide edges connected to hidden nodes
+      cy.edges().forEach(edge => {
+        const source = edge.source();
+        const target = edge.target();
+        const sourceVisible = source.style('display') === 'element';
+        const targetVisible = target.style('display') === 'element';
+
+        if (sourceVisible && targetVisible) {
+          edge.style('display', 'element');
+        } else {
+          edge.style('display', 'none');
+        }
+      });
+    }
+
     // Copy to clipboard with visual feedback
     function copyToClipboard(text, element) {
       navigator.clipboard.writeText(text).then(() => {
@@ -528,8 +585,10 @@
         {% for endpoint in endpoints %}
           { data: {
               id: '{{ endpoint }}',
-              {% if endpoint == hostname %}type: 'local'
-              {% elif endpoint == selected_node %}type: 'selected'{% endif %}
+              {% if endpoint == hostname %}type: 'local',
+              {% elif endpoint == selected_node %}type: 'selected',
+              {% elif endpoint_types[endpoint] %}type: '{{ endpoint_types[endpoint] }}',
+              {% endif %}
             }
           },
         {% endfor %}
@@ -561,15 +620,34 @@
             'width': 60,
             'height': 60,
             'border-width': 2,
-            'border-color': '#3b82f6'
+            'border-color': '#64748b'
           }
         },
         {
           selector: 'node[type = "local"]',
           style: {
             'label': function(ele) { return '🖥️\n' + ele.data('id'); },
+            'background-color': '#2d1b4e',
             'border-color': '#8b5cf6',
             'border-width': 3
+          }
+        },
+        {
+          selector: 'node[type = "gateway"]',
+          style: {
+            'label': function(ele) { return '🌐\n' + ele.data('id'); },
+            'background-color': '#422006',
+            'border-color': '#f59e0b',
+            'border-width': 3
+          }
+        },
+        {
+          selector: 'node[type = "internet"]',
+          style: {
+            'label': function(ele) { return '🌍\n' + ele.data('id'); },
+            'background-color': '#083344',
+            'border-color': '#06b6d4',
+            'border-width': 2
           }
         },
         {
