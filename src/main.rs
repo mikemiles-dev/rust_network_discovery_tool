@@ -52,8 +52,8 @@ async fn main() -> io::Result<()> {
 
             // Show description on Windows if available
             #[cfg(target_os = "windows")]
-            if let Some(desc) = &iface.description {
-                println!("    Description: {}", desc);
+            if !iface.description.is_empty() {
+                println!("    Description: {}", iface.description);
             }
 
             println!(

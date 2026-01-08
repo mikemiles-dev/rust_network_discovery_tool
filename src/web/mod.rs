@@ -103,17 +103,30 @@ fn get_all_ips_macs_and_hostnames_from_single_hostname(
 ) -> (Vec<String>, Vec<String>, Vec<String>) {
     let conn = new_connection();
     let mut stmt = conn
-        .prepare("
-            SELECT ip, mac, hostname FROM endpoint_attributes
-            WHERE endpoint_id IN (
-            SELECT DISTINCT e.id
-            FROM endpoints e
-            INNER JOIN communications c
-                ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
+        .prepare(
+            "
+            SELECT DISTINCT ea.ip, ea.mac, ea.hostname
+            FROM endpoint_attributes ea
+            INNER JOIN endpoints e ON ea.endpoint_id = e.id
+            WHERE ea.endpoint_id IN (
+                SELECT DISTINCT e2.id
+                FROM endpoints e2
+                INNER JOIN communications c
+                    ON e2.id = c.src_endpoint_id OR e2.id = c.dst_endpoint_id
                 WHERE c.last_seen_at >= (strftime('%s', 'now') - (:internal_minutes * 60))
             )
-            AND endpoint_id = (SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(hostname) = LOWER(:hostname) LIMIT 1)
-        ")
+            AND (
+                ea.endpoint_id IN (
+                    SELECT endpoint_id FROM endpoint_attributes
+                    WHERE LOWER(hostname) = LOWER(:hostname)
+                )
+                OR ea.endpoint_id IN (
+                    SELECT id FROM endpoints
+                    WHERE LOWER(name) = LOWER(:hostname)
+                )
+            )
+        ",
+        )
         .expect("Failed to prepare statement");
 
     let rows = stmt
@@ -343,11 +356,19 @@ async fn static_files(path: actix_web::web::Path<String>) -> impl Responder {
 #[get("/update_endpoint")]
 async fn update_endpoint(query: Query<UpdateEndpointQuery>) -> impl Responder {
     let conn = new_connection();
+
+    // Update endpoints table where name matches OR where any endpoint_attribute matches
     let mut stmt = match conn.prepare(
         "
             UPDATE endpoints
             SET name = :new_hostname
-            WHERE LOWER(name) = LOWER(:hostname)
+            WHERE id IN (
+                SELECT DISTINCT endpoint_id
+                FROM endpoint_attributes
+                WHERE LOWER(hostname) = LOWER(:hostname)
+                   OR LOWER(ip) = LOWER(:hostname)
+            )
+            OR LOWER(name) = LOWER(:hostname)
         ",
     ) {
         Ok(s) => s,
@@ -357,33 +378,44 @@ async fn update_endpoint(query: Query<UpdateEndpointQuery>) -> impl Responder {
         }
     };
 
-    if let Err(e) = stmt.execute(
+    match stmt.execute(
         named_params! { ":hostname": &query.hostname, ":new_hostname": &query.new_hostname },
     ) {
-        return HttpResponse::InternalServerError()
-            .body(format!("Failed to execute statement: {}", e));
+        Ok(rows_affected) => {
+            if rows_affected == 0 {
+                return HttpResponse::NotFound().body(format!(
+                    "No endpoint found with identifier: {}",
+                    query.hostname
+                ));
+            }
+            HttpResponse::Ok().body(format!(
+                "Endpoint updated ({} rows affected)",
+                rows_affected
+            ))
+        }
+        Err(e) => {
+            HttpResponse::InternalServerError().body(format!("Failed to execute statement: {}", e))
+        }
     }
-
-    HttpResponse::Ok().body("Endpoint updated")
 }
 
 // Define a handler function for the web request
 #[get("/")]
 async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
+    let hostname = get_hostname().unwrap_or_else(|_| "Unknown".to_string());
+    let selected_endpoint = query.node.clone().unwrap_or_else(|| hostname.clone());
+
     let communications = get_nodes(query.node.clone(), query.scan_interval.unwrap_or(60));
     let endpoints = get_endpoints(&communications);
     let interfaces = get_interfaces();
-    let hostname = get_hostname().unwrap_or_else(|_| "Unknown".to_string());
     let supported_protocols = ProtocolPort::get_supported_protocols();
     let dropdown_endpoints = dropdown_endpoints(query.scan_interval.unwrap_or(60));
     let (ips, macs, hostnames) = get_all_ips_macs_and_hostnames_from_single_hostname(
-        query.node.clone().unwrap_or_default(),
+        selected_endpoint.clone(),
         query.scan_interval.unwrap_or(60),
     );
-    let protocols = get_protocols_for_endpoint(
-        query.node.clone().unwrap_or_default(),
-        query.scan_interval.unwrap_or(60),
-    );
+    let protocols =
+        get_protocols_for_endpoint(selected_endpoint.clone(), query.scan_interval.unwrap_or(60));
     let ports: Vec<String> = vec![];
 
     let mut context = Context::new();
@@ -391,10 +423,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     context.insert("endpoints", &endpoints);
     context.insert("interfaces", &interfaces);
     context.insert("hostname", &hostname);
-    context.insert(
-        "endpoint",
-        &query.node.clone().unwrap_or_else(|| hostname.clone()),
-    );
+    context.insert("endpoint", &selected_endpoint);
     context.insert("supported_protocols", &supported_protocols);
     context.insert("selected_node", &query.node);
     context.insert("dropdown_endpoints", &dropdown_endpoints);

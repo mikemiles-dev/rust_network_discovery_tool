@@ -465,24 +465,49 @@
     // Update endpoint name
     function updateEndpointName() {
       const endpointNameInput = document.querySelector('input[name="endpoint_name"]');
-      const newHostname = endpointNameInput.value;
+      const newHostname = endpointNameInput.value.trim();
       const currentHostname = "{{ endpoint }}";
+
+      // Validate input
+      if (!newHostname) {
+        alert('Please enter a valid endpoint name.');
+        return;
+      }
+
+      if (newHostname === currentHostname) {
+        alert('New name is the same as the current name.');
+        return;
+      }
+
+      // Disable button during update
+      const updateButton = event.target;
+      updateButton.disabled = true;
+      updateButton.textContent = 'Updating...';
 
       fetch(`/update_endpoint?hostname=${encodeURIComponent(currentHostname)}&new_hostname=${encodeURIComponent(newHostname)}`, {
         method: 'GET',
       })
       .then(response => {
         if (response.ok) {
+          // Success - redirect to the updated endpoint
           const url = new URL(window.location.href);
           url.searchParams.set('node', newHostname);
           window.location.href = url.toString();
         } else {
-          alert('Failed to update endpoint name.');
+          // Handle errors
+          return response.text().then(errorMsg => {
+            console.error('Update failed:', errorMsg);
+            alert(`Failed to update endpoint name: ${errorMsg}`);
+            updateButton.disabled = false;
+            updateButton.textContent = 'Update';
+          });
         }
       })
       .catch(error => {
         console.error('Error updating endpoint name:', error);
         alert('An error occurred while updating the endpoint name.');
+        updateButton.disabled = false;
+        updateButton.textContent = 'Update';
       });
     }
 
