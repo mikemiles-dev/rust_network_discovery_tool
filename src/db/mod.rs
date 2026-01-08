@@ -15,6 +15,23 @@ pub fn new_connection() -> Connection {
     Connection::open(db_path).unwrap_or_else(|_| panic!("Failed to open database: {}", db_url))
 }
 
+#[cfg(test)]
+pub fn new_test_connection() -> Connection {
+    let conn = Connection::open_in_memory().expect("Failed to create in-memory database");
+
+    // Set up foreign keys and create tables
+    conn.execute("PRAGMA foreign_keys = ON;", [])
+        .expect("Failed to set foreign key pragma");
+
+    EndPoint::create_table_if_not_exists(&conn).expect("Failed to create endpoints table");
+    EndPointAttribute::create_table_if_not_exists(&conn)
+        .expect("Failed to create endpoint_attributes table");
+    Communication::create_table_if_not_exists(&conn)
+        .expect("Failed to create communications table");
+
+    conn
+}
+
 fn get_channel_buffer_size() -> usize {
     env::var("CHANNEL_BUFFER_SIZE")
         .ok()

@@ -17,12 +17,17 @@ pub struct Communication {
     pub ip_version: Option<u8>,
     pub ip_header_protocol: Option<String>,
     pub sub_protocol: Option<String>,
+    pub source: Option<String>, // Source of the capture (e.g., "live", "capture.pcap", or custom label)
     // Note: payload is used only for parsing hostnames (SNI/HTTP), not stored in DB
     payload: Vec<u8>,
 }
 
 impl Communication {
     pub fn new(ethernet_packet: EthernetPacket) -> Self {
+        Self::new_with_source(ethernet_packet, None)
+    }
+
+    pub fn new_with_source(ethernet_packet: EthernetPacket, source: Option<String>) -> Self {
         let packet_wrapper = PacketWrapper::new(&ethernet_packet);
 
         let mut communication = Communication {
@@ -35,6 +40,7 @@ impl Communication {
             ip_version: packet_wrapper.get_ip_version(),
             ip_header_protocol: packet_wrapper.get_header_protocol(),
             sub_protocol: None,
+            source,
             payload: packet_wrapper.get_payload().unwrap_or_default().to_vec(),
         };
         if let Some(ip_header_protocol) = &communication.ip_header_protocol
@@ -70,6 +76,7 @@ impl Communication {
                 ip_version INTEGER,
                 ip_header_protocol TEXT,
                 sub_protocol TEXT,
+                source TEXT,
                 FOREIGN KEY (src_endpoint_id) REFERENCES endpoints(id),
                 FOREIGN KEY (dst_endpoint_id) REFERENCES endpoints(id)
             )",
@@ -159,8 +166,9 @@ impl Communication {
                 destination_port,
                 ip_version,
                 ip_header_protocol,
-                sub_protocol
-            ) VALUES (?1, ?2, ?3, ?3, 1, ?4, ?5, ?6, ?7, ?8)
+                sub_protocol,
+                source
+            ) VALUES (?1, ?2, ?3, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9)
             ON CONFLICT(src_endpoint_id, dst_endpoint_id, COALESCE(source_port, 0), COALESCE(destination_port, 0), COALESCE(ip_header_protocol, ''), COALESCE(sub_protocol, ''))
             DO UPDATE SET
                 last_seen_at = ?3,
@@ -173,7 +181,8 @@ impl Communication {
                 self.destination_port,
                 self.ip_version,
                 self.ip_header_protocol,
-                self.sub_protocol
+                self.sub_protocol,
+                self.source
             ],
         )?;
         Ok(())

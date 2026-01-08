@@ -1,6 +1,8 @@
 # Release Notes
 
 ## [0.1.3]
+- Reworkd UI elements for internet types + added UI filters
+- Added tests
 
 ## [0.1.2]
 

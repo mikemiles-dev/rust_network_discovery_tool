@@ -22,6 +22,7 @@ const GATEWAY_CACHE_TTL: Duration = Duration::from_secs(60); // 1 minute
 const CLASSIFICATION_GATEWAY: &str = "gateway";
 const CLASSIFICATION_INTERNET: &str = "internet";
 
+#[derive(Debug)]
 pub enum InsertEndpointError {
     BothMacAndIpNone,
     ConstraintViolation,
@@ -592,3 +593,102 @@ impl EndPoint {
         false
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::new_test_connection;
+
+    #[test]
+    fn test_classify_internet_endpoint() {
+        // Public IP should be classified as internet
+        let classification = EndPoint::classify_endpoint(Some("8.8.8.8".to_string()));
+        assert_eq!(classification, Some(CLASSIFICATION_INTERNET));
+    }
+
+    #[test]
+    fn test_classify_local_endpoint() {
+        // Local network IP should return None (no special classification)
+        // Note: This test assumes 192.168.x.x is on local network
+        // In test environment without actual interfaces, it may not be detected
+        let classification = EndPoint::classify_endpoint(Some("127.0.0.1".to_string()));
+        // Loopback should still return None as it's not gateway or internet
+        assert_eq!(classification, None);
+    }
+
+    #[test]
+    fn test_classify_none_ip() {
+        let classification = EndPoint::classify_endpoint(None);
+        assert_eq!(classification, None);
+    }
+
+    #[test]
+    fn test_endpoint_insertion() {
+        let conn = new_test_connection();
+
+        // Insert an endpoint
+        let result = EndPoint::get_or_insert_endpoint(
+            &conn,
+            Some("aa:bb:cc:dd:ee:ff".to_string()),
+            Some("192.168.1.100".to_string()),
+            None,
+            &[],
+        );
+
+        assert!(result.is_ok());
+        let endpoint_id = result.unwrap();
+        assert!(endpoint_id > 0);
+
+        // Verify endpoint exists
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM endpoints WHERE id = ?1", [endpoint_id], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_duplicate_endpoint_returns_same_id() {
+        let conn = new_test_connection();
+
+        // Insert endpoint first time
+        let id1 = EndPoint::get_or_insert_endpoint(
+            &conn,
+            Some("aa:bb:cc:dd:ee:ff".to_string()),
+            Some("192.168.1.100".to_string()),
+            None,
+            &[],
+        )
+        .unwrap();
+
+        // Insert same endpoint again
+        let id2 = EndPoint::get_or_insert_endpoint(
+            &conn,
+            Some("aa:bb:cc:dd:ee:ff".to_string()),
+            Some("192.168.1.100".to_string()),
+            None,
+            &[],
+        )
+        .unwrap();
+
+        // Should return the same ID
+        assert_eq!(id1, id2);
+    }
+
+    #[test]
+    fn test_is_multicast_or_broadcast_ip() {
+        assert!(EndPoint::is_multicast_or_broadcast_ip("224.0.0.1"));
+        assert!(EndPoint::is_multicast_or_broadcast_ip("255.255.255.255"));
+        assert!(!EndPoint::is_multicast_or_broadcast_ip("192.168.1.1"));
+        assert!(!EndPoint::is_multicast_or_broadcast_ip("8.8.8.8"));
+    }
+
+    #[test]
+    fn test_is_broadcast_or_multicast_mac() {
+        assert!(EndPoint::is_broadcast_or_multicast_mac("ff:ff:ff:ff:ff:ff"));
+        assert!(EndPoint::is_broadcast_or_multicast_mac("01:00:5e:00:00:01"));
+        assert!(!EndPoint::is_broadcast_or_multicast_mac("00:11:22:33:44:55"));
+    }
+}
+
