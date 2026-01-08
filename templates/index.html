@@ -313,6 +313,46 @@
       font-style: italic;
       padding: 0.5rem;
     }
+
+    /* Collapsible sections */
+    .collapsible-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.2s;
+      padding: 0.25rem;
+      margin: -0.25rem;
+      border-radius: 0.375rem;
+    }
+
+    .collapsible-header:hover {
+      background: var(--bg-tertiary);
+    }
+
+    .expand-icon {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      transition: transform 0.2s;
+      display: inline-block;
+      width: 12px;
+    }
+
+    .expand-icon.expanded {
+      transform: rotate(90deg);
+    }
+
+    .collapsible-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease-out;
+    }
+
+    .collapsible-content.expanded {
+      max-height: 500px;
+      overflow-y: auto;
+    }
   </style>
 </head>
 <body>
@@ -386,55 +426,79 @@
       </div>
 
       <div class="card">
+        <!-- IP Addresses (collapsible) -->
         <div class="section">
-          <div class="card-title">MAC Addresses</div>
-          <div class="list-box" id="macs-container">
-            {% if macs %}
-              {% for mac in macs %}
-              <div class="list-item" onclick="copyToClipboard('{{ mac }}', this)">{{ mac }}</div>
-              {% endfor %}
-            {% else %}
-              <div class="empty-state">No MAC addresses</div>
-            {% endif %}
+          <div class="collapsible-header" onclick="toggleSection('ips')">
+            <span class="expand-icon" id="ips-icon">▶</span>
+            <div class="card-title">IP Addresses</div>
+          </div>
+          <div class="collapsible-content" id="ips-content">
+            <div class="list-box" id="ips-container">
+              {% if ips %}
+                {% for ip in ips %}
+                <div class="list-item" onclick="copyToClipboard('{{ ip }}', this)">{{ ip }}</div>
+                {% endfor %}
+              {% else %}
+                <div class="empty-state">No IP addresses</div>
+              {% endif %}
+            </div>
           </div>
         </div>
 
+        <!-- MAC Addresses (collapsible) -->
         <div class="section">
-          <div class="card-title">Hostnames</div>
-          <div class="list-box" id="hostnames-container">
-            {% if hostnames %}
-              {% for hostname in hostnames %}
-              <div class="list-item" onclick="copyToClipboard('{{ hostname }}', this)">{{ hostname }}</div>
-              {% endfor %}
-            {% else %}
-              <div class="empty-state">No hostnames</div>
-            {% endif %}
+          <div class="collapsible-header" onclick="toggleSection('macs')">
+            <span class="expand-icon" id="macs-icon">▶</span>
+            <div class="card-title">MAC Addresses</div>
+          </div>
+          <div class="collapsible-content" id="macs-content">
+            <div class="list-box" id="macs-container">
+              {% if macs %}
+                {% for mac in macs %}
+                <div class="list-item" onclick="copyToClipboard('{{ mac }}', this)">{{ mac }}</div>
+                {% endfor %}
+              {% else %}
+                <div class="empty-state">No MAC addresses</div>
+              {% endif %}
+            </div>
           </div>
         </div>
 
+        <!-- Hostnames (collapsible) -->
         <div class="section">
-          <div class="card-title">IP Addresses</div>
-          <div class="list-box" id="ips-container">
-            {% if ips %}
-              {% for ip in ips %}
-              <div class="list-item" onclick="copyToClipboard('{{ ip }}', this)">{{ ip }}</div>
-              {% endfor %}
-            {% else %}
-              <div class="empty-state">No IP addresses</div>
-            {% endif %}
+          <div class="collapsible-header" onclick="toggleSection('hostnames')">
+            <span class="expand-icon" id="hostnames-icon">▶</span>
+            <div class="card-title">Hostnames</div>
+          </div>
+          <div class="collapsible-content" id="hostnames-content">
+            <div class="list-box" id="hostnames-container">
+              {% if hostnames %}
+                {% for hostname in hostnames %}
+                <div class="list-item" onclick="copyToClipboard('{{ hostname }}', this)">{{ hostname }}</div>
+                {% endfor %}
+              {% else %}
+                <div class="empty-state">No hostnames</div>
+              {% endif %}
+            </div>
           </div>
         </div>
 
+        <!-- Protocols (collapsible) -->
         <div class="section">
-          <div class="card-title">Protocols</div>
-          <div class="list-box" id="protocols-container">
-            {% if protocols %}
-              {% for protocol in protocols %}
-              <div class="list-item" onclick="copyToClipboard('{{ protocol }}', this)">{{ protocol }}</div>
-              {% endfor %}
-            {% else %}
-              <div class="empty-state">No protocols</div>
-            {% endif %}
+          <div class="collapsible-header" onclick="toggleSection('protocols')">
+            <span class="expand-icon" id="protocols-icon">▶</span>
+            <div class="card-title">Protocols</div>
+          </div>
+          <div class="collapsible-content" id="protocols-content">
+            <div class="list-box" id="protocols-container">
+              {% if protocols %}
+                {% for protocol in protocols %}
+                <div class="list-item" onclick="copyToClipboard('{{ protocol }}', this)">{{ protocol }}</div>
+                {% endfor %}
+              {% else %}
+                <div class="empty-state">No protocols</div>
+              {% endif %}
+            </div>
           </div>
         </div>
       </div>
@@ -462,6 +526,17 @@
       const url = new URL(window.location.href);
       url.searchParams.set('scan_interval', interval);
       window.location.href = url.toString();
+    }
+
+    // Toggle collapsible sections
+    function toggleSection(sectionId) {
+      const content = document.getElementById(sectionId + '-content');
+      const icon = document.getElementById(sectionId + '-icon');
+
+      if (content && icon) {
+        content.classList.toggle('expanded');
+        icon.classList.toggle('expanded');
+      }
     }
 
     // Filter nodes by type

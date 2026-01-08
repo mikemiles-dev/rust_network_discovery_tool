@@ -10,7 +10,6 @@ use std::net::Ipv4Addr;
 pub struct PacketBuilder;
 
 impl PacketBuilder {
-
     /// Create a basic TCP packet
     pub fn tcp_packet(
         src_mac: &str,
@@ -139,10 +138,14 @@ pub fn create_test_pcap(packets: Vec<Vec<u8>>) -> std::io::Result<tempfile::Name
     let temp_file = tempfile::NamedTempFile::new()?;
     let file = temp_file.reopen()?;
 
-    let mut pcap_writer = PcapWriter::with_header(file, PcapHeader {
-        datalink: pcap_file::DataLink::ETHERNET,
-        ..Default::default()
-    }).map_err(|e| std::io::Error::other(format!("Pcap write error: {}", e)))?;
+    let mut pcap_writer = PcapWriter::with_header(
+        file,
+        PcapHeader {
+            datalink: pcap_file::DataLink::ETHERNET,
+            ..Default::default()
+        },
+    )
+    .map_err(|e| std::io::Error::other(format!("Pcap write error: {}", e)))?;
 
     // Write packets
     for (i, packet_data) in packets.iter().enumerate() {
@@ -151,7 +154,8 @@ pub fn create_test_pcap(packets: Vec<Vec<u8>>) -> std::io::Result<tempfile::Name
             orig_len: packet_data.len() as u32,
             data: std::borrow::Cow::Borrowed(packet_data),
         };
-        pcap_writer.write_packet(&packet)
+        pcap_writer
+            .write_packet(&packet)
             .map_err(|e| std::io::Error::other(format!("Packet write error: {}", e)))?;
     }
 

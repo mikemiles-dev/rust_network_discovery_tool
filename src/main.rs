@@ -113,7 +113,10 @@ async fn main() -> io::Result<()> {
             }
         }
 
-        println!("\nImport complete: {} total packets processed", total_packets);
+        println!(
+            "\nImport complete: {} total packets processed",
+            total_packets
+        );
 
         // In batch mode, wait a moment for DB writes to complete, then exit
         if args.batch {
@@ -435,7 +438,7 @@ fn capture_packets(
 mod tests {
     use super::*;
     use crate::db::new_test_connection;
-    use crate::test_utils::{create_test_pcap, PacketBuilder};
+    use crate::test_utils::{PacketBuilder, create_test_pcap};
     use pnet::packet::ethernet::EthernetPacket;
 
     #[test]
@@ -511,11 +514,11 @@ mod tests {
     async fn test_integration_pcap_import_to_db() {
         // Create synthetic packets representing different types of traffic
         let packets = vec![
-            PacketBuilder::https_packet("192.168.1.100", "1.1.1.1"),    // Cloudflare
-            PacketBuilder::https_packet("192.168.1.100", "8.8.8.8"),    // Google DNS
+            PacketBuilder::https_packet("192.168.1.100", "1.1.1.1"), // Cloudflare
+            PacketBuilder::https_packet("192.168.1.100", "8.8.8.8"), // Google DNS
             PacketBuilder::http_packet("192.168.1.100", "142.250.185.46"), // Google
-            PacketBuilder::dns_packet("192.168.1.100", "8.8.4.4"),       // Google DNS
-            PacketBuilder::https_packet("192.168.1.101", "1.1.1.1"),    // Different local IP
+            PacketBuilder::dns_packet("192.168.1.100", "8.8.4.4"),   // Google DNS
+            PacketBuilder::https_packet("192.168.1.101", "1.1.1.1"), // Different local IP
         ];
 
         // Create pcap file
@@ -547,7 +550,10 @@ mod tests {
 
         // Verify data in database (Note: won't work with different in-memory DB)
         // This test verifies that pcap files can be processed without errors
-        println!("Successfully processed {} packets from pcap file", packet_count);
+        println!(
+            "Successfully processed {} packets from pcap file",
+            packet_count
+        );
     }
 
     #[test]
@@ -556,8 +562,8 @@ mod tests {
 
         // Test TCP packet (use unicast MACs - LSB of first octet must be 0)
         let tcp_packet = PacketBuilder::tcp_packet(
-            "aa:bb:cc:dd:ee:ff",  // 0xAA = 0b10101010, LSB=0, unicast ✓
-            "00:22:33:44:55:66",  // 0x00 = 0b00000000, LSB=0, unicast ✓
+            "aa:bb:cc:dd:ee:ff", // 0xAA = 0b10101010, LSB=0, unicast ✓
+            "00:22:33:44:55:66", // 0x00 = 0b00000000, LSB=0, unicast ✓
             "192.168.1.100",
             "8.8.8.8",
             12345,
@@ -590,4 +596,3 @@ mod tests {
         assert_eq!(count, 2);
     }
 }
-

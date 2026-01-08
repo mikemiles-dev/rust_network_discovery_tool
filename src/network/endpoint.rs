@@ -641,9 +641,11 @@ mod tests {
 
         // Verify endpoint exists
         let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM endpoints WHERE id = ?1", [endpoint_id], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT COUNT(*) FROM endpoints WHERE id = ?1",
+                [endpoint_id],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(count, 1);
     }
@@ -688,7 +690,8 @@ mod tests {
     fn test_is_broadcast_or_multicast_mac() {
         assert!(EndPoint::is_broadcast_or_multicast_mac("ff:ff:ff:ff:ff:ff"));
         assert!(EndPoint::is_broadcast_or_multicast_mac("01:00:5e:00:00:01"));
-        assert!(!EndPoint::is_broadcast_or_multicast_mac("00:11:22:33:44:55"));
+        assert!(!EndPoint::is_broadcast_or_multicast_mac(
+            "00:11:22:33:44:55"
+        ));
     }
 }
-
