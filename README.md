@@ -5,6 +5,41 @@ Rust Network Discovery Tool
 A lightweight network traffic monitoring tool that captures and visualizes network connections on your local network. Shows "what's talking to what" in an easy-to-use web interface.
 
 ## Features
+## Installation
+
+### Pre-built Binaries
+
+Download the latest release for your platform:
+
+- **macOS (Apple Silicon)**: [awareness-macos-aarch64.tar.gz](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/awareness-macos-aarch64.tar.gz)
+- **macOS (Intel)**: [awareness-macos-x86_64.tar.gz](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/awareness-macos-x86_64.tar.gz)
+- **Linux**: [awareness-linux-x86_64.tar.gz](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/awareness-linux-x86_64.tar.gz)
+- **Windows**: [awareness-windows-x86_64.zip](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/awareness-windows-x86_64.zip)
+
+#### macOS/Linux Installation
+
+```bash
+# Download and extract (adjust filename for your platform)
+tar -xzf awareness-macos-aarch64.tar.gz
+
+# Make executable
+chmod +x awareness
+
+# Move to PATH (optional)
+sudo mv awareness /usr/local/bin/
+
+# Run with sudo (required for packet capture)
+sudo awareness
+```
+
+#### Windows Installation
+
+1. Download and extract the ZIP file
+2. Install [Npcap](https://npcap.com/#download) (required for packet capture)
+3. Run as Administrator (required for packet capture)
+
+### Build from Source
+
 
 - **Smart Interface Filtering**: Automatically monitors only real network interfaces (skips loopback, Docker, VPN)
 - **Connection Deduplication**: Tracks unique connections instead of individual packets 
