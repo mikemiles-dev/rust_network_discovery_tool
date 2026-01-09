@@ -45,8 +45,9 @@ impl EndPointAttribute {
     ) -> Option<i64> {
         // Strategy: Match by MAC first (most reliable), then IP if no MAC
         // Never match by hostname alone (too unreliable - collisions common)
+        // CRITICAL: Prevent DHCP IP reuse from merging different physical devices
 
-        // Try 1: Match by MAC (best identifier)
+        // Try 1: Match by MAC (best identifier for physical devices)
         if let Some(ref mac_addr) = mac
             && let Ok(mut stmt) = conn.prepare(
                 "SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(mac) = LOWER(?1) LIMIT 1",
@@ -56,8 +57,11 @@ impl EndPointAttribute {
             return Some(id);
         }
 
-        // Try 2: Match by IP if no MAC match (less reliable - DHCP can reuse IPs)
-        if let Some(ref ip_addr) = ip
+        // Try 2: Match by IP ONLY if we don't have a MAC
+        // This prevents DHCP IP reuse from incorrectly merging different devices
+        // If we have a MAC but didn't match above, this is a new device
+        if mac.is_none()
+            && let Some(ref ip_addr) = ip
             && let Ok(mut stmt) = conn.prepare(
                 "SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(ip) = LOWER(?1) LIMIT 1",
             )

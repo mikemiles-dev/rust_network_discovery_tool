@@ -209,7 +209,8 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
     let rows = stmt
         .query_map([&current_node, &internal_minutes.to_string()], |row| {
             let header_protocol = row.get::<_, String>("header_protocol")?;
-            let sub_protocol = row.get::<_, Option<String>>("sub_protocol")?
+            let sub_protocol = row
+                .get::<_, Option<String>>("sub_protocol")?
                 .filter(|s| !s.is_empty())
                 .unwrap_or(header_protocol);
 
