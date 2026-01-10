@@ -388,61 +388,78 @@ fn resolve_identifier_to_endpoint_ids(conn: &Connection, identifier: &str) -> Ve
 }
 
 fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
-    let current_node = match current_node {
-        Some(hostname) => hostname,
-        None => get_hostname().unwrap(),
-    };
-
     let conn = new_connection();
 
-    // Resolve the current_node identifier to endpoint IDs
-    let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, &current_node);
+    // If no node specified, show all communications (overall network view)
+    // If node is specified, filter to only that endpoint's communications
+    let endpoint_ids = match current_node {
+        Some(hostname) => {
+            let ids = resolve_identifier_to_endpoint_ids(&conn, &hostname);
+            if ids.is_empty() {
+                return Vec::new();
+            }
+            Some(ids)
+        }
+        None => None, // None means show all endpoints
+    };
 
-    if endpoint_ids.is_empty() {
-        return Vec::new();
-    }
+    // Build query - either filtered by endpoint or show all
+    let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match &endpoint_ids {
+        Some(ids) => {
+            // Filter to specific endpoint(s)
+            let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let query = format!(
+                "SELECT
+                src_endpoint.name AS src_hostname,
+                dst_endpoint.name AS dst_hostname,
+                c.destination_port as dst_port,
+                c.ip_header_protocol as header_protocol,
+                c.sub_protocol,
+                (SELECT ip FROM endpoint_attributes WHERE endpoint_id = src_endpoint.id LIMIT 1) AS src_ip,
+                (SELECT ip FROM endpoint_attributes WHERE endpoint_id = dst_endpoint.id LIMIT 1) AS dst_ip
+                FROM communications AS c
+                LEFT JOIN endpoints AS src_endpoint ON c.src_endpoint_id = src_endpoint.id
+                LEFT JOIN endpoints AS dst_endpoint ON c.dst_endpoint_id = dst_endpoint.id
+                WHERE (c.src_endpoint_id IN ({}) OR c.dst_endpoint_id IN ({}))
+                AND c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
+                AND src_endpoint.name != '' AND dst_endpoint.name != ''
+                AND src_endpoint.name IS NOT NULL AND dst_endpoint.name IS NOT NULL",
+                placeholders, placeholders
+            );
 
-    // Build IN clause for endpoint IDs
-    let placeholders = endpoint_ids
-        .iter()
-        .map(|_| "?")
-        .collect::<Vec<_>>()
-        .join(",");
+            let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+            for id in ids {
+                params.push(Box::new(*id));
+            }
+            for id in ids {
+                params.push(Box::new(*id));
+            }
+            params.push(Box::new(internal_minutes));
+            (query, params)
+        }
+        None => {
+            // Show all communications (overall network view)
+            let query = "SELECT
+                src_endpoint.name AS src_hostname,
+                dst_endpoint.name AS dst_hostname,
+                c.destination_port as dst_port,
+                c.ip_header_protocol as header_protocol,
+                c.sub_protocol,
+                (SELECT ip FROM endpoint_attributes WHERE endpoint_id = src_endpoint.id LIMIT 1) AS src_ip,
+                (SELECT ip FROM endpoint_attributes WHERE endpoint_id = dst_endpoint.id LIMIT 1) AS dst_ip
+                FROM communications AS c
+                LEFT JOIN endpoints AS src_endpoint ON c.src_endpoint_id = src_endpoint.id
+                LEFT JOIN endpoints AS dst_endpoint ON c.dst_endpoint_id = dst_endpoint.id
+                WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
+                AND src_endpoint.name != '' AND dst_endpoint.name != ''
+                AND src_endpoint.name IS NOT NULL AND dst_endpoint.name IS NOT NULL".to_string();
 
-    let query = format!(
-        "
-    SELECT
-    src_endpoint.name AS src_hostname,
-    dst_endpoint.name AS dst_hostname,
-    c.destination_port as dst_port,
-    c.ip_header_protocol as header_protocol,
-    c.sub_protocol,
-    (SELECT ip FROM endpoint_attributes WHERE endpoint_id = src_endpoint.id LIMIT 1) AS src_ip,
-    (SELECT ip FROM endpoint_attributes WHERE endpoint_id = dst_endpoint.id LIMIT 1) AS dst_ip
-    FROM communications AS c
-    LEFT JOIN endpoints AS src_endpoint
-    ON c.src_endpoint_id = src_endpoint.id
-    LEFT JOIN endpoints AS dst_endpoint
-    ON c.dst_endpoint_id = dst_endpoint.id
-    WHERE (c.src_endpoint_id IN ({}) OR c.dst_endpoint_id IN ({}))
-    AND c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
-    AND src_endpoint.name != '' AND dst_endpoint.name != ''
-    AND src_endpoint.name IS NOT NULL AND dst_endpoint.name IS NOT NULL
-    ",
-        placeholders, placeholders
-    );
+            let params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(internal_minutes)];
+            (query, params)
+        }
+    };
 
     let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
-
-    // Build parameters: endpoint_ids twice (for src and dst) + internal_minutes
-    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    for id in &endpoint_ids {
-        params.push(Box::new(*id));
-    }
-    for id in &endpoint_ids {
-        params.push(Box::new(*id));
-    }
-    params.push(Box::new(internal_minutes));
 
     let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 

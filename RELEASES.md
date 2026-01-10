@@ -15,13 +15,24 @@
 ### Changed
 - Endpoint search now uses debouncing (150ms delay) for significantly improved performance and responsiveness
 - Graph filtering logic rewritten to directly apply filter criteria instead of reading DOM state
-- Endpoint slider now properly syncs with graph visualization
+- Endpoint slider behavior improved:
+  - When viewing overall network (no endpoint selected): Slider limits which endpoints appear on graph
+  - When viewing specific endpoint (clicked in sidebar): Slider is bypassed, showing ALL endpoints it communicates with
+  - This ensures you always see complete communication paths for selected endpoints
 - Filter logic ensures graph and sidebar list stay synchronized
 
 ### Fixed
 - Critical bug where graph filters were reading stale DOM state, causing incorrect filtering (e.g., api.anthropic.com disappearing when unchecking Printer filter)
+- Critical bug where graph always defaulted to showing only local machine communications, even when no endpoint was selected in URL
+  - Graph now shows ALL network communications when accessed without `?node=` parameter (overall network view)
+  - When `?node=endpoint` is in URL, graph filters to show only that endpoint's communications
+  - This fixes issue where endpoints like photos.local wouldn't appear on graph despite having recent activity
+- Critical bug where endpoint limit slider would hide communication partners when viewing a specific endpoint
+  - Previously, clicking an endpoint would show "No Communications Found" if its partners were filtered out by the slider
+  - Now, when viewing a specific endpoint, ALL its communication partners are shown regardless of slider setting
+  - Slider only applies to overall network view, not individual endpoint views
 - Endpoint name lookups now use optimized indexes for 10-50x faster performance
-- Graph now correctly respects both type filters and endpoint limit slider
+- Graph now correctly respects both type filters and endpoint limit slider in appropriate contexts
 - Endpoint resolution query optimized to return only most recently active endpoint when duplicates exist
 
 ### Performance

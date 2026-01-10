@@ -1261,43 +1261,75 @@
         return false;
       }
 
-      // Build set of endpoints that should be visible based on filters and limit
-      // This applies the same logic as the sidebar filtering
-      const limit = parseInt(localStorage.getItem('endpointLimit') || '20');
-      const searchTerm = document.getElementById('endpointSearchInput')?.value.trim().toLowerCase() || '';
+      // Check if a specific endpoint is selected from URL
+      // Only bypass slider when explicitly viewing a specific endpoint via URL parameter
+      const urlParams = new URLSearchParams(window.location.search);
+      const selectedEndpointFromUrl = urlParams.get('node');
+      const isEndpointSelected = selectedEndpointFromUrl !== null && selectedEndpointFromUrl !== '';
+
+      // Build set of endpoints that should be visible
       const visibleEndpointNames = new Set();
-      const endpointItems = document.querySelectorAll('#endpoints-container .list-item');
 
-      let visibleCount = 0;
-      endpointItems.forEach(item => {
-        const endpoint = item.textContent.toLowerCase();
-        let type = item.getAttribute('data-endpoint-type');
-        const ips = (item.getAttribute('data-endpoint-ips') || '').toLowerCase();
-        const macs = (item.getAttribute('data-endpoint-macs') || '').toLowerCase();
-        const endpointName = item.getAttribute('data-endpoint');
+      if (isEndpointSelected) {
+        // When viewing a specific endpoint: Show all endpoints it communicates with
+        // (ignore endpoint limit slider, only apply type filters)
+        cy.nodes().forEach(node => {
+          const nodeName = node.data('id');
+          let type = node.data('type');
 
-        // Check if matches search term
-        const matchesSearch = searchTerm === ''
-          || endpoint.includes(searchTerm)
-          || ips.includes(searchTerm)
-          || macs.includes(searchTerm);
+          // Treat null/undefined/empty as 'other'
+          if (!type || type === '') {
+            type = 'other';
+          }
 
-        // Treat null/undefined/empty as 'other'
-        if (!type || type === '') {
-          type = 'other';
+          // Only apply type filter, no endpoint limit
+          if (matchesTypeFilter(type)) {
+            visibleEndpointNames.add(nodeName);
+          }
+        });
+      } else {
+        // Overall network view: Apply both type filters AND endpoint limit
+        const limit = parseInt(localStorage.getItem('endpointLimit') || '20');
+        const searchTerm = document.getElementById('endpointSearchInput')?.value.trim().toLowerCase() || '';
+
+        // Build a list of graph nodes with their sidebar data
+        const nodeData = [];
+        cy.nodes().forEach(node => {
+          const nodeName = node.data('id');
+          let type = node.data('type');
+
+          // Treat null/undefined/empty as 'other'
+          if (!type || type === '') {
+            type = 'other';
+          }
+
+          // Find corresponding sidebar item for search data
+          const sidebarItem = document.querySelector(`#endpoints-container .list-item[data-endpoint="${nodeName}"]`);
+          const endpointText = sidebarItem ? sidebarItem.textContent.toLowerCase() : nodeName.toLowerCase();
+          const ips = sidebarItem ? (sidebarItem.getAttribute('data-endpoint-ips') || '').toLowerCase() : '';
+          const macs = sidebarItem ? (sidebarItem.getAttribute('data-endpoint-macs') || '').toLowerCase() : '';
+
+          // Check if matches search term
+          const matchesSearch = searchTerm === ''
+            || endpointText.includes(searchTerm)
+            || ips.includes(searchTerm)
+            || macs.includes(searchTerm);
+
+          // Check if matches type filter
+          const matchesType = matchesTypeFilter(type);
+
+          if (matchesSearch && matchesType) {
+            nodeData.push({ name: nodeName, type: type });
+          }
+        });
+
+        // Apply limit to the filtered list
+        for (let i = 0; i < Math.min(limit, nodeData.length); i++) {
+          visibleEndpointNames.add(nodeData[i].name);
         }
+      }
 
-        // Check if matches type filter
-        const matchesType = matchesTypeFilter(type);
-
-        // Add to visible set if matches and within limit
-        if (matchesSearch && matchesType && visibleCount < limit) {
-          visibleEndpointNames.add(endpointName);
-          visibleCount++;
-        }
-      });
-
-      // Filter nodes in graph
+      // Filter nodes in graph based on the visible set
       cy.nodes().forEach(node => {
         let type = node.data('type');
         const nodeName = node.data('id');
@@ -1310,7 +1342,7 @@
         // Check type filter
         const typeMatch = matchesTypeFilter(type);
 
-        // Check if endpoint is in the visible list (respects endpoint limit slider)
+        // Check if endpoint is in the visible list
         const inVisibleList = visibleEndpointNames.has(nodeName);
 
         // Apply filter: must match type AND be in visible list
