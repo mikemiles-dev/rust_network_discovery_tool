@@ -1,5 +1,24 @@
 # Release Notes
 
+## [0.2.5]
+
+### Added
+- Soundbar device detection (Sonos, Bose, Yamaha, Samsung, LG, Vizio, JBL)
+- Appliance device detection (dishwashers, washing machines, dryers, refrigerators, ovens)
+- Device classification now checks mDNS service types first for more reliable smart device identification
+- Filter UI now includes 🔊 Soundbar and 🏠 Appliance categories
+- Flexible endpoint identifier resolution - URLs now work with any identifier (hostname, IP, or MAC)
+
+### Fixed
+- URL bookmarks no longer break when endpoint names change from IP to hostname after DNS/mDNS resolution
+- Endpoint lookup now searches across all identifiers (name, IP, MAC) instead of just the endpoint name field
+- Parameter count mismatch in port query that caused panics
+- All endpoint detail queries now use unified identifier resolution for consistency
+
+### Changed
+- Endpoint queries refactored to use centralized `resolve_identifier_to_endpoint_ids()` function
+- Better handling of endpoint identity changes over time
+
 ## [0.2.4]
 
 ### Fix
