@@ -286,6 +286,41 @@
       50% { opacity: 0.3; }
     }
 
+    .stop-refresh-btn {
+      padding: 0.25rem 0.5rem;
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      color: #ef4444;
+      border-radius: 0.375rem;
+      cursor: pointer;
+      font-size: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      transition: all 0.2s ease;
+    }
+
+    .stop-refresh-btn:hover {
+      background: rgba(239, 68, 68, 0.3);
+      border-color: #ef4444;
+      transform: scale(1.05);
+    }
+
+    .stop-refresh-btn:active {
+      transform: scale(0.95);
+    }
+
+    .stop-refresh-btn.play {
+      background: rgba(34, 197, 94, 0.2);
+      border: 1px solid rgba(34, 197, 94, 0.5);
+      color: #22c55e;
+    }
+
+    .stop-refresh-btn.play:hover {
+      background: rgba(34, 197, 94, 0.3);
+      border-color: #22c55e;
+    }
+
     /* Scrollbar styling */
     ::-webkit-scrollbar {
       width: 8px;
@@ -497,6 +532,9 @@
             <option value="60">1 minute</option>
           </select>
           <div class="pulse"></div>
+          <button id="refreshToggleBtn" onclick="toggleRefresh()" class="stop-refresh-btn" title="Stop auto-refresh">
+            ⏹️ Stop
+          </button>
         </div>
       </div>
     </div>
@@ -510,41 +548,41 @@
         <!-- Filters -->
         <div style="display: flex; flex-direction: column; gap: 0.375rem; margin-top: 0.75rem; margin-bottom: 0.5rem;">
           <div style="display: flex; gap: 0.375rem; flex-wrap: nowrap;">
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(45, 27, 78, 0.5); border-radius: 0.375rem; border: 1px solid #8b5cf6; white-space: nowrap;">
               <input type="checkbox" id="filterLocal" checked onchange="applyFilters()" style="cursor: pointer;">
               <span>💻 Local</span>
             </label>
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(66, 32, 6, 0.5); border-radius: 0.375rem; border: 1px solid #f59e0b; white-space: nowrap;">
               <input type="checkbox" id="filterGateway" checked onchange="applyFilters()" style="cursor: pointer;">
               <span>🌐 Gateway</span>
             </label>
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(8, 51, 68, 0.5); border-radius: 0.375rem; border: 1px solid #06b6d4; white-space: nowrap;">
               <input type="checkbox" id="filterInternet" checked onchange="applyFilters()" style="cursor: pointer;">
               <span>🌍 Internet</span>
             </label>
           </div>
           <div style="display: flex; gap: 0.375rem; flex-wrap: wrap;">
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 58, 40, 0.5); border-radius: 0.375rem; border: 1px solid #10b981; white-space: nowrap;">
               <input type="checkbox" id="filterPrinter" checked onchange="applyFilters()" style="cursor: pointer;">
               <span>🖨️ Printer</span>
             </label>
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(60, 31, 95, 0.5); border-radius: 0.375rem; border: 1px solid #c084fc; white-space: nowrap;">
               <input type="checkbox" id="filterTv" checked onchange="applyFilters()" style="cursor: pointer;">
               <span>📺 TV</span>
             </label>
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(92, 28, 46, 0.5); border-radius: 0.375rem; border: 1px solid #f43f5e; white-space: nowrap;">
               <input type="checkbox" id="filterGaming" checked onchange="applyFilters()" style="cursor: pointer;">
               <span>🎮 Gaming</span>
             </label>
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.5); border-radius: 0.375rem; border: 1px solid #94a3b8; white-space: nowrap;">
               <input type="checkbox" id="filterVirtualization" checked onchange="applyFilters()" style="cursor: pointer;">
               <span>🖥 VM</span>
             </label>
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(49, 46, 129, 0.5); border-radius: 0.375rem; border: 1px solid #818cf8; white-space: nowrap;">
               <input type="checkbox" id="filterSoundbar" checked onchange="applyFilters()" style="cursor: pointer;">
               <span>🔊 Soundbar</span>
             </label>
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(66, 32, 6, 0.5); border-radius: 0.375rem; border: 1px solid #fb923c; white-space: nowrap;">
               <input type="checkbox" id="filterAppliance" checked onchange="applyFilters()" style="cursor: pointer;">
               <span>🏠 Appliance</span>
             </label>
@@ -580,6 +618,13 @@
 
     <main id="graph-container">
       <div id="cy"></div>
+
+      <!-- No Communications Message -->
+      <div id="no-communications-msg" style="display: none; position: absolute; top: 50%; left: calc(50% - 160px); transform: translate(-50%, -50%); text-align: center; color: var(--text-secondary); pointer-events: none;">
+        <div style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;">📡</div>
+        <div style="font-size: 1.25rem; font-weight: 500; margin-bottom: 0.5rem;">No Communications Found</div>
+        <div style="font-size: 0.875rem; opacity: 0.7;">No network activity detected for this endpoint in the selected time range</div>
+      </div>
 
       <!-- Protocols Overlay -->
       <div class="protocols-overlay">
@@ -1131,6 +1176,9 @@
 
       // Update visible protocols in overlay
       updateVisibleProtocols();
+
+      // Check if any communications are visible after filtering
+      checkForCommunications();
     }
 
     // Filter hostnames list in right pane
@@ -1560,8 +1608,28 @@
       ],
     });
 
+    // Check if there are any visible communications and show message if empty
+    function checkForCommunications() {
+      const noCommsMsg = document.getElementById('no-communications-msg');
+
+      // Count visible edges
+      let visibleEdges = 0;
+      cy.edges().forEach(edge => {
+        if (edge.style('display') === 'element') {
+          visibleEdges++;
+        }
+      });
+
+      if (visibleEdges === 0) {
+        noCommsMsg.style.display = 'block';
+      } else {
+        noCommsMsg.style.display = 'none';
+      }
+    }
+
     // Initialize visible protocols on page load
     updateVisibleProtocols();
+    checkForCommunications();
 
     // Node click handler
     cy.on('tap', 'node', function(event) {
@@ -1588,18 +1656,43 @@
         refreshIntervalId = null;
       }
 
-      // Update pulse indicator
+      // Update pulse indicator and button state
       const pulse = document.querySelector('.pulse');
+      const toggleBtn = document.getElementById('refreshToggleBtn');
 
       if (seconds == 0) {
         pulse.style.display = 'none';
+        toggleBtn.innerHTML = '▶️ Play';
+        toggleBtn.classList.add('play');
+        toggleBtn.title = 'Start auto-refresh';
       } else {
         pulse.style.display = 'block';
+        toggleBtn.innerHTML = '⏹️ Stop';
+        toggleBtn.classList.remove('play');
+        toggleBtn.title = 'Stop auto-refresh';
 
         // Set new interval
         refreshIntervalId = setInterval(() => {
           window.location.reload();
         }, seconds * 1000);
+      }
+    }
+
+    // Toggle auto-refresh on/off
+    function toggleRefresh() {
+      const refreshSelect = document.getElementById('refreshInterval');
+      const currentValue = refreshSelect.value;
+
+      if (currentValue == '0') {
+        // Currently stopped, start with default 5 seconds
+        const lastInterval = localStorage.getItem('lastRefreshInterval') || '5';
+        refreshSelect.value = lastInterval;
+        updateRefreshInterval(lastInterval);
+      } else {
+        // Currently running, stop it
+        localStorage.setItem('lastRefreshInterval', currentValue);
+        refreshSelect.value = '0';
+        updateRefreshInterval('0');
       }
     }
 
