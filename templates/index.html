@@ -499,7 +499,7 @@
           <div class="list-item {% if node == selected_node %}selected{% endif %}"
                onclick="selectNode('{{ node | safe }}')"
                data-endpoint="{{ node | safe }}">
-            {% set node_type = endpoint_types | get(key=node) %}{% if node == hostname %}🖥️{% elif node_type == "gateway" %}🌐{% elif node_type == "internet" %}🌍{% else %}💻{% endif %} {{ node | safe }}
+            {% if node == hostname %}🖥️{% elif endpoint_types[node] == "gateway" %}🌐{% elif endpoint_types[node] == "internet" %}🌍{% else %}💻{% endif %} {{ node | safe }}
           </div>
           {% endfor %}
         </div>
@@ -894,7 +894,7 @@
           { data: {
               id: '{{ endpoint | safe }}',
               {% if endpoint == hostname %}type: 'local',
-              {% elif endpoint_types[endpoint] %}type: '{{ endpoint_types[endpoint] }}',
+              {% else %}type: '{{ endpoint_types[endpoint] }}',
               {% endif %}
               {% if endpoint == selected_node %}selected: true,{% endif %}
             }

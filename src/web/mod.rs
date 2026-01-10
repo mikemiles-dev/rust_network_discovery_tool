@@ -477,6 +477,14 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     for (endpoint, type_str) in dropdown_types {
         endpoint_types.entry(endpoint).or_insert(type_str);
     }
+    // Ensure all dropdown endpoints have a type (default to "device" if not classified)
+    for endpoint in &dropdown_endpoints {
+        endpoint_types.entry(endpoint.clone()).or_insert("device");
+    }
+    // Also ensure all endpoints from communications have a type
+    for endpoint in &endpoints {
+        endpoint_types.entry(endpoint.clone()).or_insert("device");
+    }
     let (ips, macs, hostnames) = get_all_ips_macs_and_hostnames_from_single_hostname(
         selected_endpoint.clone(),
         query.scan_interval.unwrap_or(60),
