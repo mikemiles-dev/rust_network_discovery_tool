@@ -241,12 +241,14 @@ fn get_endpoint_ips_and_macs(endpoints: &[String]) -> HashMap<String, (Vec<Strin
 
                 for (ip, mac) in rows.flatten() {
                     if let Some(ip_str) = ip
-                        && !ip_str.is_empty() && !ips.contains(&ip_str)
+                        && !ip_str.is_empty()
+                        && !ips.contains(&ip_str)
                     {
                         ips.push(ip_str);
                     }
                     if let Some(mac_str) = mac
-                        && !mac_str.is_empty() && !macs.contains(&mac_str)
+                        && !mac_str.is_empty()
+                        && !macs.contains(&mac_str)
                     {
                         macs.push(mac_str);
                     }
@@ -352,8 +354,15 @@ fn resolve_identifier_to_endpoint_ids(conn: &Connection, identifier: &str) -> Ve
     let mut endpoint_ids = Vec::new();
 
     // Try matching by endpoint name first (exact match has priority)
-    if let Ok(mut stmt) = conn.prepare("SELECT id FROM endpoints WHERE LOWER(name) = LOWER(?1)")
-        && let Ok(rows) = stmt.query_map([identifier], |row| row.get::<_, i64>(0))
+    // If there are multiple endpoints with the same name, return only the most recently active one
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT e.id FROM endpoints e
+         LEFT JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
+         WHERE LOWER(e.name) = LOWER(?1)
+         GROUP BY e.id
+         ORDER BY MAX(c.last_seen_at) DESC
+         LIMIT 1",
+    ) && let Ok(rows) = stmt.query_map([identifier], |row| row.get::<_, i64>(0))
     {
         endpoint_ids.extend(rows.flatten());
     }
@@ -361,8 +370,6 @@ fn resolve_identifier_to_endpoint_ids(conn: &Connection, identifier: &str) -> Ve
     // If we found an exact name match, return only that endpoint
     // This prevents IP/MAC conflicts where multiple devices shared the same IP over time
     if !endpoint_ids.is_empty() {
-        endpoint_ids.sort_unstable();
-        endpoint_ids.dedup();
         return endpoint_ids;
     }
 

@@ -857,6 +857,9 @@
           }
         }
       });
+
+      // Update the graph to match the limited endpoint list
+      applyFilters(true);
     }
 
     function selectScanInterval(interval) {
@@ -1197,9 +1200,22 @@
         window.history.replaceState({}, '', url);
       }
 
+      // Get list of visible endpoints in sidebar (after limit is applied)
+      const visibleEndpointNames = new Set();
+      const endpointItems = document.querySelectorAll('#endpoints-container .list-item');
+      endpointItems.forEach(item => {
+        if (item.style.display !== 'none') {
+          const endpointName = item.getAttribute('data-endpoint');
+          if (endpointName) {
+            visibleEndpointNames.add(endpointName);
+          }
+        }
+      });
+
       // Filter nodes in graph
       cy.nodes().forEach(node => {
         let type = node.data('type');
+        const nodeName = node.data('id');
 
         // Treat null/undefined/empty as 'other'
         if (!type || type === '') {
@@ -1220,8 +1236,11 @@
         else if (type === 'appliance' && showAppliance) typeMatch = true;
         else if (type === 'other' && showOther) typeMatch = true;
 
-        // Apply filter
-        if (typeMatch) {
+        // Check if endpoint is in the visible list (respects endpoint limit slider)
+        const inVisibleList = visibleEndpointNames.has(nodeName);
+
+        // Apply filter: must match type AND be in visible list
+        if (typeMatch && inVisibleList) {
           node.style('display', 'element');
         } else {
           node.style('display', 'none');
