@@ -62,16 +62,16 @@ impl Communication {
 
         // Clear MAC addresses for internet traffic to prevent grouping remote endpoints under gateway MAC
         // For outbound traffic (local → internet): clear destination_mac
-        if let Some(ref dst_ip) = communication.destination_ip {
-            if !EndPoint::is_on_local_network(dst_ip) {
-                communication.destination_mac = None;
-            }
+        if let Some(ref dst_ip) = communication.destination_ip
+            && !EndPoint::is_on_local_network(dst_ip)
+        {
+            communication.destination_mac = None;
         }
         // For inbound traffic (internet → local): clear source_mac
-        if let Some(ref src_ip) = communication.source_ip {
-            if !EndPoint::is_on_local_network(src_ip) {
-                communication.source_mac = None;
-            }
+        if let Some(ref src_ip) = communication.source_ip
+            && !EndPoint::is_on_local_network(src_ip)
+        {
+            communication.source_mac = None;
         }
 
         communication

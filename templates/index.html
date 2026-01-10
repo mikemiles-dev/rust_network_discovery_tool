@@ -104,7 +104,7 @@
 
     /* Sidebar */
     .sidebar {
-      width: 320px;
+      width: 360px;
       background: rgba(30, 41, 59, 0.85);
       backdrop-filter: blur(12px);
       border-right: 1px solid rgba(51, 65, 85, 0.6);
@@ -508,12 +508,16 @@
         <div class="card-title" style="margin-bottom: 0; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(51, 65, 85, 0.6);">Endpoints</div>
 
         <!-- Filters -->
-        <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
-          <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; cursor: pointer; padding: 0.25rem 0.5rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6);">
+        <div style="display: flex; gap: 0.375rem; margin-top: 0.75rem; margin-bottom: 0.5rem; flex-wrap: nowrap;">
+          <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+            <input type="checkbox" id="filterLocal" checked onchange="applyFilters()" style="cursor: pointer;">
+            <span>💻 Local</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
             <input type="checkbox" id="filterGateway" checked onchange="applyFilters()" style="cursor: pointer;">
             <span>🌐 Gateway</span>
           </label>
-          <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; cursor: pointer; padding: 0.25rem 0.5rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6);">
+          <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
             <input type="checkbox" id="filterInternet" checked onchange="applyFilters()" style="cursor: pointer;">
             <span>🌍 Internet</span>
           </label>
@@ -560,6 +564,7 @@
             <div class="stat-badge">IPs: <span class="stat-number">{{ ips|length }}</span></div>
             <div class="stat-badge">MACs: <span class="stat-number">{{ macs|length }}</span></div>
             <div class="stat-badge">Hosts: <span class="stat-number">{{ hostnames|length }}</span></div>
+            <div class="stat-badge">Ports: <span class="stat-number">{{ ports|length }}</span></div>
             <div class="stat-badge">Protocols: <span class="stat-number">{{ protocols|length }}</span></div>
           </div>
           <div class="stats" style="margin-top: 0.5rem;">
@@ -631,6 +636,25 @@
             <div class="empty-state">No MAC addresses</div>
           {% endif %}
         </div>
+
+        <!-- Ports -->
+        <div class="overlay-header">
+          Ports
+        </div>
+        <div style="margin-bottom: 0.75rem;">
+          <input type="text" id="portsListSearch" placeholder="Filter ports..."
+                 oninput="filterPortsList(this.value)"
+                 style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
+        </div>
+        <div class="overlay-hostnames" id="ports-container">
+          {% if ports %}
+            {% for port in ports %}
+            <div class="hostname-item" onclick="copyToClipboard('{{ port | safe }}', this)">{{ port | safe }}</div>
+            {% endfor %}
+          {% else %}
+            <div class="empty-state">No ports</div>
+          {% endif %}
+        </div>
       </div>
     </main>
   </div>
@@ -644,11 +668,23 @@
     }
 
     // Filter endpoints list in sidebar
-    function filterEndpointsList(searchTerm) {
+    function filterEndpointsList(searchTerm, skipUrlUpdate = false) {
       const normalizedSearch = searchTerm.trim().toLowerCase();
       const endpointItems = document.querySelectorAll('#endpoints-container .list-item');
 
+      // Save to URL parameters
+      if (!skipUrlUpdate) {
+        const url = new URL(window.location.href);
+        if (normalizedSearch) {
+          url.searchParams.set('filter_endpoints', searchTerm);
+        } else {
+          url.searchParams.delete('filter_endpoints');
+        }
+        window.history.replaceState({}, '', url);
+      }
+
       // Get current filter states
+      const showLocal = document.getElementById('filterLocal').checked;
       const showGateway = document.getElementById('filterGateway').checked;
       const showInternet = document.getElementById('filterInternet').checked;
 
@@ -661,7 +697,8 @@
 
         // Check if matches type filter
         let matchesType = true;
-        if (type === 'gateway' && !showGateway) matchesType = false;
+        if (type === 'local' && !showLocal) matchesType = false;
+        else if (type === 'gateway' && !showGateway) matchesType = false;
         else if (type === 'internet' && !showInternet) matchesType = false;
 
         // Show only if matches both search AND type filter
@@ -676,7 +713,11 @@
     function updateEndpointLimit(value) {
       document.getElementById('endpointLimitValue').textContent = value;
       localStorage.setItem('endpointLimit', value);
-      applyEndpointLimit();
+
+      // Save to URL parameters and trigger immediate reload
+      const url = new URL(window.location.href);
+      url.searchParams.set('endpoint_limit', value);
+      window.location.href = url.toString();
     }
 
     // Apply endpoint limit to visible items
@@ -730,12 +771,18 @@
 
       // Restore filter states from URL
       const urlParams = new URLSearchParams(window.location.search);
+      const filterLocal = urlParams.get('filter_local');
       const filterGateway = urlParams.get('filter_gateway');
       const filterInternet = urlParams.get('filter_internet');
 
       // Set checkbox states (default to checked if not specified)
+      const localCheckbox = document.getElementById('filterLocal');
       const gatewayCheckbox = document.getElementById('filterGateway');
       const internetCheckbox = document.getElementById('filterInternet');
+
+      if (localCheckbox && filterLocal !== null) {
+        localCheckbox.checked = filterLocal === '1';
+      }
 
       if (gatewayCheckbox && filterGateway !== null) {
         gatewayCheckbox.checked = filterGateway === '1';
@@ -745,14 +792,81 @@
         internetCheckbox.checked = filterInternet === '1';
       }
 
-      // Restore endpoint limit from localStorage
-      const savedLimit = localStorage.getItem('endpointLimit') || '20';
+      // Restore endpoint limit from URL or localStorage
+      const urlParams2 = new URLSearchParams(window.location.search);
+      const urlLimit = urlParams2.get('endpoint_limit');
+      const savedLimit = urlLimit || localStorage.getItem('endpointLimit') || '20';
       const limitSlider = document.getElementById('endpointLimitSlider');
       const limitValue = document.getElementById('endpointLimitValue');
 
       if (limitSlider && limitValue) {
         limitSlider.value = savedLimit;
         limitValue.textContent = savedLimit;
+        // Also save to localStorage if it came from URL
+        if (urlLimit) {
+          localStorage.setItem('endpointLimit', urlLimit);
+        }
+      }
+
+      // Restore endpoint search filter from URL
+      const filterEndpointsValue = urlParams.get('filter_endpoints');
+      if (filterEndpointsValue) {
+        const endpointsInput = document.getElementById('endpointSearchInput');
+        if (endpointsInput) {
+          endpointsInput.value = filterEndpointsValue;
+          filterEndpointsList(filterEndpointsValue, true);
+        }
+      }
+
+      // Restore right pane search filters from URL
+      const filterHostnamesValue = urlParams.get('filter_hostnames');
+      const filterIpsValue = urlParams.get('filter_ips');
+      const filterMacsValue = urlParams.get('filter_macs');
+      const filterPortsValue = urlParams.get('filter_ports');
+
+      if (filterHostnamesValue) {
+        const hostnamesInput = document.getElementById('hostnamesListSearch');
+        if (hostnamesInput) {
+          hostnamesInput.value = filterHostnamesValue;
+          filterHostnamesList(filterHostnamesValue, true);
+        }
+      }
+
+      if (filterIpsValue) {
+        const ipsInput = document.getElementById('ipsListSearch');
+        if (ipsInput) {
+          ipsInput.value = filterIpsValue;
+          filterIpsList(filterIpsValue, true);
+        }
+      }
+
+      if (filterMacsValue) {
+        const macsInput = document.getElementById('macsListSearch');
+        if (macsInput) {
+          macsInput.value = filterMacsValue;
+          filterMacsList(filterMacsValue, true);
+        }
+      }
+
+      if (filterPortsValue) {
+        const portsInput = document.getElementById('portsListSearch');
+        if (portsInput) {
+          portsInput.value = filterPortsValue;
+          filterPortsList(filterPortsValue, true);
+        }
+      }
+
+      // Restore protocol selection from URL
+      const protocolValue = urlParams.get('protocol');
+      if (protocolValue && typeof cy !== 'undefined') {
+        selectedProtocol = protocolValue;
+        // Wait for protocol badges to be rendered, then apply filter
+        setTimeout(() => {
+          const protocolBadge = document.querySelector(`.protocol-badge[data-protocol="${protocolValue}"]`);
+          if (protocolBadge) {
+            filterByProtocol(protocolValue, protocolBadge, true);
+          }
+        }, 100);
       }
 
       // Apply filters on page load (skip URL update to avoid redundant history)
@@ -854,12 +968,14 @@
     // Filter nodes by type
     function applyFilters(skipUrlUpdate = false) {
       // Get type filter states
+      const showLocal = document.getElementById('filterLocal').checked;
       const showGateway = document.getElementById('filterGateway').checked;
       const showInternet = document.getElementById('filterInternet').checked;
 
       // Save filter state to URL
       if (!skipUrlUpdate) {
         const url = new URL(window.location.href);
+        url.searchParams.set('filter_local', showLocal ? '1' : '0');
         url.searchParams.set('filter_gateway', showGateway ? '1' : '0');
         url.searchParams.set('filter_internet', showInternet ? '1' : '0');
         window.history.replaceState({}, '', url);
@@ -871,7 +987,8 @@
 
         // Check type filter
         let typeMatch = true;
-        if (type === 'gateway' && !showGateway) typeMatch = false;
+        if (type === 'local' && !showLocal) typeMatch = false;
+        else if (type === 'gateway' && !showGateway) typeMatch = false;
         else if (type === 'internet' && !showInternet) typeMatch = false;
 
         // Apply filter
@@ -892,7 +1009,7 @@
       // Filter endpoints in sidebar list (reapply search filter to respect type filters)
       const searchInput = document.getElementById('endpointSearchInput');
       if (searchInput) {
-        filterEndpointsList(searchInput.value);
+        filterEndpointsList(searchInput.value, true);
       }
 
       // Filter IPs and hostnames in endpoint details based on internet filter
@@ -923,9 +1040,20 @@
     }
 
     // Filter hostnames list in right pane
-    function filterHostnamesList(searchTerm) {
+    function filterHostnamesList(searchTerm, skipUrlUpdate = false) {
       const normalizedSearch = searchTerm.trim().toLowerCase();
       const hostnameItems = document.querySelectorAll('#hostnames-container .hostname-item');
+
+      // Save to URL parameters
+      if (!skipUrlUpdate) {
+        const url = new URL(window.location.href);
+        if (normalizedSearch) {
+          url.searchParams.set('filter_hostnames', searchTerm);
+        } else {
+          url.searchParams.delete('filter_hostnames');
+        }
+        window.history.replaceState({}, '', url);
+      }
 
       hostnameItems.forEach(item => {
         const hostname = item.textContent.toLowerCase();
@@ -938,9 +1066,20 @@
     }
 
     // Filter IPs list in right pane
-    function filterIpsList(searchTerm) {
+    function filterIpsList(searchTerm, skipUrlUpdate = false) {
       const normalizedSearch = searchTerm.trim().toLowerCase();
       const ipItems = document.querySelectorAll('#ips-container .hostname-item');
+
+      // Save to URL parameters
+      if (!skipUrlUpdate) {
+        const url = new URL(window.location.href);
+        if (normalizedSearch) {
+          url.searchParams.set('filter_ips', searchTerm);
+        } else {
+          url.searchParams.delete('filter_ips');
+        }
+        window.history.replaceState({}, '', url);
+      }
 
       ipItems.forEach(item => {
         const ip = item.textContent.toLowerCase();
@@ -953,9 +1092,20 @@
     }
 
     // Filter MACs list in right pane
-    function filterMacsList(searchTerm) {
+    function filterMacsList(searchTerm, skipUrlUpdate = false) {
       const normalizedSearch = searchTerm.trim().toLowerCase();
       const macItems = document.querySelectorAll('#macs-container .hostname-item');
+
+      // Save to URL parameters
+      if (!skipUrlUpdate) {
+        const url = new URL(window.location.href);
+        if (normalizedSearch) {
+          url.searchParams.set('filter_macs', searchTerm);
+        } else {
+          url.searchParams.delete('filter_macs');
+        }
+        window.history.replaceState({}, '', url);
+      }
 
       macItems.forEach(item => {
         const mac = item.textContent.toLowerCase();
@@ -967,12 +1117,45 @@
       });
     }
 
+    // Filter ports list in right pane
+    function filterPortsList(searchTerm, skipUrlUpdate = false) {
+      const normalizedSearch = searchTerm.trim().toLowerCase();
+      const portItems = document.querySelectorAll('#ports-container .hostname-item');
+
+      // Save to URL parameters
+      if (!skipUrlUpdate) {
+        const url = new URL(window.location.href);
+        if (normalizedSearch) {
+          url.searchParams.set('filter_ports', searchTerm);
+        } else {
+          url.searchParams.delete('filter_ports');
+        }
+        window.history.replaceState({}, '', url);
+      }
+
+      portItems.forEach(item => {
+        const port = item.textContent.toLowerCase();
+        if (normalizedSearch === '' || port.includes(normalizedSearch)) {
+          item.style.display = 'block';
+        } else {
+          item.style.display = 'none';
+        }
+      });
+    }
+
     // Global variable to track selected protocol
     let selectedProtocol = null;
 
     // Filter graph by protocol
-    function filterByProtocol(protocol, element) {
+    function filterByProtocol(protocol, element, skipUrlUpdate = false) {
       selectedProtocol = protocol;
+
+      // Save to URL parameters
+      if (!skipUrlUpdate) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('protocol', protocol);
+        window.history.replaceState({}, '', url);
+      }
 
       // Find all nodes that communicate with this protocol
       const relevantNodeIds = new Set();
@@ -1023,6 +1206,11 @@
     // Clear protocol filter
     function clearProtocolFilter() {
       selectedProtocol = null;
+
+      // Remove from URL parameters
+      const url = new URL(window.location.href);
+      url.searchParams.delete('protocol');
+      window.history.replaceState({}, '', url);
 
       // Reset all nodes and edges to visible
       cy.nodes().forEach(node => {

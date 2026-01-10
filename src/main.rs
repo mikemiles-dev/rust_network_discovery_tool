@@ -303,13 +303,17 @@ async fn main() -> io::Result<()> {
             // On Unix/Linux/macOS, use stricter filtering
             #[cfg(not(target_os = "windows"))]
             {
-                // Skip loopback, docker, virtual interfaces, etc.
+                // Skip loopback, docker, virtual interfaces, VPN tunnels, and macOS-specific interfaces
                 !name.starts_with("lo")
                     && !name.starts_with("docker")
                     && !name.starts_with("veth")
                     && !name.starts_with("br-")
+                    && !name.starts_with("bridge")
                     && !name.starts_with("vmnet")
                     && !name.starts_with("vbox")
+                    && !name.starts_with("utun")     // VPN/tunnel interfaces
+                    && !name.starts_with("awdl")     // Apple Wireless Direct Link (AirDrop)
+                    && !name.starts_with("llw")      // Low Latency WLAN
                     && !name.contains("virtual")
                     && iface.is_up()
                     && !iface.ips.is_empty() // Must have an IP address

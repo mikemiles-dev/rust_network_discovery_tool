@@ -1,5 +1,14 @@
 # Release Notes
 
+## [0.2.3]
+
+### Fixes
+ - Sliders auto refresh
+ - Incorrect interface monitoring
+ 
+### Added
+ - UI Ports
+
 ## [0.2.2]
 ### Added
  - UI Slider for Endpoints

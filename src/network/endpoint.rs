@@ -68,10 +68,10 @@ impl EndPoint {
         }
 
         // Check if hostname indicates a router/gateway
-        if let Some(ref hostname_str) = hostname {
-            if Self::is_router_hostname(hostname_str) {
-                return Some(CLASSIFICATION_GATEWAY);
-            }
+        if let Some(ref hostname_str) = hostname
+            && Self::is_router_hostname(hostname_str)
+        {
+            return Some(CLASSIFICATION_GATEWAY);
         }
 
         // Local network device, no special classification
@@ -82,32 +82,41 @@ impl EndPoint {
     fn is_common_router_ip(ip: &str) -> bool {
         matches!(
             ip,
-            "192.168.0.1" | "192.168.1.1" | "192.168.2.1" | "192.168.1.254" |
-            "10.0.0.1" | "10.0.1.1" | "10.1.1.1" | "10.10.1.1" |
-            "172.16.0.1" | "172.16.1.1" |
-            "192.168.0.254" | "192.168.1.253" |
-            "192.168.100.1" | "192.168.254.254"
+            "192.168.0.1"
+                | "192.168.1.1"
+                | "192.168.2.1"
+                | "192.168.1.254"
+                | "10.0.0.1"
+                | "10.0.1.1"
+                | "10.1.1.1"
+                | "10.10.1.1"
+                | "172.16.0.1"
+                | "172.16.1.1"
+                | "192.168.0.254"
+                | "192.168.1.253"
+                | "192.168.100.1"
+                | "192.168.254.254"
         )
     }
 
     /// Check if hostname indicates a router or gateway
     fn is_router_hostname(hostname: &str) -> bool {
         let lower = hostname.to_lowercase();
-        lower.contains("router") ||
-        lower.contains("gateway") ||
-        lower.contains("-gw") ||
-        lower.starts_with("gw-") ||
-        lower.starts_with("gw.") ||
-        lower == "gw" ||
-        lower.contains(".gateway.") ||
-        lower.contains(".gw.") ||
-        lower.contains("firewall") ||
-        lower.contains("pfsense") ||
-        lower.contains("opnsense") ||
-        lower.contains("ubiquiti") ||
-        lower.contains("unifi") ||
-        lower.contains("edgerouter") ||
-        lower.contains("mikrotik")
+        lower.contains("router")
+            || lower.contains("gateway")
+            || lower.contains("-gw")
+            || lower.starts_with("gw-")
+            || lower.starts_with("gw.")
+            || lower == "gw"
+            || lower.contains(".gateway.")
+            || lower.contains(".gw.")
+            || lower.contains("firewall")
+            || lower.contains("pfsense")
+            || lower.contains("opnsense")
+            || lower.contains("ubiquiti")
+            || lower.contains("unifi")
+            || lower.contains("edgerouter")
+            || lower.contains("mikrotik")
     }
 
     pub fn create_table_if_not_exists(conn: &Connection) -> Result<()> {
@@ -673,7 +682,8 @@ mod tests {
         let classification = EndPoint::classify_endpoint(None, Some("my-router.local".to_string()));
         assert_eq!(classification, Some(CLASSIFICATION_GATEWAY));
 
-        let classification = EndPoint::classify_endpoint(None, Some("gateway.example.com".to_string()));
+        let classification =
+            EndPoint::classify_endpoint(None, Some("gateway.example.com".to_string()));
         assert_eq!(classification, Some(CLASSIFICATION_GATEWAY));
 
         let classification = EndPoint::classify_endpoint(None, Some("pfsense.local".to_string()));

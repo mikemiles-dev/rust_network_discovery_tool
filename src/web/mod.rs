@@ -123,6 +123,39 @@ fn get_protocols_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<St
     rows.filter_map(|row| row.ok()).collect::<Vec<String>>()
 }
 
+fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String> {
+    let conn = new_connection();
+    let mut stmt = conn
+        .prepare(
+            "
+            SELECT DISTINCT
+                CASE
+                    WHEN LOWER(src.name) = LOWER(:hostname) THEN c.destination_port
+                    WHEN LOWER(dst.name) = LOWER(:hostname) THEN c.source_port
+                END as port
+            FROM communications c
+            INNER JOIN endpoints src ON c.src_endpoint_id = src.id
+            INNER JOIN endpoints dst ON c.dst_endpoint_id = dst.id
+            WHERE c.last_seen_at >= (strftime('%s', 'now') - (:internal_minutes * 60))
+                AND (LOWER(src.name) = LOWER(:hostname) OR LOWER(dst.name) = LOWER(:hostname))
+                AND port IS NOT NULL
+            ORDER BY CAST(port AS INTEGER)
+        ",
+        )
+        .expect("Failed to prepare statement");
+
+    let rows = stmt
+        .query_map(
+            named_params! { ":hostname": hostname, ":internal_minutes": internal_minutes },
+            |row| row.get::<_, i64>(0),
+        )
+        .expect("Failed to execute query");
+
+    rows.filter_map(|row| row.ok())
+        .map(|port| port.to_string())
+        .collect::<Vec<String>>()
+}
+
 fn get_all_ips_macs_and_hostnames_from_single_hostname(
     hostname: String,
     internal_minutes: u64,
@@ -309,21 +342,23 @@ fn get_all_endpoint_types(endpoints: &[String]) -> std::collections::HashMap<Str
 
     for endpoint in endpoints {
         // Get IP address for this endpoint from endpoint_attributes
-        let mut stmt = conn.prepare(
-            "SELECT ea.ip
+        let mut stmt = conn
+            .prepare(
+                "SELECT ea.ip
              FROM endpoint_attributes ea
              INNER JOIN endpoints e ON ea.endpoint_id = e.id
              WHERE e.name = ?1 AND ea.ip IS NOT NULL
-             LIMIT 1"
-        ).expect("Failed to prepare statement");
+             LIMIT 1",
+            )
+            .expect("Failed to prepare statement");
 
         if let Ok(ip) = stmt.query_row([endpoint], |row| {
             let ip_value: Option<String> = row.get(0).ok();
             Ok(ip_value)
-        }) {
-            if let Some(endpoint_type) = EndPoint::classify_endpoint(ip, Some(endpoint.clone())) {
-                types.insert(endpoint.clone(), endpoint_type);
-            }
+        })
+            && let Some(endpoint_type) = EndPoint::classify_endpoint(ip, Some(endpoint.clone()))
+        {
+            types.insert(endpoint.clone(), endpoint_type);
         }
     }
 
@@ -491,9 +526,10 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     );
     let protocols =
         get_protocols_for_endpoint(selected_endpoint.clone(), query.scan_interval.unwrap_or(60));
+    let ports =
+        get_ports_for_endpoint(selected_endpoint.clone(), query.scan_interval.unwrap_or(60));
     let bytes_stats =
         get_bytes_for_endpoint(selected_endpoint.clone(), query.scan_interval.unwrap_or(60));
-    let ports: Vec<String> = vec![];
 
     let mut context = Context::new();
     context.insert("communications", &communications);
