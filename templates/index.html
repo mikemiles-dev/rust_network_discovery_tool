@@ -498,7 +498,9 @@
           {% for node in dropdown_endpoints %}
           <div class="list-item {% if node == selected_node %}selected{% endif %}"
                onclick="selectNode('{{ node | safe }}')"
-               data-endpoint="{{ node | safe }}">{{ node | safe }}</div>
+               data-endpoint="{{ node | safe }}">
+            {% set node_type = endpoint_types | get(key=node) %}{% if node == hostname %}🖥️{% elif node_type == "gateway" %}🌐{% elif node_type == "internet" %}🌍{% else %}💻{% endif %} {{ node | safe }}
+          </div>
           {% endfor %}
         </div>
       </div>
@@ -892,9 +894,9 @@
           { data: {
               id: '{{ endpoint | safe }}',
               {% if endpoint == hostname %}type: 'local',
-              {% elif endpoint == selected_node %}type: 'selected',
               {% elif endpoint_types[endpoint] %}type: '{{ endpoint_types[endpoint] }}',
               {% endif %}
+              {% if endpoint == selected_node %}selected: true,{% endif %}
             }
           },
         {% endfor %}
@@ -960,9 +962,27 @@
           }
         },
         {
-          selector: 'node[type = "selected"]',
+          selector: 'node[selected = "true"]',
           style: {
             'border-width': 4,
+            'border-color': '#10b981'
+          }
+        },
+        {
+          selector: 'node[type = "local"][selected = "true"]',
+          style: {
+            'border-color': '#10b981'
+          }
+        },
+        {
+          selector: 'node[type = "gateway"][selected = "true"]',
+          style: {
+            'border-color': '#10b981'
+          }
+        },
+        {
+          selector: 'node[type = "internet"][selected = "true"]',
+          style: {
             'border-color': '#10b981'
           }
         },

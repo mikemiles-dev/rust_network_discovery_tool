@@ -303,6 +303,33 @@ fn get_endpoint_types(communications: &[Node]) -> std::collections::HashMap<Stri
     types
 }
 
+fn get_all_endpoint_types(endpoints: &[String]) -> std::collections::HashMap<String, &'static str> {
+    let conn = new_connection();
+    let mut types = std::collections::HashMap::new();
+
+    for endpoint in endpoints {
+        // Get IP address for this endpoint from endpoint_attributes
+        let mut stmt = conn.prepare(
+            "SELECT ea.ip
+             FROM endpoint_attributes ea
+             INNER JOIN endpoints e ON ea.endpoint_id = e.id
+             WHERE e.name = ?1 AND ea.ip IS NOT NULL
+             LIMIT 1"
+        ).expect("Failed to prepare statement");
+
+        if let Ok(ip) = stmt.query_row([endpoint], |row| {
+            let ip_value: Option<String> = row.get(0).ok();
+            Ok(ip_value)
+        }) {
+            if let Some(endpoint_type) = EndPoint::classify_endpoint(ip) {
+                types.insert(endpoint.clone(), endpoint_type);
+            }
+        }
+    }
+
+    types
+}
+
 #[derive(Serialize)]
 struct BytesStats {
     bytes_in: i64,
@@ -441,10 +468,15 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
 
     let communications = get_nodes(query.node.clone(), query.scan_interval.unwrap_or(60));
     let endpoints = get_endpoints(&communications);
-    let endpoint_types = get_endpoint_types(&communications);
     let interfaces = get_interfaces();
     let supported_protocols = ProtocolPort::get_supported_protocols();
     let dropdown_endpoints = dropdown_endpoints(query.scan_interval.unwrap_or(60));
+    let mut endpoint_types = get_endpoint_types(&communications);
+    let dropdown_types = get_all_endpoint_types(&dropdown_endpoints);
+    // Merge dropdown types into endpoint_types
+    for (endpoint, type_str) in dropdown_types {
+        endpoint_types.entry(endpoint).or_insert(type_str);
+    }
     let (ips, macs, hostnames) = get_all_ips_macs_and_hostnames_from_single_hostname(
         selected_endpoint.clone(),
         query.scan_interval.unwrap_or(60),
