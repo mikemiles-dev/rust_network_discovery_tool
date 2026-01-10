@@ -1972,7 +1972,7 @@ dependencies = [
 
 [[package]]
 name = "rust_network_discovery_tool"
-version = "0.2.8"
+version = "0.3.0"
 dependencies = [
  "actix-files",
  "actix-rt",

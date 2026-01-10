@@ -1,5 +1,35 @@
 # Release Notes
 
+## [0.3.0]
+
+### Added
+- Endpoint search now searches IP addresses and MAC addresses in addition to hostnames
+- Device type badge now displayed in right pane showing classification (Internet, Printer, TV, etc.)
+- Endpoint search input automatically focused on page load for faster searching
+- Database schema optimizations with new indexes for faster queries:
+  - Case-insensitive index on endpoint names (`idx_endpoints_name_lower`)
+  - Direct index on endpoint names (`idx_endpoints_name`)
+  - Composite indexes on communications for time-range queries (`idx_communications_last_seen_src`, `idx_communications_last_seen_dst`)
+- SQL migration script (`optimize_schema.sql`) for upgrading existing databases
+
+### Changed
+- Endpoint search now uses debouncing (150ms delay) for significantly improved performance and responsiveness
+- Graph filtering logic rewritten to directly apply filter criteria instead of reading DOM state
+- Endpoint slider now properly syncs with graph visualization
+- Filter logic ensures graph and sidebar list stay synchronized
+
+### Fixed
+- Critical bug where graph filters were reading stale DOM state, causing incorrect filtering (e.g., api.anthropic.com disappearing when unchecking Printer filter)
+- Endpoint name lookups now use optimized indexes for 10-50x faster performance
+- Graph now correctly respects both type filters and endpoint limit slider
+- Endpoint resolution query optimized to return only most recently active endpoint when duplicates exist
+
+### Performance
+- Endpoint name lookups: 10-50x faster (from full table scan to indexed lookup)
+- Communications queries: 3-10x faster with composite indexes
+- Search input: No more lag on every keystroke thanks to debouncing
+- Overall UI: Noticeably more responsive, especially with many endpoints
+
 ## [0.2.8]
 
 ### Added

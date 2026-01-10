@@ -619,7 +619,7 @@
         </div>
 
         <input type="text" id="endpointSearchInput" placeholder="Search endpoints..."
-               oninput="filterEndpointsList(this.value)"
+               oninput="debouncedEndpointSearch(this.value)"
                autofocus
                style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem; margin-bottom: 0.75rem;">
         <div class="list-box" id="endpoints-container">
@@ -654,6 +654,26 @@
           Endpoint Details
         </div>
         <div style="margin-bottom: 0.75rem;">
+          <!-- Device Type Badge -->
+          <div style="margin-bottom: 0.75rem;">
+            <div class="stat-badge" style="background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.4); font-size: 0.75rem; display: inline-block;">
+              Type: <span class="stat-number" style="font-weight: 600;">
+                {% if endpoint == hostname %}🖥️ Local
+                {% elif endpoint_types[endpoint] == "gateway" %}🌐 Gateway
+                {% elif endpoint_types[endpoint] == "internet" %}🌍 Internet
+                {% elif endpoint_types[endpoint] == "printer" %}🖨️ Printer
+                {% elif endpoint_types[endpoint] == "tv" %}📺 TV
+                {% elif endpoint_types[endpoint] == "gaming" %}🎮 Gaming
+                {% elif endpoint_types[endpoint] == "phone" %}📱 Phone
+                {% elif endpoint_types[endpoint] == "virtualization" %}🖥 VM
+                {% elif endpoint_types[endpoint] == "soundbar" %}🔊 Soundbar
+                {% elif endpoint_types[endpoint] == "appliance" %}🏠 Appliance
+                {% elif endpoint_types[endpoint] %}💻 {{ endpoint_types[endpoint] }}
+                {% else %}❓ Other
+                {% endif %}
+              </span>
+            </div>
+          </div>
           <div class="stats">
             <div class="stat-badge">IPs: <span class="stat-number">{{ ips|length }}</span></div>
             <div class="stat-badge">MACs: <span class="stat-number">{{ macs|length }}</span></div>
@@ -754,6 +774,29 @@
   </div>
 
   <script>
+    // Debounce utility for performance optimization
+    function debounce(func, wait) {
+      let timeout;
+      return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    }
+
+    // Debounced endpoint search (waits 150ms after user stops typing)
+    const debouncedEndpointSearch = debounce((value) => {
+      filterEndpointsList(value, false, true); // Fast version that updates graph
+    }, 150);
+
+    // Debounced graph update (called after search completes)
+    const debouncedGraphUpdate = debounce(() => {
+      applyFilters(true);
+    }, 150);
+
     // Navigation functions
     function selectNode(nodeId) {
       const url = new URL(window.location.href);
@@ -762,7 +805,7 @@
     }
 
     // Filter endpoints list in sidebar
-    function filterEndpointsList(searchTerm, skipUrlUpdate = false) {
+    function filterEndpointsList(searchTerm, skipUrlUpdate = false, updateGraph = false) {
       const normalizedSearch = searchTerm.trim().toLowerCase();
       const endpointItems = document.querySelectorAll('#endpoints-container .list-item');
 
@@ -825,8 +868,8 @@
         item.style.display = (matchesSearch && matchesType) ? 'block' : 'none';
       });
 
-      // Apply endpoint limit
-      applyEndpointLimit();
+      // Apply endpoint limit and optionally update graph
+      applyEndpointLimit(updateGraph);
     }
 
     // Update endpoint limit from slider
@@ -841,7 +884,7 @@
     }
 
     // Apply endpoint limit to visible items
-    function applyEndpointLimit() {
+    function applyEndpointLimit(updateGraph = true) {
       const limit = parseInt(localStorage.getItem('endpointLimit') || '20');
       const endpointItems = document.querySelectorAll('#endpoints-container .list-item');
 
@@ -858,8 +901,10 @@
         }
       });
 
-      // Update the graph to match the limited endpoint list
-      applyFilters(true);
+      // Update the graph to match the limited endpoint list (only if requested)
+      if (updateGraph) {
+        applyFilters(true);
+      }
     }
 
     function selectScanInterval(interval) {
@@ -1200,15 +1245,55 @@
         window.history.replaceState({}, '', url);
       }
 
-      // Get list of visible endpoints in sidebar (after limit is applied)
+      // Helper function to check if an endpoint type matches current filters
+      function matchesTypeFilter(type) {
+        if (type === 'local' && showLocal) return true;
+        if (type === 'gateway' && showGateway) return true;
+        if (type === 'internet' && showInternet) return true;
+        if (type === 'printer' && showPrinter) return true;
+        if (type === 'tv' && showTv) return true;
+        if (type === 'gaming' && showGaming) return true;
+        if (type === 'phone' && showPhone) return true;
+        if (type === 'virtualization' && showVirtualization) return true;
+        if (type === 'soundbar' && showSoundbar) return true;
+        if (type === 'appliance' && showAppliance) return true;
+        if (type === 'other' && showOther) return true;
+        return false;
+      }
+
+      // Build set of endpoints that should be visible based on filters and limit
+      // This applies the same logic as the sidebar filtering
+      const limit = parseInt(localStorage.getItem('endpointLimit') || '20');
+      const searchTerm = document.getElementById('endpointSearchInput')?.value.trim().toLowerCase() || '';
       const visibleEndpointNames = new Set();
       const endpointItems = document.querySelectorAll('#endpoints-container .list-item');
+
+      let visibleCount = 0;
       endpointItems.forEach(item => {
-        if (item.style.display !== 'none') {
-          const endpointName = item.getAttribute('data-endpoint');
-          if (endpointName) {
-            visibleEndpointNames.add(endpointName);
-          }
+        const endpoint = item.textContent.toLowerCase();
+        let type = item.getAttribute('data-endpoint-type');
+        const ips = (item.getAttribute('data-endpoint-ips') || '').toLowerCase();
+        const macs = (item.getAttribute('data-endpoint-macs') || '').toLowerCase();
+        const endpointName = item.getAttribute('data-endpoint');
+
+        // Check if matches search term
+        const matchesSearch = searchTerm === ''
+          || endpoint.includes(searchTerm)
+          || ips.includes(searchTerm)
+          || macs.includes(searchTerm);
+
+        // Treat null/undefined/empty as 'other'
+        if (!type || type === '') {
+          type = 'other';
+        }
+
+        // Check if matches type filter
+        const matchesType = matchesTypeFilter(type);
+
+        // Add to visible set if matches and within limit
+        if (matchesSearch && matchesType && visibleCount < limit) {
+          visibleEndpointNames.add(endpointName);
+          visibleCount++;
         }
       });
 
@@ -1223,18 +1308,7 @@
         }
 
         // Check type filter
-        let typeMatch = false;
-        if (type === 'local' && showLocal) typeMatch = true;
-        else if (type === 'gateway' && showGateway) typeMatch = true;
-        else if (type === 'internet' && showInternet) typeMatch = true;
-        else if (type === 'printer' && showPrinter) typeMatch = true;
-        else if (type === 'tv' && showTv) typeMatch = true;
-        else if (type === 'gaming' && showGaming) typeMatch = true;
-        else if (type === 'phone' && showPhone) typeMatch = true;
-        else if (type === 'virtualization' && showVirtualization) typeMatch = true;
-        else if (type === 'soundbar' && showSoundbar) typeMatch = true;
-        else if (type === 'appliance' && showAppliance) typeMatch = true;
-        else if (type === 'other' && showOther) typeMatch = true;
+        const typeMatch = matchesTypeFilter(type);
 
         // Check if endpoint is in the visible list (respects endpoint limit slider)
         const inVisibleList = visibleEndpointNames.has(nodeName);

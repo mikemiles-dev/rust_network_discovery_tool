@@ -129,6 +129,15 @@ impl Communication {
             );",
             [],
         )?;
+        // Composite indexes for time-range queries (optimization)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_communications_last_seen_src ON communications (last_seen_at, src_endpoint_id);",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_communications_last_seen_dst ON communications (last_seen_at, dst_endpoint_id);",
+            [],
+        )?;
         Ok(())
     }
 

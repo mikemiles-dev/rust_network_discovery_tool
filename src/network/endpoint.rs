@@ -364,6 +364,14 @@ impl EndPoint {
             "CREATE INDEX IF NOT EXISTS idx_endpoints_created_at ON endpoints (created_at);",
             [],
         )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_endpoints_name ON endpoints (name);",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_endpoints_name_lower ON endpoints (LOWER(name));",
+            [],
+        )?;
         Ok(())
     }
 
