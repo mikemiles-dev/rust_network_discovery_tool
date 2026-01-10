@@ -221,6 +221,13 @@
       transform: translateY(0);
     }
 
+    .list-item.selected {
+      background: var(--accent-primary);
+      color: white;
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+    }
+
     .section {
       margin-bottom: 0.75rem;
     }
@@ -453,23 +460,6 @@
     <div class="logo">⚡ Awareness</div>
     <div class="controls">
       <div class="control-group">
-        <label class="control-label">Endpoint</label>
-        <select id="nodeSelector" onchange="selectNode(this.value)" autofocus>
-          {% for node in dropdown_endpoints %}
-          <option value="{{ node | safe }}" {% if node == selected_node %}selected{% endif %}>{{ node | safe }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="control-group">
-        <label class="control-label">Search</label>
-        <div style="display: flex; gap: 0.5rem;">
-          <input type="text" id="hostnameSearchInput" placeholder="Type to search..."
-                 oninput="applyHostnameSearch(this.value)"
-                 style="min-width: 180px;">
-          <button onclick="clearHostnameSearch()" class="secondary" style="padding: 0.5rem 0.75rem;">Clear</button>
-        </div>
-      </div>
-      <div class="control-group">
         <label class="control-label">Time Range</label>
         <select id="scanInterval" onchange="selectScanInterval(this.value)">
           <option value="5" {% if scan_interval == 5 %}selected{% endif %}>5 Minutes</option>
@@ -514,58 +504,17 @@
   <div class="container">
     <aside class="sidebar">
       <div class="card">
-        <div class="card-title">Endpoint Details</div>
-        <div class="input-group">
-          <input name="endpoint_name" type="text" value="{{ endpoint | safe }}" placeholder="Endpoint name">
-          <button onclick="updateEndpointName()">Update</button>
+        <div class="card-title" style="margin-bottom: 0; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border-color);">Endpoints</div>
+        <input type="text" id="endpointSearchInput" placeholder="Search endpoints..."
+               oninput="filterEndpointsList(this.value)"
+               style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem; margin-bottom: 0.75rem; margin-top: 0.75rem;">
+        <div class="list-box" id="endpoints-container" style="max-height: calc(100vh - 200px);">
+          {% for node in dropdown_endpoints %}
+          <div class="list-item {% if node == selected_node %}selected{% endif %}"
+               onclick="selectNode('{{ node | safe }}')"
+               data-endpoint="{{ node | safe }}">{{ node | safe }}</div>
+          {% endfor %}
         </div>
-        <div class="stats">
-          <div class="stat-badge">IPs: <span class="stat-number">{{ ips|length }}</span></div>
-          <div class="stat-badge">MACs: <span class="stat-number">{{ macs|length }}</span></div>
-          <div class="stat-badge">Hosts: <span class="stat-number">{{ hostnames|length }}</span></div>
-          <div class="stat-badge">Protocols: <span class="stat-number">{{ protocols|length }}</span></div>
-        </div>
-        <div class="stats" style="margin-top: 0.5rem;">
-          <div class="stat-badge">⬇️ In: <span class="stat-number" id="bytes-in">{{ bytes_in }}</span></div>
-          <div class="stat-badge">⬆️ Out: <span class="stat-number" id="bytes-out">{{ bytes_out }}</span></div>
-        </div>
-      </div>
-
-      <div class="card">
-        <!-- IP Addresses -->
-        <div class="section">
-          <div class="card-title">IP Addresses</div>
-          <input type="text" id="ipsListSearch" placeholder="Filter IPs..."
-                 oninput="filterIpsList(this.value)"
-                 style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.375rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; margin-bottom: 0.5rem;">
-          <div class="list-box" id="ips-container">
-            {% if ips %}
-              {% for ip in ips %}
-              <div class="list-item" onclick="copyToClipboard('{{ ip | safe }}', this)">{{ ip | safe }}</div>
-              {% endfor %}
-            {% else %}
-              <div class="empty-state">No IP addresses</div>
-            {% endif %}
-          </div>
-        </div>
-
-        <!-- MAC Addresses -->
-        <div class="section">
-          <div class="card-title">MAC Addresses</div>
-          <input type="text" id="macsListSearch" placeholder="Filter MACs..."
-                 oninput="filterMacsList(this.value)"
-                 style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.375rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; margin-bottom: 0.5rem;">
-          <div class="list-box" id="macs-container">
-            {% if macs %}
-              {% for mac in macs %}
-              <div class="list-item" onclick="copyToClipboard('{{ mac | safe }}', this)">{{ mac | safe }}</div>
-              {% endfor %}
-            {% else %}
-              <div class="empty-state">No MAC addresses</div>
-            {% endif %}
-          </div>
-        </div>
-
       </div>
     </aside>
 
@@ -574,6 +523,23 @@
 
       <!-- Protocols Overlay -->
       <div class="protocols-overlay">
+        <!-- Endpoint Details -->
+        <div class="overlay-header">
+          Endpoint Details
+        </div>
+        <div style="margin-bottom: 0.75rem;">
+          <div class="stats">
+            <div class="stat-badge">IPs: <span class="stat-number">{{ ips|length }}</span></div>
+            <div class="stat-badge">MACs: <span class="stat-number">{{ macs|length }}</span></div>
+            <div class="stat-badge">Hosts: <span class="stat-number">{{ hostnames|length }}</span></div>
+            <div class="stat-badge">Protocols: <span class="stat-number">{{ protocols|length }}</span></div>
+          </div>
+          <div class="stats" style="margin-top: 0.5rem;">
+            <div class="stat-badge">⬇️ In: <span class="stat-number" id="bytes-in">{{ bytes_in }}</span></div>
+            <div class="stat-badge">⬆️ Out: <span class="stat-number" id="bytes-out">{{ bytes_out }}</span></div>
+          </div>
+        </div>
+
         <div class="overlay-header">
           Protocols
           <button class="clear-filter-btn" onclick="clearProtocolFilter()" style="display: none;">Clear Filter</button>
@@ -599,6 +565,44 @@
             <div class="empty-state">No hostnames</div>
           {% endif %}
         </div>
+
+        <!-- IP Addresses -->
+        <div class="overlay-header" style="margin-top: 0.5rem;">
+          IP Addresses
+        </div>
+        <div style="margin-bottom: 0.5rem;">
+          <input type="text" id="ipsListSearch" placeholder="Filter IPs..."
+                 oninput="filterIpsList(this.value)"
+                 style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
+        </div>
+        <div class="overlay-hostnames" id="ips-container">
+          {% if ips %}
+            {% for ip in ips %}
+            <div class="hostname-item" onclick="copyToClipboard('{{ ip | safe }}', this)">{{ ip | safe }}</div>
+            {% endfor %}
+          {% else %}
+            <div class="empty-state">No IP addresses</div>
+          {% endif %}
+        </div>
+
+        <!-- MAC Addresses -->
+        <div class="overlay-header" style="margin-top: 0.5rem;">
+          MAC Addresses
+        </div>
+        <div style="margin-bottom: 0.5rem;">
+          <input type="text" id="macsListSearch" placeholder="Filter MACs..."
+                 oninput="filterMacsList(this.value)"
+                 style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
+        </div>
+        <div class="overlay-hostnames" id="macs-container">
+          {% if macs %}
+            {% for mac in macs %}
+            <div class="hostname-item" onclick="copyToClipboard('{{ mac | safe }}', this)">{{ mac | safe }}</div>
+            {% endfor %}
+          {% else %}
+            <div class="empty-state">No MAC addresses</div>
+          {% endif %}
+        </div>
       </div>
     </main>
   </div>
@@ -611,13 +615,24 @@
   <script>
     // Navigation functions
     function selectNode(nodeId) {
-      // Clear hostname search when changing endpoints
-      document.getElementById('hostnameSearchInput').value = "";
-      activeHostnameSearch = "";
-
       const url = new URL(window.location.href);
       url.searchParams.set('node', nodeId);
       window.location.href = url.toString();
+    }
+
+    // Filter endpoints list in sidebar
+    function filterEndpointsList(searchTerm) {
+      const normalizedSearch = searchTerm.trim().toLowerCase();
+      const endpointItems = document.querySelectorAll('#endpoints-container .list-item');
+
+      endpointItems.forEach(item => {
+        const endpoint = item.textContent.toLowerCase();
+        if (normalizedSearch === '' || endpoint.includes(normalizedSearch)) {
+          item.style.display = 'block';
+        } else {
+          item.style.display = 'none';
+        }
+      });
     }
 
     function selectScanInterval(interval) {
@@ -705,17 +720,6 @@
 
     // Filter nodes by type
     function applyFilters() {
-      // Delegate to hostname search which now handles both type AND hostname filtering
-      const searchTerm = document.getElementById('hostnameSearchInput').value;
-      applyHostnameSearch(searchTerm);
-    }
-
-    // Filter nodes by hostname search
-    function applyHostnameSearch(searchTerm) {
-      // Normalize search term
-      const normalizedSearch = searchTerm.trim().toLowerCase();
-      activeHostnameSearch = normalizedSearch;
-
       // Get type filter states
       const showLocal = document.getElementById('filterLocal').checked;
       const showGateway = document.getElementById('filterGateway').checked;
@@ -723,7 +727,6 @@
 
       // Filter nodes
       cy.nodes().forEach(node => {
-        const nodeId = node.id().toLowerCase();
         const type = node.data('type');
 
         // Check type filter
@@ -732,11 +735,8 @@
         else if (type === 'gateway' && !showGateway) typeMatch = false;
         else if (type === 'internet' && !showInternet) typeMatch = false;
 
-        // Check hostname search (empty search matches all)
-        const hostnameMatch = normalizedSearch === '' || nodeId.includes(normalizedSearch);
-
-        // Apply both conditions (AND logic)
-        if (typeMatch && hostnameMatch) {
+        // Apply filter
+        if (typeMatch) {
           node.style('display', 'element');
         } else {
           node.style('display', 'none');
@@ -754,14 +754,7 @@
       updateVisibleProtocols();
     }
 
-    // Clear hostname search
-    function clearHostnameSearch() {
-      activeHostnameSearch = "";
-      document.getElementById('hostnameSearchInput').value = "";
-      applyHostnameSearch("");
-    }
-
-    // Filter hostnames list in sidebar
+    // Filter hostnames list in right pane
     function filterHostnamesList(searchTerm) {
       const normalizedSearch = searchTerm.trim().toLowerCase();
       const hostnameItems = document.querySelectorAll('#hostnames-container .hostname-item');
@@ -776,10 +769,10 @@
       });
     }
 
-    // Filter IPs list in sidebar
+    // Filter IPs list in right pane
     function filterIpsList(searchTerm) {
       const normalizedSearch = searchTerm.trim().toLowerCase();
-      const ipItems = document.querySelectorAll('#ips-container .list-item');
+      const ipItems = document.querySelectorAll('#ips-container .hostname-item');
 
       ipItems.forEach(item => {
         const ip = item.textContent.toLowerCase();
@@ -791,10 +784,10 @@
       });
     }
 
-    // Filter MACs list in sidebar
+    // Filter MACs list in right pane
     function filterMacsList(searchTerm) {
       const normalizedSearch = searchTerm.trim().toLowerCase();
-      const macItems = document.querySelectorAll('#macs-container .list-item');
+      const macItems = document.querySelectorAll('#macs-container .hostname-item');
 
       macItems.forEach(item => {
         const mac = item.textContent.toLowerCase();
@@ -808,9 +801,6 @@
 
     // Global variable to track selected protocol
     let selectedProtocol = null;
-
-    // Global variable to track hostname search
-    let activeHostnameSearch = "";
 
     // Filter graph by protocol
     function filterByProtocol(protocol, element) {
@@ -902,55 +892,6 @@
         }, 500);
       }).catch(err => {
         console.error('Failed to copy:', err);
-      });
-    }
-
-    // Update endpoint name
-    function updateEndpointName() {
-      const endpointNameInput = document.querySelector('input[name="endpoint_name"]');
-      const newHostname = endpointNameInput.value.trim();
-      const currentHostname = "{{ endpoint | safe }}";
-
-      // Validate input
-      if (!newHostname) {
-        alert('Please enter a valid endpoint name.');
-        return;
-      }
-
-      if (newHostname === currentHostname) {
-        alert('New name is the same as the current name.');
-        return;
-      }
-
-      // Disable button during update
-      const updateButton = event.target;
-      updateButton.disabled = true;
-      updateButton.textContent = 'Updating...';
-
-      fetch(`/update_endpoint?hostname=${encodeURIComponent(currentHostname)}&new_hostname=${encodeURIComponent(newHostname)}`, {
-        method: 'GET',
-      })
-      .then(response => {
-        if (response.ok) {
-          // Success - redirect to the updated endpoint
-          const url = new URL(window.location.href);
-          url.searchParams.set('node', newHostname);
-          window.location.href = url.toString();
-        } else {
-          // Handle errors
-          return response.text().then(errorMsg => {
-            console.error('Update failed:', errorMsg);
-            alert(`Failed to update endpoint name: ${errorMsg}`);
-            updateButton.disabled = false;
-            updateButton.textContent = 'Update';
-          });
-        }
-      })
-      .catch(error => {
-        console.error('Error updating endpoint name:', error);
-        alert('An error occurred while updating the endpoint name.');
-        updateButton.disabled = false;
-        updateButton.textContent = 'Update';
       });
     }
 

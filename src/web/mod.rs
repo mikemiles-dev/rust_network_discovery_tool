@@ -359,7 +359,6 @@ pub fn start(preferred_port: u16) {
                     App::new()
                         .app_data(Data::new(tera_clone.clone()))
                         .service(static_files)
-                        .service(update_endpoint)
                         .service(index)
                 })
                 .bind(("127.0.0.1", port))
@@ -417,52 +416,6 @@ async fn static_files(path: actix_web::web::Path<String>) -> impl Responder {
     }
 }
 
-#[get("/update_endpoint")]
-async fn update_endpoint(query: Query<UpdateEndpointQuery>) -> impl Responder {
-    let conn = new_connection();
-
-    // Update endpoints table where name matches OR where any endpoint_attribute matches
-    let mut stmt = match conn.prepare(
-        "
-            UPDATE endpoints
-            SET name = :new_hostname
-            WHERE id IN (
-                SELECT DISTINCT endpoint_id
-                FROM endpoint_attributes
-                WHERE LOWER(hostname) = LOWER(:hostname)
-                   OR LOWER(ip) = LOWER(:hostname)
-            )
-            OR LOWER(name) = LOWER(:hostname)
-        ",
-    ) {
-        Ok(s) => s,
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .body(format!("Failed to prepare statement: {}", e));
-        }
-    };
-
-    match stmt.execute(
-        named_params! { ":hostname": &query.hostname, ":new_hostname": &query.new_hostname },
-    ) {
-        Ok(rows_affected) => {
-            if rows_affected == 0 {
-                return HttpResponse::NotFound().body(format!(
-                    "No endpoint found with identifier: {}",
-                    query.hostname
-                ));
-            }
-            HttpResponse::Ok().body(format!(
-                "Endpoint updated ({} rows affected)",
-                rows_affected
-            ))
-        }
-        Err(e) => {
-            HttpResponse::InternalServerError().body(format!("Failed to execute statement: {}", e))
-        }
-    }
-}
-
 // Define a handler function for the web request
 #[get("/")]
 async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
@@ -509,12 +462,6 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         .expect("Failed to render template");
 
     HttpResponse::Ok().body(rendered)
-}
-
-#[derive(Deserialize)]
-struct UpdateEndpointQuery {
-    hostname: String,
-    new_hostname: String,
 }
 
 #[derive(Deserialize)]
