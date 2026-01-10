@@ -10,7 +10,7 @@ impl EndPointAttribute {
                 id INTEGER PRIMARY KEY,
                 created_at INTEGER NOT NULL,
                 endpoint_id INTEGER NOT NULL,
-                mac TEXT NOT NULL,
+                mac TEXT,
                 ip TEXT NOT NULL,
                 hostname TEXT,
                 FOREIGN KEY (endpoint_id) REFERENCES endpoints(id),

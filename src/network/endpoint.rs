@@ -46,24 +46,68 @@ impl From<rusqlite::Error> for InsertEndpointError {
 pub struct EndPoint;
 
 impl EndPoint {
-    /// Classify an endpoint as Gateway, Internet, or LocalNetwork based on its IP address
-    pub fn classify_endpoint(ip: Option<String>) -> Option<&'static str> {
-        let ip_str = ip?;
-
+    /// Classify an endpoint as Gateway, Internet, or LocalNetwork based on IP address and hostname
+    pub fn classify_endpoint(ip: Option<String>, hostname: Option<String>) -> Option<&'static str> {
         // Check if it's the default gateway
-        if let Some(gateway_ip) = Self::get_default_gateway()
-            && gateway_ip == ip_str
-        {
-            return Some(CLASSIFICATION_GATEWAY);
+        if let Some(ref ip_str) = ip {
+            if let Some(gateway_ip) = Self::get_default_gateway()
+                && gateway_ip == *ip_str
+            {
+                return Some(CLASSIFICATION_GATEWAY);
+            }
+
+            // Check if it's a common router IP
+            if Self::is_common_router_ip(ip_str) {
+                return Some(CLASSIFICATION_GATEWAY);
+            }
+
+            // Check if it's on the local network
+            if !Self::is_on_local_network(ip_str) {
+                return Some(CLASSIFICATION_INTERNET);
+            }
         }
 
-        // Check if it's on the local network
-        if Self::is_on_local_network(&ip_str) {
-            return None; // Local network device, no special classification
+        // Check if hostname indicates a router/gateway
+        if let Some(ref hostname_str) = hostname {
+            if Self::is_router_hostname(hostname_str) {
+                return Some(CLASSIFICATION_GATEWAY);
+            }
         }
 
-        // If it's not local network and not gateway, it's internet
-        Some(CLASSIFICATION_INTERNET)
+        // Local network device, no special classification
+        None
+    }
+
+    /// Check if IP is a common router/gateway address
+    fn is_common_router_ip(ip: &str) -> bool {
+        matches!(
+            ip,
+            "192.168.0.1" | "192.168.1.1" | "192.168.2.1" | "192.168.1.254" |
+            "10.0.0.1" | "10.0.1.1" | "10.1.1.1" | "10.10.1.1" |
+            "172.16.0.1" | "172.16.1.1" |
+            "192.168.0.254" | "192.168.1.253" |
+            "192.168.100.1" | "192.168.254.254"
+        )
+    }
+
+    /// Check if hostname indicates a router or gateway
+    fn is_router_hostname(hostname: &str) -> bool {
+        let lower = hostname.to_lowercase();
+        lower.contains("router") ||
+        lower.contains("gateway") ||
+        lower.contains("-gw") ||
+        lower.starts_with("gw-") ||
+        lower.starts_with("gw.") ||
+        lower == "gw" ||
+        lower.contains(".gateway.") ||
+        lower.contains(".gw.") ||
+        lower.contains("firewall") ||
+        lower.contains("pfsense") ||
+        lower.contains("opnsense") ||
+        lower.contains("ubiquiti") ||
+        lower.contains("unifi") ||
+        lower.contains("edgerouter") ||
+        lower.contains("mikrotik")
     }
 
     pub fn create_table_if_not_exists(conn: &Connection) -> Result<()> {
@@ -292,12 +336,17 @@ impl EndPoint {
         gateway_ip
     }
 
-    fn is_on_local_network(ip: &str) -> bool {
+    pub fn is_on_local_network(ip: &str) -> bool {
         // Parse the IP address
         let ip_addr: IpAddr = match ip.parse() {
             Ok(addr) => addr,
             Err(_) => return false,
         };
+
+        // Special case: loopback addresses are always local
+        if ip_addr.is_loopback() {
+            return true;
+        }
 
         // Check all local interfaces to see if IP is on same subnet
         for interface in interfaces() {
@@ -609,25 +658,51 @@ mod tests {
     use crate::db::new_test_connection;
 
     #[test]
+    fn test_classify_common_router_ip() {
+        // Common router IPs should be classified as gateway
+        let classification = EndPoint::classify_endpoint(Some("192.168.1.1".to_string()), None);
+        assert_eq!(classification, Some(CLASSIFICATION_GATEWAY));
+
+        let classification = EndPoint::classify_endpoint(Some("10.0.0.1".to_string()), None);
+        assert_eq!(classification, Some(CLASSIFICATION_GATEWAY));
+    }
+
+    #[test]
+    fn test_classify_router_hostname() {
+        // Hostnames with router keywords should be classified as gateway
+        let classification = EndPoint::classify_endpoint(None, Some("my-router.local".to_string()));
+        assert_eq!(classification, Some(CLASSIFICATION_GATEWAY));
+
+        let classification = EndPoint::classify_endpoint(None, Some("gateway.example.com".to_string()));
+        assert_eq!(classification, Some(CLASSIFICATION_GATEWAY));
+
+        let classification = EndPoint::classify_endpoint(None, Some("pfsense.local".to_string()));
+        assert_eq!(classification, Some(CLASSIFICATION_GATEWAY));
+    }
+
+    #[test]
     fn test_classify_internet_endpoint() {
-        // Public IP should be classified as internet
-        let classification = EndPoint::classify_endpoint(Some("8.8.8.8".to_string()));
+        // Public IPs should be classified as internet
+        let classification = EndPoint::classify_endpoint(Some("8.8.8.8".to_string()), None);
+        assert_eq!(classification, Some(CLASSIFICATION_INTERNET));
+
+        let classification = EndPoint::classify_endpoint(Some("1.1.1.1".to_string()), None);
         assert_eq!(classification, Some(CLASSIFICATION_INTERNET));
     }
 
     #[test]
     fn test_classify_local_endpoint() {
-        // Local network IP should return None (no special classification)
-        // Note: This test assumes 192.168.x.x is on local network
-        // In test environment without actual interfaces, it may not be detected
-        let classification = EndPoint::classify_endpoint(Some("127.0.0.1".to_string()));
-        // Loopback should still return None as it's not gateway or internet
+        // Loopback should return None as it's not gateway or internet (it's local)
+        let classification = EndPoint::classify_endpoint(Some("127.0.0.1".to_string()), None);
         assert_eq!(classification, None);
+
+        // Note: 192.168.x.x may be classified as internet in test environment
+        // without configured network interfaces, which is expected behavior
     }
 
     #[test]
     fn test_classify_none_ip() {
-        let classification = EndPoint::classify_endpoint(None);
+        let classification = EndPoint::classify_endpoint(None, None);
         assert_eq!(classification, None);
     }
 

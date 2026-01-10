@@ -312,12 +312,40 @@
       padding: 0.375rem 0.5rem;
     }
 
+    /* Range slider styling */
+    input[type="range"]::-webkit-slider-thumb {
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent-color);
+      cursor: pointer;
+      border: 2px solid rgba(15, 23, 42, 0.8);
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent-color);
+      cursor: pointer;
+      border: 2px solid rgba(15, 23, 42, 0.8);
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      background: #10b981;
+    }
+
+    input[type="range"]::-moz-range-thumb:hover {
+      background: #10b981;
+    }
+
     /* Protocols Overlay */
     .protocols-overlay {
       position: absolute;
       top: 1rem;
       right: 1rem;
-      width: 380px;
+      width: 340px;
       height: calc(100vh - 120px);
       background: rgba(30, 41, 59, 0.85);
       backdrop-filter: blur(12px);
@@ -471,19 +499,6 @@
           <div class="pulse"></div>
         </div>
       </div>
-      <div class="control-group">
-        <label class="control-label">Filter</label>
-        <div style="display: flex; gap: 0.75rem; align-items: center;">
-          <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.875rem; cursor: pointer;">
-            <input type="checkbox" id="filterGateway" checked onchange="applyFilters()" style="cursor: pointer;">
-            <span>🌐 Gateway</span>
-          </label>
-          <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.875rem; cursor: pointer;">
-            <input type="checkbox" id="filterInternet" checked onchange="applyFilters()" style="cursor: pointer;">
-            <span>🌍 Internet</span>
-          </label>
-        </div>
-      </div>
     </div>
   </header>
 
@@ -491,14 +506,39 @@
     <aside class="sidebar">
       <div class="card">
         <div class="card-title" style="margin-bottom: 0; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(51, 65, 85, 0.6);">Endpoints</div>
+
+        <!-- Filters -->
+        <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+          <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; cursor: pointer; padding: 0.25rem 0.5rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6);">
+            <input type="checkbox" id="filterGateway" checked onchange="applyFilters()" style="cursor: pointer;">
+            <span>🌐 Gateway</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; cursor: pointer; padding: 0.25rem 0.5rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6);">
+            <input type="checkbox" id="filterInternet" checked onchange="applyFilters()" style="cursor: pointer;">
+            <span>🌍 Internet</span>
+          </label>
+        </div>
+
+        <!-- Endpoint Limit Slider -->
+        <div style="margin-bottom: 0.75rem;">
+          <label style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.375rem;">
+            <span>Show endpoints:</span>
+            <span id="endpointLimitValue" style="color: var(--text-primary); font-weight: 500;">20</span>
+          </label>
+          <input type="range" id="endpointLimitSlider" min="10" max="100" value="20" step="10"
+                 oninput="updateEndpointLimit(this.value)"
+                 style="width: 100%; cursor: pointer; height: 4px; background: rgba(51, 65, 85, 0.6); border-radius: 2px; appearance: none; outline: none;">
+        </div>
+
         <input type="text" id="endpointSearchInput" placeholder="Search endpoints..."
                oninput="filterEndpointsList(this.value)"
-               style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem; margin-bottom: 0.75rem; margin-top: 0.75rem;">
+               style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem; margin-bottom: 0.75rem;">
         <div class="list-box" id="endpoints-container" style="max-height: calc(100vh - 200px);">
           {% for node in dropdown_endpoints %}
           <div class="list-item {% if node == selected_node %}selected{% endif %}"
                onclick="selectNode('{{ node | safe }}')"
-               data-endpoint="{{ node | safe }}">
+               data-endpoint="{{ node | safe }}"
+               data-endpoint-type="{% if node == hostname %}local{% elif endpoint_types[node] == "gateway" %}gateway{% elif endpoint_types[node] == "internet" %}internet{% else %}local{% endif %}">
             {% if node == hostname %}🖥️{% elif endpoint_types[node] == "gateway" %}🌐{% elif endpoint_types[node] == "internet" %}🌍{% else %}💻{% endif %} {{ node | safe }}
           </div>
           {% endfor %}
@@ -608,12 +648,52 @@
       const normalizedSearch = searchTerm.trim().toLowerCase();
       const endpointItems = document.querySelectorAll('#endpoints-container .list-item');
 
+      // Get current filter states
+      const showGateway = document.getElementById('filterGateway').checked;
+      const showInternet = document.getElementById('filterInternet').checked;
+
       endpointItems.forEach(item => {
         const endpoint = item.textContent.toLowerCase();
-        if (normalizedSearch === '' || endpoint.includes(normalizedSearch)) {
-          item.style.display = 'block';
-        } else {
-          item.style.display = 'none';
+        const type = item.getAttribute('data-endpoint-type');
+
+        // Check if matches search term
+        const matchesSearch = normalizedSearch === '' || endpoint.includes(normalizedSearch);
+
+        // Check if matches type filter
+        let matchesType = true;
+        if (type === 'gateway' && !showGateway) matchesType = false;
+        else if (type === 'internet' && !showInternet) matchesType = false;
+
+        // Show only if matches both search AND type filter
+        item.style.display = (matchesSearch && matchesType) ? 'block' : 'none';
+      });
+
+      // Apply endpoint limit
+      applyEndpointLimit();
+    }
+
+    // Update endpoint limit from slider
+    function updateEndpointLimit(value) {
+      document.getElementById('endpointLimitValue').textContent = value;
+      localStorage.setItem('endpointLimit', value);
+      applyEndpointLimit();
+    }
+
+    // Apply endpoint limit to visible items
+    function applyEndpointLimit() {
+      const limit = parseInt(localStorage.getItem('endpointLimit') || '20');
+      const endpointItems = document.querySelectorAll('#endpoints-container .list-item');
+
+      let visibleCount = 0;
+      endpointItems.forEach(item => {
+        // Only count and limit items that are already visible (not filtered out)
+        if (item.style.display !== 'none') {
+          if (visibleCount < limit) {
+            item.style.display = 'block';
+            visibleCount++;
+          } else {
+            item.style.display = 'none';
+          }
         }
       });
     }
@@ -647,6 +727,41 @@
         const bytesOut = parseInt(bytesOutElem.textContent);
         bytesOutElem.textContent = formatBytes(bytesOut);
       }
+
+      // Restore filter states from URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const filterGateway = urlParams.get('filter_gateway');
+      const filterInternet = urlParams.get('filter_internet');
+
+      // Set checkbox states (default to checked if not specified)
+      const gatewayCheckbox = document.getElementById('filterGateway');
+      const internetCheckbox = document.getElementById('filterInternet');
+
+      if (gatewayCheckbox && filterGateway !== null) {
+        gatewayCheckbox.checked = filterGateway === '1';
+      }
+
+      if (internetCheckbox && filterInternet !== null) {
+        internetCheckbox.checked = filterInternet === '1';
+      }
+
+      // Restore endpoint limit from localStorage
+      const savedLimit = localStorage.getItem('endpointLimit') || '20';
+      const limitSlider = document.getElementById('endpointLimitSlider');
+      const limitValue = document.getElementById('endpointLimitValue');
+
+      if (limitSlider && limitValue) {
+        limitSlider.value = savedLimit;
+        limitValue.textContent = savedLimit;
+      }
+
+      // Apply filters on page load (skip URL update to avoid redundant history)
+      if (typeof cy !== 'undefined') {
+        applyFilters(true);
+      }
+
+      // Apply endpoint limit on page load
+      applyEndpointLimit();
     });
 
     // Update visible protocols in the overlay
@@ -701,13 +816,56 @@
       }
     }
 
+    // Check if an IP is on the local network (private IP ranges)
+    function isLocalIP(ip) {
+      if (!ip) return false;
+
+      // IPv4 private ranges
+      const ipv4Private = [
+        /^10\./,                    // 10.0.0.0/8
+        /^172\.(1[6-9]|2[0-9]|3[01])\./, // 172.16.0.0/12
+        /^192\.168\./,              // 192.168.0.0/16
+        /^127\./,                   // 127.0.0.0/8 (loopback)
+        /^169\.254\./,              // 169.254.0.0/16 (link-local)
+        /^0\.0\.0\.0/,              // Unspecified
+        /^255\.255\.255\.255/       // Broadcast
+      ];
+
+      // IPv6 private/local ranges
+      const ipv6Private = [
+        /^::1$/,                    // Loopback
+        /^fe80:/i,                  // Link-local
+        /^fc00:/i,                  // Unique local address
+        /^fd00:/i,                  // Unique local address
+        /^::$/                      // Unspecified
+      ];
+
+      for (let pattern of ipv4Private) {
+        if (pattern.test(ip)) return true;
+      }
+
+      for (let pattern of ipv6Private) {
+        if (pattern.test(ip)) return true;
+      }
+
+      return false;
+    }
+
     // Filter nodes by type
-    function applyFilters() {
+    function applyFilters(skipUrlUpdate = false) {
       // Get type filter states
       const showGateway = document.getElementById('filterGateway').checked;
       const showInternet = document.getElementById('filterInternet').checked;
 
-      // Filter nodes
+      // Save filter state to URL
+      if (!skipUrlUpdate) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('filter_gateway', showGateway ? '1' : '0');
+        url.searchParams.set('filter_internet', showInternet ? '1' : '0');
+        window.history.replaceState({}, '', url);
+      }
+
+      // Filter nodes in graph
       cy.nodes().forEach(node => {
         const type = node.data('type');
 
@@ -730,6 +888,35 @@
         const targetVisible = edge.target().style('display') === 'element';
         edge.style('display', sourceVisible && targetVisible ? 'element' : 'none');
       });
+
+      // Filter endpoints in sidebar list (reapply search filter to respect type filters)
+      const searchInput = document.getElementById('endpointSearchInput');
+      if (searchInput) {
+        filterEndpointsList(searchInput.value);
+      }
+
+      // Filter IPs and hostnames in endpoint details based on internet filter
+      if (!showInternet) {
+        // Hide internet-facing IPs
+        const ipItems = document.querySelectorAll('#ips-container .hostname-item');
+        ipItems.forEach(item => {
+          const ip = item.textContent.trim();
+          if (!isLocalIP(ip)) {
+            item.style.display = 'none';
+          } else {
+            item.style.display = 'block';
+          }
+        });
+
+        // Note: Hostnames are harder to classify without backend help,
+        // so we'll keep them visible for now unless you want to filter more aggressively
+      } else {
+        // Show all IPs when internet filter is enabled
+        const ipItems = document.querySelectorAll('#ips-container .hostname-item');
+        ipItems.forEach(item => {
+          item.style.display = 'block';
+        });
+      }
 
       // Update visible protocols in overlay
       updateVisibleProtocols();

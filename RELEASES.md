@@ -1,6 +1,13 @@
 # Release Notes
 
+## [0.2.2]
+### Added
+ - UI Slider for Endpoints
+
 ## [0.2.1]
+
+### Added
+ - More UI Updates
 
 ## [0.2.0]
 

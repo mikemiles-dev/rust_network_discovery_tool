@@ -261,8 +261,8 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
     comm_map
         .into_iter()
         .map(|((src, dst), (protocols, src_ip, dst_ip))| {
-            let src_type = EndPoint::classify_endpoint(src_ip);
-            let dst_type = EndPoint::classify_endpoint(dst_ip);
+            let src_type = EndPoint::classify_endpoint(src_ip, Some(src.clone()));
+            let dst_type = EndPoint::classify_endpoint(dst_ip, Some(dst.clone()));
 
             // Join protocols with comma for display, but keep them separate for filtering
             let sub_protocol = protocols.join(",");
@@ -321,7 +321,7 @@ fn get_all_endpoint_types(endpoints: &[String]) -> std::collections::HashMap<Str
             let ip_value: Option<String> = row.get(0).ok();
             Ok(ip_value)
         }) {
-            if let Some(endpoint_type) = EndPoint::classify_endpoint(ip) {
+            if let Some(endpoint_type) = EndPoint::classify_endpoint(ip, Some(endpoint.clone())) {
                 types.insert(endpoint.clone(), endpoint_type);
             }
         }
