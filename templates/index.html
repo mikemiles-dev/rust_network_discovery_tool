@@ -620,6 +620,7 @@
 
         <input type="text" id="endpointSearchInput" placeholder="Search endpoints..."
                oninput="filterEndpointsList(this.value)"
+               autofocus
                style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem; margin-bottom: 0.75rem;">
         <div class="list-box" id="endpoints-container">
           {% for node in dropdown_endpoints %}
