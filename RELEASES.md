@@ -1,12 +1,19 @@
 # Release Notes
 
+## [0.2.1]
+
 ## [0.2.0]
+
+### Added
+ - UI Search bars
 
 ### Fixed
 - Critical bug in endpoint matching logic that caused DHCP IP address reuse to incorrectly merge different physical devices into the same endpoint (e.g., Samsung.attlocal.net showing hostname as MikesPC)
 - Endpoint matching now requires MAC address match when MAC is available, preventing IP-based collisions from DHCP reassignments
 
 ## [0.1.3]
+
+### Fixed
 - Reworkd UI elements for internet types + added UI filters
 - Added tests
 

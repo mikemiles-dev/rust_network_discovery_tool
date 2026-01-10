@@ -456,9 +456,18 @@
         <label class="control-label">Endpoint</label>
         <select id="nodeSelector" onchange="selectNode(this.value)" autofocus>
           {% for node in dropdown_endpoints %}
-          <option value="{{ node }}" {% if node == selected_node %}selected{% endif %}>{{ node }}</option>
+          <option value="{{ node | safe }}" {% if node == selected_node %}selected{% endif %}>{{ node | safe }}</option>
           {% endfor %}
         </select>
+      </div>
+      <div class="control-group">
+        <label class="control-label">Search</label>
+        <div style="display: flex; gap: 0.5rem;">
+          <input type="text" id="hostnameSearchInput" placeholder="Type to search..."
+                 oninput="applyHostnameSearch(this.value)"
+                 style="min-width: 180px;">
+          <button onclick="clearHostnameSearch()" class="secondary" style="padding: 0.5rem 0.75rem;">Clear</button>
+        </div>
       </div>
       <div class="control-group">
         <label class="control-label">Time Range</label>
@@ -507,7 +516,7 @@
       <div class="card">
         <div class="card-title">Endpoint Details</div>
         <div class="input-group">
-          <input name="endpoint_name" type="text" value="{{ endpoint }}" placeholder="Endpoint name">
+          <input name="endpoint_name" type="text" value="{{ endpoint | safe }}" placeholder="Endpoint name">
           <button onclick="updateEndpointName()">Update</button>
         </div>
         <div class="stats">
@@ -526,10 +535,13 @@
         <!-- IP Addresses -->
         <div class="section">
           <div class="card-title">IP Addresses</div>
+          <input type="text" id="ipsListSearch" placeholder="Filter IPs..."
+                 oninput="filterIpsList(this.value)"
+                 style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.375rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; margin-bottom: 0.5rem;">
           <div class="list-box" id="ips-container">
             {% if ips %}
               {% for ip in ips %}
-              <div class="list-item" onclick="copyToClipboard('{{ ip }}', this)">{{ ip }}</div>
+              <div class="list-item" onclick="copyToClipboard('{{ ip | safe }}', this)">{{ ip | safe }}</div>
               {% endfor %}
             {% else %}
               <div class="empty-state">No IP addresses</div>
@@ -540,10 +552,13 @@
         <!-- MAC Addresses -->
         <div class="section">
           <div class="card-title">MAC Addresses</div>
+          <input type="text" id="macsListSearch" placeholder="Filter MACs..."
+                 oninput="filterMacsList(this.value)"
+                 style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.375rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; margin-bottom: 0.5rem;">
           <div class="list-box" id="macs-container">
             {% if macs %}
               {% for mac in macs %}
-              <div class="list-item" onclick="copyToClipboard('{{ mac }}', this)">{{ mac }}</div>
+              <div class="list-item" onclick="copyToClipboard('{{ mac | safe }}', this)">{{ mac | safe }}</div>
               {% endfor %}
             {% else %}
               <div class="empty-state">No MAC addresses</div>
@@ -570,10 +585,15 @@
         <div class="overlay-header" style="margin-top: 0.5rem;">
           Hostnames
         </div>
+        <div style="margin-bottom: 0.5rem;">
+          <input type="text" id="hostnamesListSearch" placeholder="Filter hostnames..."
+                 oninput="filterHostnamesList(this.value)"
+                 style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
+        </div>
         <div class="overlay-hostnames" id="hostnames-container">
           {% if hostnames %}
             {% for hostname in hostnames %}
-            <div class="hostname-item" onclick="copyToClipboard('{{ hostname }}', this)">{{ hostname }}</div>
+            <div class="hostname-item" onclick="copyToClipboard('{{ hostname | safe }}', this)">{{ hostname | safe }}</div>
             {% endfor %}
           {% else %}
             <div class="empty-state">No hostnames</div>
@@ -591,6 +611,10 @@
   <script>
     // Navigation functions
     function selectNode(nodeId) {
+      // Clear hostname search when changing endpoints
+      document.getElementById('hostnameSearchInput').value = "";
+      activeHostnameSearch = "";
+
       const url = new URL(window.location.href);
       url.searchParams.set('node', nodeId);
       window.location.href = url.toString();
@@ -681,23 +705,38 @@
 
     // Filter nodes by type
     function applyFilters() {
+      // Delegate to hostname search which now handles both type AND hostname filtering
+      const searchTerm = document.getElementById('hostnameSearchInput').value;
+      applyHostnameSearch(searchTerm);
+    }
+
+    // Filter nodes by hostname search
+    function applyHostnameSearch(searchTerm) {
+      // Normalize search term
+      const normalizedSearch = searchTerm.trim().toLowerCase();
+      activeHostnameSearch = normalizedSearch;
+
+      // Get type filter states
       const showLocal = document.getElementById('filterLocal').checked;
       const showGateway = document.getElementById('filterGateway').checked;
       const showInternet = document.getElementById('filterInternet').checked;
 
+      // Filter nodes
       cy.nodes().forEach(node => {
+        const nodeId = node.id().toLowerCase();
         const type = node.data('type');
-        let shouldShow = true;
 
-        if (type === 'local' && !showLocal) {
-          shouldShow = false;
-        } else if (type === 'gateway' && !showGateway) {
-          shouldShow = false;
-        } else if (type === 'internet' && !showInternet) {
-          shouldShow = false;
-        }
+        // Check type filter
+        let typeMatch = true;
+        if (type === 'local' && !showLocal) typeMatch = false;
+        else if (type === 'gateway' && !showGateway) typeMatch = false;
+        else if (type === 'internet' && !showInternet) typeMatch = false;
 
-        if (shouldShow) {
+        // Check hostname search (empty search matches all)
+        const hostnameMatch = normalizedSearch === '' || nodeId.includes(normalizedSearch);
+
+        // Apply both conditions (AND logic)
+        if (typeMatch && hostnameMatch) {
           node.style('display', 'element');
         } else {
           node.style('display', 'none');
@@ -706,24 +745,72 @@
 
       // Hide edges connected to hidden nodes
       cy.edges().forEach(edge => {
-        const source = edge.source();
-        const target = edge.target();
-        const sourceVisible = source.style('display') === 'element';
-        const targetVisible = target.style('display') === 'element';
-
-        if (sourceVisible && targetVisible) {
-          edge.style('display', 'element');
-        } else {
-          edge.style('display', 'none');
-        }
+        const sourceVisible = edge.source().style('display') === 'element';
+        const targetVisible = edge.target().style('display') === 'element';
+        edge.style('display', sourceVisible && targetVisible ? 'element' : 'none');
       });
 
-      // Update visible protocols after filtering
+      // Update visible protocols in overlay
       updateVisibleProtocols();
+    }
+
+    // Clear hostname search
+    function clearHostnameSearch() {
+      activeHostnameSearch = "";
+      document.getElementById('hostnameSearchInput').value = "";
+      applyHostnameSearch("");
+    }
+
+    // Filter hostnames list in sidebar
+    function filterHostnamesList(searchTerm) {
+      const normalizedSearch = searchTerm.trim().toLowerCase();
+      const hostnameItems = document.querySelectorAll('#hostnames-container .hostname-item');
+
+      hostnameItems.forEach(item => {
+        const hostname = item.textContent.toLowerCase();
+        if (normalizedSearch === '' || hostname.includes(normalizedSearch)) {
+          item.style.display = 'block';
+        } else {
+          item.style.display = 'none';
+        }
+      });
+    }
+
+    // Filter IPs list in sidebar
+    function filterIpsList(searchTerm) {
+      const normalizedSearch = searchTerm.trim().toLowerCase();
+      const ipItems = document.querySelectorAll('#ips-container .list-item');
+
+      ipItems.forEach(item => {
+        const ip = item.textContent.toLowerCase();
+        if (normalizedSearch === '' || ip.includes(normalizedSearch)) {
+          item.style.display = 'block';
+        } else {
+          item.style.display = 'none';
+        }
+      });
+    }
+
+    // Filter MACs list in sidebar
+    function filterMacsList(searchTerm) {
+      const normalizedSearch = searchTerm.trim().toLowerCase();
+      const macItems = document.querySelectorAll('#macs-container .list-item');
+
+      macItems.forEach(item => {
+        const mac = item.textContent.toLowerCase();
+        if (normalizedSearch === '' || mac.includes(normalizedSearch)) {
+          item.style.display = 'block';
+        } else {
+          item.style.display = 'none';
+        }
+      });
     }
 
     // Global variable to track selected protocol
     let selectedProtocol = null;
+
+    // Global variable to track hostname search
+    let activeHostnameSearch = "";
 
     // Filter graph by protocol
     function filterByProtocol(protocol, element) {
@@ -822,7 +909,7 @@
     function updateEndpointName() {
       const endpointNameInput = document.querySelector('input[name="endpoint_name"]');
       const newHostname = endpointNameInput.value.trim();
-      const currentHostname = "{{ endpoint }}";
+      const currentHostname = "{{ endpoint | safe }}";
 
       // Validate input
       if (!newHostname) {
@@ -883,7 +970,7 @@
       elements: [
         {% for endpoint in endpoints %}
           { data: {
-              id: '{{ endpoint }}',
+              id: '{{ endpoint | safe }}',
               {% if endpoint == hostname %}type: 'local',
               {% elif endpoint == selected_node %}type: 'selected',
               {% elif endpoint_types[endpoint] %}type: '{{ endpoint_types[endpoint] }}',
@@ -892,13 +979,15 @@
           },
         {% endfor %}
         {% for comm in communications %}
+          {% if comm.src_hostname != comm.dst_hostname %}
           { data: {
-            id: '{{ comm.sub_protocol }}-{{ comm.src_hostname }}-{{ comm.dst_hostname }}',
-            source: '{{ comm.src_hostname }}',
-            target: '{{ comm.dst_hostname }}',
-            label: '{{ comm.sub_protocol }}',
-            protocol: '{{ comm.sub_protocol }}'
+            id: '{{ comm.sub_protocol | safe }}-{{ comm.src_hostname | safe }}-{{ comm.dst_hostname | safe }}',
+            source: '{{ comm.src_hostname | safe }}',
+            target: '{{ comm.dst_hostname | safe }}',
+            label: '{{ comm.sub_protocol | safe }}',
+            protocol: '{{ comm.sub_protocol | safe }}'
           }},
+          {% endif %}
         {% endfor %}
       ],
       style: [
