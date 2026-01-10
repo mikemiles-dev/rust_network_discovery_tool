@@ -1,5 +1,10 @@
 # Release Notes
 
+## [0.2.4]
+
+### Fix
+ - Better Endpoint UI lookup
+
 ## [0.2.3]
 
 ### Added

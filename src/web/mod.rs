@@ -5,7 +5,6 @@ use actix_web::{
 use actix_web::{HttpResponse, Responder, get};
 use dns_lookup::get_hostname;
 use pnet::datalink;
-use rusqlite::named_params;
 use rust_embed::RustEmbed;
 use std::collections::HashSet;
 use tera::{Context, Tera};
@@ -14,7 +13,7 @@ use tokio::task;
 use crate::db::new_connection;
 use crate::network::endpoint::EndPoint;
 use crate::network::protocol::ProtocolPort;
-use rusqlite::params;
+use rusqlite::{Connection, params};
 
 use serde::{Deserialize, Serialize};
 
@@ -98,26 +97,48 @@ fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
 
 fn get_protocols_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String> {
     let conn = new_connection();
-    let mut stmt = conn
-        .prepare(
-            "
-            SELECT DISTINCT
-                COALESCE(NULLIF(c.sub_protocol, ''), c.ip_header_protocol) as protocol
-            FROM communications c
-            INNER JOIN endpoints src ON c.src_endpoint_id = src.id
-            INNER JOIN endpoints dst ON c.dst_endpoint_id = dst.id
-            WHERE c.last_seen_at >= (strftime('%s', 'now') - (:internal_minutes * 60))
-                AND (LOWER(src.name) = LOWER(:hostname) OR LOWER(dst.name) = LOWER(:hostname))
-            ORDER BY protocol
+
+    // Resolve the hostname/IP/MAC to endpoint IDs
+    let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, &hostname);
+
+    if endpoint_ids.is_empty() {
+        return Vec::new();
+    }
+
+    // Build IN clause for endpoint IDs
+    let placeholders = endpoint_ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let query = format!(
+        "
+        SELECT DISTINCT
+            COALESCE(NULLIF(c.sub_protocol, ''), c.ip_header_protocol) as protocol
+        FROM communications c
+        WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
+            AND (c.src_endpoint_id IN ({}) OR c.dst_endpoint_id IN ({}))
+        ORDER BY protocol
         ",
-        )
-        .expect("Failed to prepare statement");
+        placeholders, placeholders
+    );
+
+    let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
+
+    // Build parameters: internal_minutes + endpoint_ids (2 times for src and dst)
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    params.push(Box::new(internal_minutes));
+    for _ in 0..2 {
+        for id in &endpoint_ids {
+            params.push(Box::new(*id));
+        }
+    }
+
+    let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
     let rows = stmt
-        .query_map(
-            named_params! { ":hostname": hostname, ":internal_minutes": internal_minutes },
-            |row| row.get::<_, String>(0),
-        )
+        .query_map(params_ref.as_slice(), |row| row.get::<_, String>(0))
         .expect("Failed to execute query");
 
     rows.filter_map(|row| row.ok()).collect::<Vec<String>>()
@@ -125,30 +146,52 @@ fn get_protocols_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<St
 
 fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String> {
     let conn = new_connection();
-    let mut stmt = conn
-        .prepare(
-            "
-            SELECT DISTINCT
-                CASE
-                    WHEN LOWER(src.name) = LOWER(:hostname) THEN c.destination_port
-                    WHEN LOWER(dst.name) = LOWER(:hostname) THEN c.source_port
-                END as port
-            FROM communications c
-            INNER JOIN endpoints src ON c.src_endpoint_id = src.id
-            INNER JOIN endpoints dst ON c.dst_endpoint_id = dst.id
-            WHERE c.last_seen_at >= (strftime('%s', 'now') - (:internal_minutes * 60))
-                AND (LOWER(src.name) = LOWER(:hostname) OR LOWER(dst.name) = LOWER(:hostname))
-                AND port IS NOT NULL
-            ORDER BY CAST(port AS INTEGER)
+
+    // Resolve the hostname/IP/MAC to endpoint IDs
+    let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, &hostname);
+
+    if endpoint_ids.is_empty() {
+        return Vec::new();
+    }
+
+    // Build IN clause for endpoint IDs
+    let placeholders = endpoint_ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let query = format!(
+        "
+        SELECT DISTINCT
+            CASE
+                WHEN c.src_endpoint_id IN ({0}) THEN c.destination_port
+                WHEN c.dst_endpoint_id IN ({0}) THEN c.source_port
+            END as port
+        FROM communications c
+        WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
+            AND (c.src_endpoint_id IN ({0}) OR c.dst_endpoint_id IN ({0}))
+            AND port IS NOT NULL
+        ORDER BY CAST(port AS INTEGER)
         ",
-        )
-        .expect("Failed to prepare statement");
+        placeholders
+    );
+
+    let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
+
+    // Build parameters: internal_minutes + endpoint_ids (3 times for the 3 IN clauses)
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    params.push(Box::new(internal_minutes));
+    for _ in 0..3 {
+        for id in &endpoint_ids {
+            params.push(Box::new(*id));
+        }
+    }
+
+    let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
     let rows = stmt
-        .query_map(
-            named_params! { ":hostname": hostname, ":internal_minutes": internal_minutes },
-            |row| row.get::<_, i64>(0),
-        )
+        .query_map(params_ref.as_slice(), |row| row.get::<_, i64>(0))
         .expect("Failed to execute query");
 
     rows.filter_map(|row| row.ok())
@@ -161,44 +204,57 @@ fn get_all_ips_macs_and_hostnames_from_single_hostname(
     internal_minutes: u64,
 ) -> (Vec<String>, Vec<String>, Vec<String>) {
     let conn = new_connection();
-    let mut stmt = conn
-        .prepare(
-            "
-            SELECT DISTINCT ea.ip, ea.mac, ea.hostname
-            FROM endpoint_attributes ea
-            INNER JOIN endpoints e ON ea.endpoint_id = e.id
-            WHERE ea.endpoint_id IN (
-                SELECT DISTINCT e2.id
-                FROM endpoints e2
-                INNER JOIN communications c
-                    ON e2.id = c.src_endpoint_id OR e2.id = c.dst_endpoint_id
-                WHERE c.last_seen_at >= (strftime('%s', 'now') - (:internal_minutes * 60))
-            )
-            AND (
-                ea.endpoint_id IN (
-                    SELECT endpoint_id FROM endpoint_attributes
-                    WHERE LOWER(hostname) = LOWER(:hostname)
-                )
-                OR ea.endpoint_id IN (
-                    SELECT id FROM endpoints
-                    WHERE LOWER(name) = LOWER(:hostname)
-                )
-            )
-        ",
+
+    // Resolve the hostname/IP/MAC to endpoint IDs
+    let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, &hostname);
+
+    if endpoint_ids.is_empty() {
+        return (Vec::new(), Vec::new(), Vec::new());
+    }
+
+    // Build IN clause for endpoint IDs
+    let placeholders = endpoint_ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let query = format!(
+        "
+        SELECT DISTINCT ea.ip, ea.mac, ea.hostname
+        FROM endpoint_attributes ea
+        INNER JOIN endpoints e ON ea.endpoint_id = e.id
+        WHERE ea.endpoint_id IN (
+            SELECT DISTINCT e2.id
+            FROM endpoints e2
+            INNER JOIN communications c
+                ON e2.id = c.src_endpoint_id OR e2.id = c.dst_endpoint_id
+            WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
         )
-        .expect("Failed to prepare statement");
+        AND ea.endpoint_id IN ({})
+        ",
+        placeholders
+    );
+
+    let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
+
+    // Build parameters: internal_minutes + endpoint_ids
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    params.push(Box::new(internal_minutes));
+    for id in &endpoint_ids {
+        params.push(Box::new(*id));
+    }
+
+    let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
     let rows = stmt
-        .query_map(
-            named_params! { ":hostname": hostname, ":internal_minutes": internal_minutes },
-            |row| {
-                Ok((
-                    row.get::<_, Option<String>>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                ))
-            },
-        )
+        .query_map(params_ref.as_slice(), |row| {
+            Ok((
+                row.get::<_, Option<String>>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        })
         .expect("Failed to execute query");
 
     let mut ips = HashSet::new();
@@ -227,13 +283,56 @@ fn get_all_ips_macs_and_hostnames_from_single_hostname(
     (ips, macs, hostnames)
 }
 
+/// Resolve an identifier (hostname, IP, or MAC) to endpoint IDs
+/// Returns a Vec of endpoint IDs that match the identifier
+fn resolve_identifier_to_endpoint_ids(conn: &Connection, identifier: &str) -> Vec<i64> {
+    let mut endpoint_ids = Vec::new();
+
+    // Try matching by endpoint name
+    if let Ok(mut stmt) = conn.prepare("SELECT id FROM endpoints WHERE LOWER(name) = LOWER(?1)")
+        && let Ok(rows) = stmt.query_map([identifier], |row| row.get::<_, i64>(0))
+    {
+        endpoint_ids.extend(rows.flatten());
+    }
+
+    // Try matching by IP or MAC in endpoint_attributes
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT DISTINCT endpoint_id FROM endpoint_attributes
+         WHERE LOWER(ip) = LOWER(?1) OR LOWER(mac) = LOWER(?1)",
+    ) && let Ok(rows) = stmt.query_map([identifier], |row| row.get::<_, i64>(0))
+    {
+        endpoint_ids.extend(rows.flatten());
+    }
+
+    endpoint_ids.sort_unstable();
+    endpoint_ids.dedup();
+    endpoint_ids
+}
+
 fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
     let current_node = match current_node {
         Some(hostname) => hostname,
         None => get_hostname().unwrap(),
     };
 
-    let query = "
+    let conn = new_connection();
+
+    // Resolve the current_node identifier to endpoint IDs
+    let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, &current_node);
+
+    if endpoint_ids.is_empty() {
+        return Vec::new();
+    }
+
+    // Build IN clause for endpoint IDs
+    let placeholders = endpoint_ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let query = format!(
+        "
     SELECT
     src_endpoint.name AS src_hostname,
     dst_endpoint.name AS dst_hostname,
@@ -247,17 +346,30 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
     ON c.src_endpoint_id = src_endpoint.id
     LEFT JOIN endpoints AS dst_endpoint
     ON c.dst_endpoint_id = dst_endpoint.id
-    WHERE (LOWER(src_endpoint.name) = LOWER(?1) OR LOWER(dst_endpoint.name) = LOWER(?1))
-    AND c.last_seen_at >= (strftime('%s', 'now') - (?2 * 60))
+    WHERE (c.src_endpoint_id IN ({}) OR c.dst_endpoint_id IN ({}))
+    AND c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
     AND src_endpoint.name != '' AND dst_endpoint.name != ''
     AND src_endpoint.name IS NOT NULL AND dst_endpoint.name IS NOT NULL
-    ";
+    ",
+        placeholders, placeholders
+    );
 
-    let conn = new_connection();
-    let mut stmt = conn.prepare(query).expect("Failed to prepare statement");
+    let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
+
+    // Build parameters: endpoint_ids twice (for src and dst) + internal_minutes
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    for id in &endpoint_ids {
+        params.push(Box::new(*id));
+    }
+    for id in &endpoint_ids {
+        params.push(Box::new(*id));
+    }
+    params.push(Box::new(internal_minutes));
+
+    let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
     let rows = stmt
-        .query_map([&current_node, &internal_minutes.to_string()], |row| {
+        .query_map(params_ref.as_slice(), |row| {
             let header_protocol = row.get::<_, String>("header_protocol")?;
             let sub_protocol = row
                 .get::<_, Option<String>>("sub_protocol")?
