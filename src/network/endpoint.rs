@@ -566,15 +566,18 @@ impl EndPoint {
     }
 
     fn is_local(target_ip: String, mac: String) -> bool {
+        // Check definitive loopback addresses first
         if target_ip == "127.0.0.1"
             || target_ip == "::1"
             || target_ip == "localhost"
             || target_ip == "::ffff:"
             || target_ip == "0:0:0:0:0:0:0:1"
-            || target_ip == "::"
         {
             return true; // Loopback addresses are always local
         }
+
+        // For :: (unspecified address), verify MAC matches local interface
+        let is_unspecified = target_ip == "::";
 
         for interface in interfaces() {
             if let Some(iface_mac) = interface.mac {
@@ -588,6 +591,12 @@ impl EndPoint {
             {
                 return true; // IP address matches a local interface
             }
+        }
+
+        // Only treat :: as local if we didn't find a matching MAC
+        // If MAC didn't match any local interface, :: is NOT local
+        if is_unspecified {
+            return false;
         }
 
         false
