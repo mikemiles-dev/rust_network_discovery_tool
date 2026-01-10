@@ -2,6 +2,12 @@
 
 ## [0.3.2]
 
+### Added
+- Ephemeral port filtering - ports in the range 49152-65535 (IANA standard ephemeral range) are no longer stored in the database
+  - Reduces database clutter from temporary client-side ports
+  - Only meaningful service ports are tracked
+  - Example: Connection to default.exp-tas.com:443 from local port 57129 will only store port 443
+
 ### Fixed
 - Critical bug where isolated endpoints (endpoints with no recent communications) were not visible on the graph
   - Backend was assigning type "device" to unclassified endpoints, but frontend only recognized specific types
