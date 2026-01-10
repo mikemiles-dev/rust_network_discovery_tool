@@ -6,7 +6,7 @@ use actix_web::{HttpResponse, Responder, get};
 use dns_lookup::get_hostname;
 use pnet::datalink;
 use rust_embed::RustEmbed;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use tera::{Context, Tera};
 use tokio::task;
 
@@ -199,6 +199,69 @@ fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String
         .collect::<Vec<String>>()
 }
 
+fn get_endpoint_ips_and_macs(endpoints: &[String]) -> HashMap<String, (Vec<String>, Vec<String>)> {
+    let conn = new_connection();
+    let mut result: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
+
+    for endpoint in endpoints {
+        let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, endpoint);
+
+        if endpoint_ids.is_empty() {
+            result.insert(endpoint.clone(), (Vec::new(), Vec::new()));
+            continue;
+        }
+
+        let placeholders = endpoint_ids
+            .iter()
+            .map(|_| "?")
+            .collect::<Vec<_>>()
+            .join(",");
+
+        let query = format!(
+            "SELECT DISTINCT ea.ip, ea.mac
+             FROM endpoint_attributes ea
+             WHERE ea.endpoint_id IN ({})",
+            placeholders
+        );
+
+        if let Ok(mut stmt) = conn.prepare(&query) {
+            let params_ref: Vec<&dyn rusqlite::ToSql> = endpoint_ids
+                .iter()
+                .map(|id| id as &dyn rusqlite::ToSql)
+                .collect();
+
+            if let Ok(rows) = stmt.query_map(params_ref.as_slice(), |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                ))
+            }) {
+                let mut ips = Vec::new();
+                let mut macs = Vec::new();
+
+                for (ip, mac) in rows.flatten() {
+                    if let Some(ip_str) = ip
+                        && !ip_str.is_empty() && !ips.contains(&ip_str)
+                    {
+                        ips.push(ip_str);
+                    }
+                    if let Some(mac_str) = mac
+                        && !mac_str.is_empty() && !macs.contains(&mac_str)
+                    {
+                        macs.push(mac_str);
+                    }
+                }
+
+                ips.sort();
+                macs.sort();
+                result.insert(endpoint.clone(), (ips, macs));
+            }
+        }
+    }
+
+    result
+}
+
 fn get_all_ips_macs_and_hostnames_from_single_hostname(
     hostname: String,
     internal_minutes: u64,
@@ -288,14 +351,22 @@ fn get_all_ips_macs_and_hostnames_from_single_hostname(
 fn resolve_identifier_to_endpoint_ids(conn: &Connection, identifier: &str) -> Vec<i64> {
     let mut endpoint_ids = Vec::new();
 
-    // Try matching by endpoint name
+    // Try matching by endpoint name first (exact match has priority)
     if let Ok(mut stmt) = conn.prepare("SELECT id FROM endpoints WHERE LOWER(name) = LOWER(?1)")
         && let Ok(rows) = stmt.query_map([identifier], |row| row.get::<_, i64>(0))
     {
         endpoint_ids.extend(rows.flatten());
     }
 
-    // Try matching by IP or MAC in endpoint_attributes
+    // If we found an exact name match, return only that endpoint
+    // This prevents IP/MAC conflicts where multiple devices shared the same IP over time
+    if !endpoint_ids.is_empty() {
+        endpoint_ids.sort_unstable();
+        endpoint_ids.dedup();
+        return endpoint_ids;
+    }
+
+    // Only try IP/MAC matching if there was no exact name match
     if let Ok(mut stmt) = conn.prepare(
         "SELECT DISTINCT endpoint_id FROM endpoint_attributes
          WHERE LOWER(ip) = LOWER(?1) OR LOWER(mac) = LOWER(?1)",
@@ -655,6 +726,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let interfaces = get_interfaces();
     let supported_protocols = ProtocolPort::get_supported_protocols();
     let dropdown_endpoints = dropdown_endpoints(query.scan_interval.unwrap_or(60));
+    let endpoint_ips_macs = get_endpoint_ips_and_macs(&dropdown_endpoints);
     let mut endpoint_types = get_endpoint_types(&communications);
     let dropdown_types = get_all_endpoint_types(&dropdown_endpoints);
     // Merge dropdown types into endpoint_types
@@ -690,6 +762,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     context.insert("supported_protocols", &supported_protocols);
     context.insert("selected_node", &query.node);
     context.insert("dropdown_endpoints", &dropdown_endpoints);
+    context.insert("endpoint_ips_macs", &endpoint_ips_macs);
     context.insert("scan_interval", &query.scan_interval.unwrap_or(60));
     context.insert("ips", &ips);
     context.insert("macs", &macs);

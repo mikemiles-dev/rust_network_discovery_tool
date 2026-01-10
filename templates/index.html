@@ -626,7 +626,9 @@
           <div class="list-item {% if node == selected_node %}selected{% endif %}"
                onclick="selectNode('{{ node | safe }}')"
                data-endpoint="{{ node | safe }}"
-               data-endpoint-type="{% if node == hostname %}local{% elif endpoint_types[node] == "gateway" %}gateway{% elif endpoint_types[node] == "internet" %}internet{% elif endpoint_types[node] == "printer" %}printer{% elif endpoint_types[node] == "tv" %}tv{% elif endpoint_types[node] == "gaming" %}gaming{% elif endpoint_types[node] == "phone" %}phone{% elif endpoint_types[node] == "virtualization" %}virtualization{% elif endpoint_types[node] == "soundbar" %}soundbar{% elif endpoint_types[node] == "appliance" %}appliance{% elif endpoint_types[node] %}local{% else %}other{% endif %}">
+               data-endpoint-type="{% if node == hostname %}local{% elif endpoint_types[node] == "gateway" %}gateway{% elif endpoint_types[node] == "internet" %}internet{% elif endpoint_types[node] == "printer" %}printer{% elif endpoint_types[node] == "tv" %}tv{% elif endpoint_types[node] == "gaming" %}gaming{% elif endpoint_types[node] == "phone" %}phone{% elif endpoint_types[node] == "virtualization" %}virtualization{% elif endpoint_types[node] == "soundbar" %}soundbar{% elif endpoint_types[node] == "appliance" %}appliance{% elif endpoint_types[node] %}local{% else %}other{% endif %}"
+               data-endpoint-ips="{% if endpoint_ips_macs[node] %}{{ endpoint_ips_macs[node].0 | join(sep=",") }}{% endif %}"
+               data-endpoint-macs="{% if endpoint_ips_macs[node] %}{{ endpoint_ips_macs[node].1 | join(sep=",") }}{% endif %}">
             {% if node == hostname %}🖥️{% elif endpoint_types[node] == "gateway" %}🌐{% elif endpoint_types[node] == "internet" %}🌍{% elif endpoint_types[node] == "printer" %}🖨️{% elif endpoint_types[node] == "tv" %}📺{% elif endpoint_types[node] == "gaming" %}🎮{% elif endpoint_types[node] == "phone" %}📱{% elif endpoint_types[node] == "virtualization" %}🖥{% elif endpoint_types[node] == "soundbar" %}🔊{% elif endpoint_types[node] == "appliance" %}🏠{% elif endpoint_types[node] %}💻{% else %}❓{% endif %} {{ node | safe }}
           </div>
           {% endfor %}
@@ -790,9 +792,14 @@
       endpointItems.forEach(item => {
         const endpoint = item.textContent.toLowerCase();
         let type = item.getAttribute('data-endpoint-type');
+        const ips = (item.getAttribute('data-endpoint-ips') || '').toLowerCase();
+        const macs = (item.getAttribute('data-endpoint-macs') || '').toLowerCase();
 
-        // Check if matches search term
-        const matchesSearch = normalizedSearch === '' || endpoint.includes(normalizedSearch);
+        // Check if matches search term (search in endpoint name, IPs, and MACs)
+        const matchesSearch = normalizedSearch === ''
+          || endpoint.includes(normalizedSearch)
+          || ips.includes(normalizedSearch)
+          || macs.includes(normalizedSearch);
 
         // Treat null/undefined/empty as 'other'
         if (!type || type === '') {

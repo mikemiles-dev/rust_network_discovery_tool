@@ -1,5 +1,19 @@
 # Release Notes
 
+## [0.2.8]
+
+### Added
+- Endpoint search now searches IP addresses and MAC addresses in addition to hostnames
+- Search functionality in the endpoint sidebar now matches against all known IPs and MACs for each endpoint
+
+### Changed
+- Enhanced filterEndpointsList function to search across endpoint names, IP addresses, and MAC addresses
+
+### Fixed
+- Critical bug where clicking on an endpoint (e.g., an IP address like 192.168.7.160) would incorrectly show data from a different endpoint that had previously used the same IP address
+- Endpoint identifier resolution now prioritizes exact name matches before falling back to IP/MAC lookups
+- This prevents confusion when DHCP reassigns IP addresses or when multiple devices have shared the same IP over time
+
 ## [0.2.7]
 
 ### Added
