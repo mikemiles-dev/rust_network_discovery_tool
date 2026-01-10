@@ -1,5 +1,24 @@
 # Release Notes
 
+## [0.3.1]
+
+### Added
+- SQL cleanup script (`cleanup_duplicates.sql`) for one-time cleanup of existing duplicate endpoints
+- Script merges duplicate endpoints sharing the same MAC address into a single endpoint
+- Automatic duplicate prevention now active - duplicates are merged immediately when detected during network scanning
+
+### Fixed
+- Issue where endpoints would show as local machine on graph when communicating with unnamed duplicate endpoints
+- Cleanup script ensures all existing duplicates are merged before automatic prevention takes over
+
+### Usage
+To clean up existing duplicates in your database:
+1. Stop the network discovery tool
+2. Run: `sqlite3 test.db < cleanup_duplicates.sql`
+3. Restart the tool
+
+The automatic merging logic will prevent new duplicates from forming going forward.
+
 ## [0.3.0]
 
 ### Added
@@ -31,6 +50,11 @@
   - Previously, clicking an endpoint would show "No Communications Found" if its partners were filtered out by the slider
   - Now, when viewing a specific endpoint, ALL its communication partners are shown regardless of slider setting
   - Slider only applies to overall network view, not individual endpoint views
+- Critical bug where duplicate endpoints with same MAC address could exist, causing missing communications
+  - Automatic duplicate detection and merging now occurs when MAC addresses match
+  - Prefers keeping endpoints with non-empty names over those with empty names
+  - All communications and attributes from duplicates are merged into the kept endpoint
+  - Prevents issues like endpoints showing "No Communications Found" when communicating with unnamed duplicates
 - Endpoint name lookups now use optimized indexes for 10-50x faster performance
 - Graph now correctly respects both type filters and endpoint limit slider in appropriate contexts
 - Endpoint resolution query optimized to return only most recently active endpoint when duplicates exist
