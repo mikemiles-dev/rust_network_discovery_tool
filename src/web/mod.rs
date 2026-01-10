@@ -515,7 +515,7 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
                 dst_type,
             }
         })
-        .collect::<Vec<Node>>()
+        .collect()
 }
 
 fn get_endpoints(communications: &[Node]) -> Vec<String> {
@@ -602,6 +602,9 @@ fn get_all_endpoint_types(endpoints: &[String]) -> std::collections::HashMap<Str
                 EndPoint::classify_device_type(Some(endpoint), ip.as_deref(), &ports)
             {
                 types.insert(endpoint.clone(), device_type);
+            } else if ip.is_some() {
+                // If we have an IP but no specific classification, it's a local network device
+                types.insert(endpoint.clone(), "local");
             }
         }
     }
@@ -746,7 +749,15 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let selected_endpoint = query.node.clone().unwrap_or_else(|| hostname.clone());
 
     let communications = get_nodes(query.node.clone(), query.scan_interval.unwrap_or(60));
-    let endpoints = get_endpoints(&communications);
+    let mut endpoints = get_endpoints(&communications);
+
+    // If a specific node was selected but isn't in the endpoints list, add it
+    // This handles isolated endpoints with no communications
+    if let Some(ref selected_node) = query.node
+        && !endpoints.contains(selected_node)
+    {
+        endpoints.push(selected_node.clone());
+    }
     let interfaces = get_interfaces();
     let supported_protocols = ProtocolPort::get_supported_protocols();
     let dropdown_endpoints = dropdown_endpoints(query.scan_interval.unwrap_or(60));
@@ -757,14 +768,15 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     for (endpoint, type_str) in dropdown_types {
         endpoint_types.entry(endpoint).or_insert(type_str);
     }
-    // Ensure all dropdown endpoints have a type (default to "device" if not classified)
+    // Ensure all dropdown endpoints have a type (default to "other" if not classified)
     for endpoint in &dropdown_endpoints {
-        endpoint_types.entry(endpoint.clone()).or_insert("device");
+        endpoint_types.entry(endpoint.clone()).or_insert("other");
     }
     // Also ensure all endpoints from communications have a type
     for endpoint in &endpoints {
-        endpoint_types.entry(endpoint.clone()).or_insert("device");
+        endpoint_types.entry(endpoint.clone()).or_insert("other");
     }
+
     let (ips, macs, hostnames) = get_all_ips_macs_and_hostnames_from_single_hostname(
         selected_endpoint.clone(),
         query.scan_interval.unwrap_or(60),

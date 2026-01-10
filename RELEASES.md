@@ -1,5 +1,17 @@
 # Release Notes
 
+## [0.3.2]
+
+### Fixed
+- Critical bug where isolated endpoints (endpoints with no recent communications) were not visible on the graph
+  - Backend was assigning type "device" to unclassified endpoints, but frontend only recognized specific types
+  - Changed default endpoint type from "device" to "other" to match frontend filter system
+  - Isolated endpoints now properly appear on the graph with the ❓ Other classification
+  - This fixes issue where endpoints like 192.168.7.219 would not display even when explicitly selected
+- Issue where local network devices (with private IP addresses) were classified as "Other" instead of "Local"
+  - Endpoints with local IPs (192.168.x.x, 10.x.x.x, etc.) that don't match specific device types (printer, TV, etc.) are now properly classified as 🖥️ Local
+  - Only truly unclassified endpoints (no IP or hostname) remain as ❓ Other
+
 ## [0.3.1]
 
 ### Added
@@ -10,6 +22,10 @@
 ### Fixed
 - Issue where endpoints would show as local machine on graph when communicating with unnamed duplicate endpoints
 - Cleanup script ensures all existing duplicates are merged before automatic prevention takes over
+- Issue where selecting an endpoint with no recent communications would show an empty graph
+  - Selected endpoint now always appears on the graph, even if it has no communications within the time range
+  - Displays as an isolated node with no edges
+  - This includes endpoints identified by IP address (e.g., 192.168.7.219) that have communications filtered out due to unnamed communication partners
 
 ### Usage
 To clean up existing duplicates in your database:
