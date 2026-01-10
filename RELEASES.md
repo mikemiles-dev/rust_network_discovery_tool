@@ -2,15 +2,6 @@
 
 ## [0.3.2]
 
-### Added
-- Smart port filtering to reduce database clutter from ephemeral ports
-  - **Source ports are never stored** (always ephemeral/not meaningful)
-  - **Destination ports** are stored only if < 32768 (service ports)
-  - Focuses tracking on actual services being accessed rather than temporary client ports
-  - Example: Connection from 192.168.4.1:20401 → api.example.com:443 stores only port 443
-  - Dramatically reduces port clutter in the UI and database
-  - Note: Only affects new communications - existing ports will remain until data retention cleanup
-
 ### Fixed
 - Critical bug where isolated endpoints (endpoints with no recent communications) were not visible on the graph
   - Backend was assigning type "device" to unclassified endpoints, but frontend only recognized specific types
