@@ -194,8 +194,6 @@
       display: flex;
       flex-direction: column;
       gap: 0.375rem;
-      max-height: 100px;
-      overflow-y: auto;
       margin-bottom: 0.375rem;
     }
 
@@ -279,6 +277,12 @@
       background: var(--accent-success);
       border-radius: 50%;
       animation: pulse 2s infinite;
+    }
+
+    .pulse.stopped {
+      background: #ef4444;
+      animation: none;
+      opacity: 1;
     }
 
     @keyframes pulse {
@@ -545,8 +549,14 @@
       <div class="card">
         <div class="card-title" style="margin-bottom: 0; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(51, 65, 85, 0.6);">Endpoints</div>
 
+        <!-- Filter Controls -->
+        <div style="display: flex; justify-content: flex-start; gap: 0.5rem; margin-top: 0.75rem; margin-bottom: 0.375rem;">
+          <button onclick="selectAllFilters()" style="font-size: 0.7rem; padding: 0.125rem 0.375rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; border-radius: 0.25rem; cursor: pointer; font-weight: 500;">All</button>
+          <button onclick="selectNoneFilters()" style="font-size: 0.7rem; padding: 0.125rem 0.375rem; background: rgba(100, 116, 139, 0.2); border: 1px solid rgba(100, 116, 139, 0.4); color: #94a3b8; border-radius: 0.25rem; cursor: pointer; font-weight: 500;">None</button>
+        </div>
+
         <!-- Filters -->
-        <div style="display: flex; flex-direction: column; gap: 0.375rem; margin-top: 0.75rem; margin-bottom: 0.5rem;">
+        <div style="display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 0.5rem;">
           <div style="display: flex; gap: 0.375rem; flex-wrap: nowrap;">
             <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(45, 27, 78, 0.5); border-radius: 0.375rem; border: 1px solid #8b5cf6; white-space: nowrap;">
               <input type="checkbox" id="filterLocal" checked onchange="applyFilters()" style="cursor: pointer;">
@@ -573,6 +583,10 @@
             <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(92, 28, 46, 0.5); border-radius: 0.375rem; border: 1px solid #f43f5e; white-space: nowrap;">
               <input type="checkbox" id="filterGaming" checked onchange="applyFilters()" style="cursor: pointer;">
               <span>🎮 Gaming</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(8, 51, 51, 0.5); border-radius: 0.375rem; border: 1px solid #14b8a6; white-space: nowrap;">
+              <input type="checkbox" id="filterPhone" checked onchange="applyFilters()" style="cursor: pointer;">
+              <span>📱 Phone</span>
             </label>
             <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.5); border-radius: 0.375rem; border: 1px solid #94a3b8; white-space: nowrap;">
               <input type="checkbox" id="filterVirtualization" checked onchange="applyFilters()" style="cursor: pointer;">
@@ -603,13 +617,13 @@
         <input type="text" id="endpointSearchInput" placeholder="Search endpoints..."
                oninput="filterEndpointsList(this.value)"
                style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem; margin-bottom: 0.75rem;">
-        <div class="list-box" id="endpoints-container" style="max-height: calc(100vh - 200px);">
+        <div class="list-box" id="endpoints-container">
           {% for node in dropdown_endpoints %}
           <div class="list-item {% if node == selected_node %}selected{% endif %}"
                onclick="selectNode('{{ node | safe }}')"
                data-endpoint="{{ node | safe }}"
-               data-endpoint-type="{% if node == hostname %}local{% elif endpoint_types[node] == "gateway" %}gateway{% elif endpoint_types[node] == "internet" %}internet{% elif endpoint_types[node] == "printer" %}printer{% elif endpoint_types[node] == "tv" %}tv{% elif endpoint_types[node] == "gaming" %}gaming{% elif endpoint_types[node] == "virtualization" %}virtualization{% elif endpoint_types[node] == "soundbar" %}soundbar{% elif endpoint_types[node] == "appliance" %}appliance{% else %}local{% endif %}">
-            {% if node == hostname %}🖥️{% elif endpoint_types[node] == "gateway" %}🌐{% elif endpoint_types[node] == "internet" %}🌍{% elif endpoint_types[node] == "printer" %}🖨️{% elif endpoint_types[node] == "tv" %}📺{% elif endpoint_types[node] == "gaming" %}🎮{% elif endpoint_types[node] == "virtualization" %}🖥{% elif endpoint_types[node] == "soundbar" %}🔊{% elif endpoint_types[node] == "appliance" %}🏠{% else %}💻{% endif %} {{ node | safe }}
+               data-endpoint-type="{% if node == hostname %}local{% elif endpoint_types[node] == "gateway" %}gateway{% elif endpoint_types[node] == "internet" %}internet{% elif endpoint_types[node] == "printer" %}printer{% elif endpoint_types[node] == "tv" %}tv{% elif endpoint_types[node] == "gaming" %}gaming{% elif endpoint_types[node] == "phone" %}phone{% elif endpoint_types[node] == "virtualization" %}virtualization{% elif endpoint_types[node] == "soundbar" %}soundbar{% elif endpoint_types[node] == "appliance" %}appliance{% else %}local{% endif %}">
+            {% if node == hostname %}🖥️{% elif endpoint_types[node] == "gateway" %}🌐{% elif endpoint_types[node] == "internet" %}🌍{% elif endpoint_types[node] == "printer" %}🖨️{% elif endpoint_types[node] == "tv" %}📺{% elif endpoint_types[node] == "gaming" %}🎮{% elif endpoint_types[node] == "phone" %}📱{% elif endpoint_types[node] == "virtualization" %}🖥{% elif endpoint_types[node] == "soundbar" %}🔊{% elif endpoint_types[node] == "appliance" %}🏠{% else %}💻{% endif %} {{ node | safe }}
           </div>
           {% endfor %}
         </div>
@@ -763,6 +777,7 @@
       const showPrinter = document.getElementById('filterPrinter').checked;
       const showTv = document.getElementById('filterTv').checked;
       const showGaming = document.getElementById('filterGaming').checked;
+      const showPhone = document.getElementById('filterPhone').checked;
       const showVirtualization = document.getElementById('filterVirtualization').checked;
       const showSoundbar = document.getElementById('filterSoundbar').checked;
       const showAppliance = document.getElementById('filterAppliance').checked;
@@ -782,6 +797,7 @@
         else if (type === 'printer' && !showPrinter) matchesType = false;
         else if (type === 'tv' && !showTv) matchesType = false;
         else if (type === 'gaming' && !showGaming) matchesType = false;
+        else if (type === 'phone' && !showPhone) matchesType = false;
         else if (type === 'virtualization' && !showVirtualization) matchesType = false;
         else if (type === 'soundbar' && !showSoundbar) matchesType = false;
         else if (type === 'appliance' && !showAppliance) matchesType = false;
@@ -862,6 +878,7 @@
       const filterPrinter = urlParams.get('filter_printer');
       const filterTv = urlParams.get('filter_tv');
       const filterGaming = urlParams.get('filter_gaming');
+      const filterPhone = urlParams.get('filter_phone');
       const filterVirtualization = urlParams.get('filter_virtualization');
       const filterSoundbar = urlParams.get('filter_soundbar');
       const filterAppliance = urlParams.get('filter_appliance');
@@ -873,6 +890,7 @@
       const printerCheckbox = document.getElementById('filterPrinter');
       const tvCheckbox = document.getElementById('filterTv');
       const gamingCheckbox = document.getElementById('filterGaming');
+      const phoneCheckbox = document.getElementById('filterPhone');
       const virtualizationCheckbox = document.getElementById('filterVirtualization');
       const soundbarCheckbox = document.getElementById('filterSoundbar');
       const applianceCheckbox = document.getElementById('filterAppliance');
@@ -899,6 +917,10 @@
 
       if (gamingCheckbox && filterGaming !== null) {
         gamingCheckbox.checked = filterGaming === '1';
+      }
+
+      if (phoneCheckbox && filterPhone !== null) {
+        phoneCheckbox.checked = filterPhone === '1';
       }
 
       if (virtualizationCheckbox && filterVirtualization !== null) {
@@ -1086,6 +1108,36 @@
       return false;
     }
 
+    // Select all device type filters
+    function selectAllFilters() {
+      document.getElementById('filterLocal').checked = true;
+      document.getElementById('filterGateway').checked = true;
+      document.getElementById('filterInternet').checked = true;
+      document.getElementById('filterPrinter').checked = true;
+      document.getElementById('filterTv').checked = true;
+      document.getElementById('filterGaming').checked = true;
+      document.getElementById('filterPhone').checked = true;
+      document.getElementById('filterVirtualization').checked = true;
+      document.getElementById('filterSoundbar').checked = true;
+      document.getElementById('filterAppliance').checked = true;
+      applyFilters();
+    }
+
+    // Deselect all device type filters
+    function selectNoneFilters() {
+      document.getElementById('filterLocal').checked = false;
+      document.getElementById('filterGateway').checked = false;
+      document.getElementById('filterInternet').checked = false;
+      document.getElementById('filterPrinter').checked = false;
+      document.getElementById('filterTv').checked = false;
+      document.getElementById('filterGaming').checked = false;
+      document.getElementById('filterPhone').checked = false;
+      document.getElementById('filterVirtualization').checked = false;
+      document.getElementById('filterSoundbar').checked = false;
+      document.getElementById('filterAppliance').checked = false;
+      applyFilters();
+    }
+
     // Filter nodes by type
     function applyFilters(skipUrlUpdate = false) {
       // Get type filter states
@@ -1095,6 +1147,7 @@
       const showPrinter = document.getElementById('filterPrinter').checked;
       const showTv = document.getElementById('filterTv').checked;
       const showGaming = document.getElementById('filterGaming').checked;
+      const showPhone = document.getElementById('filterPhone').checked;
       const showVirtualization = document.getElementById('filterVirtualization').checked;
       const showSoundbar = document.getElementById('filterSoundbar').checked;
       const showAppliance = document.getElementById('filterAppliance').checked;
@@ -1108,6 +1161,7 @@
         url.searchParams.set('filter_printer', showPrinter ? '1' : '0');
         url.searchParams.set('filter_tv', showTv ? '1' : '0');
         url.searchParams.set('filter_gaming', showGaming ? '1' : '0');
+        url.searchParams.set('filter_phone', showPhone ? '1' : '0');
         url.searchParams.set('filter_virtualization', showVirtualization ? '1' : '0');
         url.searchParams.set('filter_soundbar', showSoundbar ? '1' : '0');
         url.searchParams.set('filter_appliance', showAppliance ? '1' : '0');
@@ -1126,6 +1180,7 @@
         else if (type === 'printer' && !showPrinter) typeMatch = false;
         else if (type === 'tv' && !showTv) typeMatch = false;
         else if (type === 'gaming' && !showGaming) typeMatch = false;
+        else if (type === 'phone' && !showPhone) typeMatch = false;
         else if (type === 'virtualization' && !showVirtualization) typeMatch = false;
         else if (type === 'soundbar' && !showSoundbar) typeMatch = false;
         else if (type === 'appliance' && !showAppliance) typeMatch = false;
@@ -1506,6 +1561,15 @@
           }
         },
         {
+          selector: 'node[type = "phone"]',
+          style: {
+            'label': function(ele) { return '📱\n' + ele.data('id'); },
+            'background-color': '#083333',
+            'border-color': '#14b8a6',
+            'border-width': 2
+          }
+        },
+        {
           selector: 'node[type = "virtualization"]',
           style: {
             'label': function(ele) { return '🖥\n' + ele.data('id'); },
@@ -1571,6 +1635,12 @@
         },
         {
           selector: 'node[type = "gaming"][selected = "true"]',
+          style: {
+            'border-color': '#10b981'
+          }
+        },
+        {
+          selector: 'node[type = "phone"][selected = "true"]',
           style: {
             'border-color': '#10b981'
           }
@@ -1661,12 +1731,12 @@
       const toggleBtn = document.getElementById('refreshToggleBtn');
 
       if (seconds == 0) {
-        pulse.style.display = 'none';
+        pulse.classList.add('stopped');
         toggleBtn.innerHTML = '▶️ Play';
         toggleBtn.classList.add('play');
         toggleBtn.title = 'Start auto-refresh';
       } else {
-        pulse.style.display = 'block';
+        pulse.classList.remove('stopped');
         toggleBtn.innerHTML = '⏹️ Stop';
         toggleBtn.classList.remove('play');
         toggleBtn.title = 'Stop auto-refresh';

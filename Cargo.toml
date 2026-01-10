@@ -1,6 +1,6 @@
 [package]
 name = "rust_network_discovery_tool"
-version = "0.2.5"
+version = "0.2.6"
 edition = "2024"
 
 [dependencies]

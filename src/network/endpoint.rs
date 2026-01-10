@@ -27,6 +27,7 @@ const CLASSIFICATION_GAMING: &str = "gaming";
 const CLASSIFICATION_VIRTUALIZATION: &str = "virtualization";
 const CLASSIFICATION_SOUNDBAR: &str = "soundbar";
 const CLASSIFICATION_APPLIANCE: &str = "appliance";
+const CLASSIFICATION_PHONE: &str = "phone";
 
 #[derive(Debug)]
 pub enum InsertEndpointError {
@@ -229,6 +230,31 @@ impl EndPoint {
                 || lower.contains("steam-deck")
             {
                 return Some(CLASSIFICATION_GAMING);
+            }
+
+            // Phone/Tablet detection by hostname
+            if lower.contains("iphone")
+                || lower.contains("ipad")
+                || lower.contains("ipod")
+                || lower.contains("galaxy") && !lower.contains("tv")
+                || lower.contains("pixel") && !lower.contains("tv")
+                || lower.contains("oneplus")
+                || lower.contains("xiaomi") && !lower.contains("tv")
+                || lower.contains("huawei") && !lower.contains("tv")
+                || lower.contains("motorola")
+                || lower.contains("nokia") && !lower.contains("tv")
+                || lower.contains("oppo")
+                || lower.contains("vivo")
+                || lower.contains("realme")
+                || lower.contains("redmi")
+                || lower.contains("poco")
+                || lower.contains("asus") && (lower.contains("phone") || lower.contains("zenfone"))
+                || lower.contains("android") && !lower.contains("androidtv") && !lower.contains("tv")
+                || lower.starts_with("sm-") // Samsung phone model codes (e.g., SM-G991U)
+                || lower.starts_with("moto")
+            // Motorola phones
+            {
+                return Some(CLASSIFICATION_PHONE);
             }
 
             // VM/Container/Virtualization detection by hostname

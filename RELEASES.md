@@ -1,5 +1,16 @@
 # Release Notes
 
+## [0.2.6]
+
+### Added
+- Phone/Tablet device detection (iPhone, iPad, Android phones, Galaxy, Pixel, OnePlus, Xiaomi, Huawei, Motorola, and more)
+- 📱 Phone filter in UI with teal color coding (#14b8a6)
+- Phone devices now display with distinct color in network graph for easy identification
+
+### Changed
+- Phone devices are now classified separately from generic "Local" devices
+- Filter UI now includes 10 device categories for comprehensive device type filtering
+
 ## [0.2.5]
 
 ### Added
