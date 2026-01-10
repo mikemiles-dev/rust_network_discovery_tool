@@ -1,5 +1,23 @@
 # Release Notes
 
+## [0.2.7]
+
+### Added
+- ❓ Other device category for unclassified endpoints that don't match any specific device type
+- All/None buttons above device type filters for quick selection/deselection of all filter categories
+- "No Communications Found" message now appears when all device type filters are turned off
+
+### Changed
+- Auto-refresh indicator now turns red (solid) when stopped instead of disappearing
+- Endpoint list in sidebar is now a flowing list instead of a fixed-height scrolling box
+- All/None filter buttons are left-aligned for better visual flow
+- Filter logic completely rewritten to properly handle null, undefined, or empty device types
+
+### Fixed
+- Critical bug where endpoints with null or unrecognized device types would remain visible even when all filters were unchecked
+- "No Communications Found" message would incorrectly appear when viewing overall network graph with multiple endpoints visible
+- Filter state now correctly defaults to "false" instead of "true", ensuring proper filtering behavior
+
 ## [0.2.6]
 
 ### Added
