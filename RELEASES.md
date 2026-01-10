@@ -3,10 +3,13 @@
 ## [0.3.2]
 
 ### Added
-- Ephemeral port filtering - ports in the range 49152-65535 (IANA standard ephemeral range) are no longer stored in the database
-  - Reduces database clutter from temporary client-side ports
-  - Only meaningful service ports are tracked
-  - Example: Connection to default.exp-tas.com:443 from local port 57129 will only store port 443
+- Smart port filtering to reduce database clutter from ephemeral ports
+  - **Source ports are never stored** (always ephemeral/not meaningful)
+  - **Destination ports** are stored only if < 32768 (service ports)
+  - Focuses tracking on actual services being accessed rather than temporary client ports
+  - Example: Connection from 192.168.4.1:20401 → api.example.com:443 stores only port 443
+  - Dramatically reduces port clutter in the UI and database
+  - Note: Only affects new communications - existing ports will remain until data retention cleanup
 
 ### Fixed
 - Critical bug where isolated endpoints (endpoints with no recent communications) were not visible on the graph

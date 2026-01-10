@@ -142,9 +142,12 @@ impl Communication {
     }
 
     /// Check if a port is ephemeral (temporary client-side port)
-    /// Using IANA standard range: 49152-65535
+    /// Using broader range that covers most systems: 32768-65535
+    /// - Linux default: 32768-60999
+    /// - IANA standard: 49152-65535
+    /// - Most systems use ports >= 32768 for ephemeral
     fn is_ephemeral_port(port: Option<u16>) -> bool {
-        port.is_some_and(|p| p >= 49152)
+        port.is_some_and(|p| p >= 32768)
     }
 
     pub fn insert_communication(&self, conn: &Connection) -> Result<()> {
@@ -188,13 +191,10 @@ impl Communication {
 
         let now = chrono::Utc::now().timestamp();
 
-        // Filter out ephemeral ports before storing
-        // Only store well-known/registered service ports (< 49152)
-        let source_port = if Self::is_ephemeral_port(self.source_port) {
-            None
-        } else {
-            self.source_port
-        };
+        // Only store destination ports (services being accessed)
+        // Source ports are almost always ephemeral and not meaningful
+        // Destination ports are stored only if they're well-known/registered (< 32768)
+        let source_port: Option<u16> = None; // Always ignore source ports
         let destination_port = if Self::is_ephemeral_port(self.destination_port) {
             None
         } else {
