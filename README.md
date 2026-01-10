@@ -11,25 +11,25 @@ A lightweight network traffic monitoring tool that captures and visualizes netwo
 
 Download the latest release for your platform:
 
-- **macOS (Apple Silicon)**: [awareness-macos-aarch64.tar.gz](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/awareness-macos-aarch64.tar.gz)
-- **macOS (Intel)**: [awareness-macos-x86_64.tar.gz](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/awareness-macos-x86_64.tar.gz)
-- **Linux**: [awareness-linux-x86_64.tar.gz](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/awareness-linux-x86_64.tar.gz)
-- **Windows**: [awareness-windows-x86_64.zip](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/awareness-windows-x86_64.zip)
+- **macOS (Apple Silicon)**: [rust_network_discovery_tool-macos-aarch64.tar.gz](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/rust_network_discovery_tool-macos-aarch64.tar.gz)
+- **macOS (Intel)**: [rust_network_discovery_tool-macos-x86_64.tar.gz](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/rust_network_discovery_tool-macos-x86_64.tar.gz)
+- **Linux**: [rust_network_discovery_tool-linux-x86_64.tar.gz](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/rust_network_discovery_tool-linux-x86_64.tar.gz)
+- **Windows**: [rust_network_discovery_tool-windows-x86_64.zip](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/rust_network_discovery_tool-windows-x86_64.zip)
 
 #### macOS/Linux Installation
 
 ```bash
 # Download and extract (adjust filename for your platform)
-tar -xzf awareness-macos-aarch64.tar.gz
+tar -xzf rust_network_discovery_tool-macos-aarch64.tar.gz
 
 # Make executable
-chmod +x awareness
+chmod +x rust_network_discovery_tool
 
 # Move to PATH (optional)
-sudo mv awareness /usr/local/bin/
+sudo mv rust_network_discovery_tool /usr/local/bin/
 
 # Run with sudo (required for packet capture)
-sudo awareness
+sudo rust_network_discovery_tool
 ```
 
 #### Windows Installation
@@ -57,25 +57,25 @@ sudo awareness
 
 Download the latest release for your platform from the [Releases page](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest):
 
-- **macOS (Apple Silicon)**: `awareness-macos-aarch64.tar.gz`
-- **macOS (Intel)**: `awareness-macos-x86_64.tar.gz`
-- **Linux**: `awareness-linux-x86_64.tar.gz`
-- **Windows**: `awareness-windows-x86_64.zip`
+- **macOS (Apple Silicon)**: `rust_network_discovery_tool-macos-aarch64.tar.gz`
+- **macOS (Intel)**: `rust_network_discovery_tool-macos-x86_64.tar.gz`
+- **Linux**: `rust_network_discovery_tool-linux-x86_64.tar.gz`
+- **Windows**: `rust_network_discovery_tool-windows-x86_64.zip`
 
 #### macOS/Linux Installation
 
 ```bash
 # Download and extract (adjust filename for your platform)
-tar -xzf awareness-macos-aarch64.tar.gz
+tar -xzf rust_network_discovery_tool-macos-aarch64.tar.gz
 
 # Make executable
-chmod +x awareness
+chmod +x rust_network_discovery_tool
 
 # Move to PATH (optional)
-sudo mv awareness /usr/local/bin/
+sudo mv rust_network_discovery_tool /usr/local/bin/
 
 # Run with sudo (required for packet capture)
-sudo awareness
+sudo rust_network_discovery_tool
 ```
 
 Then open http://localhost:8080 in your browser (or the port you configured with `WEB_PORT`).
@@ -86,14 +86,14 @@ Then open http://localhost:8080 in your browser (or the port you configured with
 2. **Install Npcap** (required for packet capture):
    - Download from: https://npcap.com/#download
    - Run the installer with default options
-   - Npcap provides the packet capture drivers that `awareness.exe` needs to monitor network traffic
+   - Npcap provides the packet capture drivers that `rust_network_discovery_tool.exe` needs to monitor network traffic
    - Alternative: WinPcap also works but Npcap is recommended and actively maintained
 3. Run PowerShell or Command Prompt as Administrator
-4. Navigate to the extracted folder and run `awareness.exe`
+4. Navigate to the extracted folder and run `rust_network_discovery_tool.exe`
 
 Then open http://localhost:8080 in your browser (or the port you configured with `WEB_PORT`).
 
-**Important for Windows users**: While the `awareness.exe` binary is fully statically linked (no DLL dependencies for Rust code), it still requires Npcap/WinPcap drivers to be installed on your system. These are kernel-mode drivers that enable packet capture on Windows and cannot be bundled with the application.
+**Important for Windows users**: While the `rust_network_discovery_tool.exe` binary is fully statically linked (no DLL dependencies for Rust code), it still requires Npcap/WinPcap drivers to be installed on your system. These are kernel-mode drivers that enable packet capture on Windows and cannot be bundled with the application.
 
 ### Build from Source
 
@@ -107,7 +107,7 @@ cd rust_network_discovery_tool
 cargo build --release
 ```
 
-The binary will be in `target/release/awareness`.
+The binary will be in `target/release/rust_network_discovery_tool`.
 
 ## Usage
 
@@ -115,26 +115,26 @@ The binary will be in `target/release/awareness`.
 
 ```bash
 # Show help
-awareness --help
+rust_network_discovery_tool --help
 
 # List all available network interfaces (recommended first step)
-awareness --list-interfaces
+rust_network_discovery_tool --list-interfaces
 
 # Monitor a specific interface by index number (easiest)
-awareness --interface 1
+rust_network_discovery_tool --interface 1
 
 # Monitor a specific interface by name
-awareness --interface "Wi-Fi"
-# On Windows: awareness --interface "\Device\NPF_{...}"
+rust_network_discovery_tool --interface "Wi-Fi"
+# On Windows: rust_network_discovery_tool --interface "\Device\NPF_{...}"
 
 # Monitor multiple interfaces
-awareness --interface "en0,eth0"
+rust_network_discovery_tool --interface "en0,eth0"
 
 # Use custom web server port
-awareness --port 9000
+rust_network_discovery_tool --port 9000
 
 # Combine options
-awareness --interface 1 --port 3000
+rust_network_discovery_tool --interface 1 --port 3000
 ```
 
 ### Windows-Specific Interface Selection
@@ -143,7 +143,7 @@ On Windows, network interfaces have technical names like `\Device\NPF_{GUID}` wh
 
 1. First, list available interfaces:
    ```powershell
-   awareness --list-interfaces
+   rust_network_discovery_tool --list-interfaces
    ```
 
 2. Find the interface with IP addresses assigned (usually your Ethernet or Wi-Fi adapter)
@@ -152,16 +152,16 @@ On Windows, network interfaces have technical names like `\Device\NPF_{GUID}` wh
 
 3. Use the index number in brackets:
    ```powershell
-   awareness --interface 1
+   rust_network_discovery_tool --interface 1
    ```
 
-**Multiple Interface Warning**: If you run `awareness` without specifying an interface on Windows, it will monitor ALL interfaces that have IP addresses. This may include virtual adapters (VPN, Hyper-V, VMware, etc.). You'll see a warning like:
+**Multiple Interface Warning**: If you run `rust_network_discovery_tool` without specifying an interface on Windows, it will monitor ALL interfaces that have IP addresses. This may include virtual adapters (VPN, Hyper-V, VMware, etc.). You'll see a warning like:
 
 ```
 ⚠️  Warning: Monitoring 3 interfaces simultaneously.
    This may include virtual adapters (VPN, Hyper-V, VMware, etc.)
-   To monitor a specific interface, use: awareness --list-interfaces
-   Then select one with: awareness --interface <number>
+   To monitor a specific interface, use: rust_network_discovery_tool --list-interfaces
+   Then select one with: rust_network_discovery_tool --interface <number>
 ```
 
 To avoid monitoring unwanted virtual adapters, use `--list-interfaces` first and select your primary network adapter explicitly.
@@ -230,17 +230,17 @@ If you see this error on Windows, try these steps:
 2. **Run as Administrator:**
    - Right-click on PowerShell or Command Prompt
    - Select "Run as Administrator"
-   - Navigate to the folder and run `awareness.exe`
+   - Navigate to the folder and run `rust_network_discovery_tool.exe`
 
 3. **Manually select your interface:**
    ```powershell
    # First, list all interfaces
-   awareness --list-interfaces
+   rust_network_discovery_tool --list-interfaces
 
    # Find your active network adapter (look for interfaces with IP addresses)
    # Note: Status (UP/DOWN) may be unreliable on Windows
    # Then use the index number:
-   awareness --interface 1
+   rust_network_discovery_tool --interface 1
    ```
 
 4. **Check your network adapter:**
@@ -265,7 +265,7 @@ If you see a warning about monitoring multiple interfaces simultaneously:
 
 **Solution**: Use `--list-interfaces` to see all available interfaces, then select your primary network adapter:
 ```powershell
-awareness --interface 1
+rust_network_discovery_tool --interface 1
 ```
 
 ### macOS/Linux: Permission Denied
@@ -274,10 +274,10 @@ Packet capture requires elevated privileges:
 
 ```bash
 # Run with sudo
-sudo awareness
+sudo rust_network_discovery_tool
 
 # Or set capabilities (Linux only)
-sudo setcap cap_net_raw,cap_net_admin=eip ./awareness
+sudo setcap cap_net_raw,cap_net_admin=eip ./rust_network_discovery_tool
 ```
 
 ## Privacy & Security

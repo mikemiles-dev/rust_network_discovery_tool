@@ -1,5 +1,5 @@
 [package]
-name = "awareness"
+name = "rust_network_discovery_tool"
 version = "0.2.1"
 edition = "2024"
 

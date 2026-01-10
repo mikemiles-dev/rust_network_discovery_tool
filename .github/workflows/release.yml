@@ -18,20 +18,20 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: awareness
-            asset_name: awareness-linux-x86_64
+            artifact_name: rust_network_discovery_tool
+            asset_name: rust_network_discovery_tool-linux-x86_64
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: awareness
-            asset_name: awareness-macos-x86_64
+            artifact_name: rust_network_discovery_tool
+            asset_name: rust_network_discovery_tool-macos-x86_64
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: awareness
-            asset_name: awareness-macos-aarch64
+            artifact_name: rust_network_discovery_tool
+            asset_name: rust_network_discovery_tool-macos-aarch64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: awareness.exe
-            asset_name: awareness-windows-x86_64.exe
+            artifact_name: rust_network_discovery_tool.exe
+            asset_name: rust_network_discovery_tool-windows-x86_64.exe
 
     steps:
       - name: Checkout code
@@ -167,25 +167,25 @@ jobs:
 
           Download the latest release for your platform:
 
-          - **macOS (Apple Silicon)**: [awareness-macos-aarch64.tar.gz](https://github.com/${{ github.repository }}/releases/latest/download/awareness-macos-aarch64.tar.gz)
-          - **macOS (Intel)**: [awareness-macos-x86_64.tar.gz](https://github.com/${{ github.repository }}/releases/latest/download/awareness-macos-x86_64.tar.gz)
-          - **Linux**: [awareness-linux-x86_64.tar.gz](https://github.com/${{ github.repository }}/releases/latest/download/awareness-linux-x86_64.tar.gz)
-          - **Windows**: [awareness-windows-x86_64.zip](https://github.com/${{ github.repository }}/releases/latest/download/awareness-windows-x86_64.zip)
+          - **macOS (Apple Silicon)**: [rust_network_discovery_tool-macos-aarch64.tar.gz](https://github.com/${{ github.repository }}/releases/latest/download/rust_network_discovery_tool-macos-aarch64.tar.gz)
+          - **macOS (Intel)**: [rust_network_discovery_tool-macos-x86_64.tar.gz](https://github.com/${{ github.repository }}/releases/latest/download/rust_network_discovery_tool-macos-x86_64.tar.gz)
+          - **Linux**: [rust_network_discovery_tool-linux-x86_64.tar.gz](https://github.com/${{ github.repository }}/releases/latest/download/rust_network_discovery_tool-linux-x86_64.tar.gz)
+          - **Windows**: [rust_network_discovery_tool-windows-x86_64.zip](https://github.com/${{ github.repository }}/releases/latest/download/rust_network_discovery_tool-windows-x86_64.zip)
 
           #### macOS/Linux Installation
 
           ```bash
           # Download and extract (adjust filename for your platform)
-          tar -xzf awareness-macos-aarch64.tar.gz
+          tar -xzf rust_network_discovery_tool-macos-aarch64.tar.gz
 
           # Make executable
-          chmod +x awareness
+          chmod +x rust_network_discovery_tool
 
           # Move to PATH (optional)
-          sudo mv awareness /usr/local/bin/
+          sudo mv rust_network_discovery_tool /usr/local/bin/
 
           # Run with sudo (required for packet capture)
-          sudo awareness
+          sudo rust_network_discovery_tool
           ```
 
           #### Windows Installation

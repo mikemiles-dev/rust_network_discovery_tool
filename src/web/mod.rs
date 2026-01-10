@@ -68,7 +68,8 @@ fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
         .query_map([internal_minutes], |row| row.get(0))
         .expect("Failed to execute query");
 
-    rows.filter_map(|row| row.ok())
+    let mut endpoints: Vec<String> = rows
+        .filter_map(|row| row.ok())
         .filter_map(|hostname: String| {
             if hostname.is_empty() {
                 None
@@ -76,7 +77,23 @@ fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
                 Some(hostname)
             }
         })
-        .collect::<Vec<String>>()
+        .collect();
+
+    // Get the local hostname
+    let local_hostname = get_hostname().unwrap_or_else(|_| "Unknown".to_string());
+
+    // Sort endpoints with local hostname first
+    endpoints.sort_by(|a, b| {
+        if a == &local_hostname {
+            std::cmp::Ordering::Less
+        } else if b == &local_hostname {
+            std::cmp::Ordering::Greater
+        } else {
+            a.cmp(b)
+        }
+    });
+
+    endpoints
 }
 
 fn get_protocols_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String> {

@@ -338,35 +338,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
-name = "awareness"
-version = "0.2.1"
-dependencies = [
- "actix-files",
- "actix-rt",
- "actix-web",
- "chrono",
- "clap",
- "ctrlc",
- "dns-lookup",
- "futures",
- "lazy_static",
- "mdns-sd",
- "mime_guess",
- "num-derive",
- "pcap",
- "pcap-file",
- "pnet",
- "rusqlite",
- "rust-embed",
- "serde",
- "serde_json",
- "tempfile",
- "tera",
- "tokio",
- "url",
-]
-
-[[package]]
 name = "backtrace"
 version = "0.3.75"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1997,6 +1968,35 @@ checksum = "60b161f275cb337fe0a44d924a5f4df0ed69c2c39519858f931ce61c779d3475"
 dependencies = [
  "sha2",
  "walkdir",
+]
+
+[[package]]
+name = "rust_network_discovery_tool"
+version = "0.2.1"
+dependencies = [
+ "actix-files",
+ "actix-rt",
+ "actix-web",
+ "chrono",
+ "clap",
+ "ctrlc",
+ "dns-lookup",
+ "futures",
+ "lazy_static",
+ "mdns-sd",
+ "mime_guess",
+ "num-derive",
+ "pcap",
+ "pcap-file",
+ "pnet",
+ "rusqlite",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tera",
+ "tokio",
+ "url",
 ]
 
 [[package]]
