@@ -179,10 +179,10 @@ fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String
 
     let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
 
-    // Build parameters: internal_minutes + endpoint_ids (3 times for the 3 IN clauses)
+    // Build parameters: internal_minutes + endpoint_ids (4 times for the 4 IN clauses: 2 in CASE, 2 in WHERE)
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     params.push(Box::new(internal_minutes));
-    for _ in 0..3 {
+    for _ in 0..4 {
         for id in &endpoint_ids {
             params.push(Box::new(*id));
         }
