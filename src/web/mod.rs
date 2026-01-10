@@ -352,13 +352,50 @@ fn get_all_endpoint_types(endpoints: &[String]) -> std::collections::HashMap<Str
             )
             .expect("Failed to prepare statement");
 
-        if let Ok(ip) = stmt.query_row([endpoint], |row| {
-            let ip_value: Option<String> = row.get(0).ok();
-            Ok(ip_value)
-        })
-            && let Some(endpoint_type) = EndPoint::classify_endpoint(ip, Some(endpoint.clone()))
+        let ip = stmt
+            .query_row([endpoint], |row| {
+                let ip_value: Option<String> = row.get(0).ok();
+                Ok(ip_value)
+            })
+            .ok()
+            .flatten();
+
+        // First check network-level classification (gateway, internet)
+        if let Some(endpoint_type) = EndPoint::classify_endpoint(ip.clone(), Some(endpoint.clone()))
         {
             types.insert(endpoint.clone(), endpoint_type);
+        } else {
+            // If no network-level classification, check device type based on ports
+            // Get ports for this endpoint
+            let mut port_stmt = conn
+                .prepare(
+                    "SELECT DISTINCT
+                        CASE
+                            WHEN LOWER(src.name) = LOWER(?1) THEN c.destination_port
+                            WHEN LOWER(dst.name) = LOWER(?1) THEN c.source_port
+                        END as port
+                    FROM communications c
+                    INNER JOIN endpoints src ON c.src_endpoint_id = src.id
+                    INNER JOIN endpoints dst ON c.dst_endpoint_id = dst.id
+                    WHERE (LOWER(src.name) = LOWER(?1) OR LOWER(dst.name) = LOWER(?1))
+                        AND port IS NOT NULL",
+                )
+                .expect("Failed to prepare port query statement");
+
+            let ports: Vec<u16> = port_stmt
+                .query_map([endpoint], |row| {
+                    let port: Option<i64> = row.get(0).ok();
+                    Ok(port.and_then(|p| u16::try_from(p).ok()))
+                })
+                .ok()
+                .map(|rows| rows.filter_map(|row| row.ok()).flatten().collect())
+                .unwrap_or_default();
+
+            if let Some(device_type) =
+                EndPoint::classify_device_type(Some(endpoint), ip.as_deref(), &ports)
+            {
+                types.insert(endpoint.clone(), device_type);
+            }
         }
     }
 

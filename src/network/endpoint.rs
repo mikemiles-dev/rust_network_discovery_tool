@@ -21,6 +21,12 @@ const GATEWAY_CACHE_TTL: Duration = Duration::from_secs(60); // 1 minute
 // Classification type constants
 const CLASSIFICATION_GATEWAY: &str = "gateway";
 const CLASSIFICATION_INTERNET: &str = "internet";
+const CLASSIFICATION_PRINTER: &str = "printer";
+const CLASSIFICATION_TV: &str = "tv";
+const CLASSIFICATION_GAMING: &str = "gaming";
+const CLASSIFICATION_VIRTUALIZATION: &str = "virtualization";
+const CLASSIFICATION_SOUNDBAR: &str = "soundbar";
+const CLASSIFICATION_APPLIANCE: &str = "appliance";
 
 #[derive(Debug)]
 pub enum InsertEndpointError {
@@ -117,6 +123,206 @@ impl EndPoint {
             || lower.contains("unifi")
             || lower.contains("edgerouter")
             || lower.contains("mikrotik")
+    }
+
+    /// Classify device type based on hostname, ports, and mDNS services
+    /// Returns device-specific classification (printer, tv, gaming) or None
+    /// This is separate from network-level classification (gateway, internet)
+    pub fn classify_device_type(
+        hostname: Option<&str>,
+        ip: Option<&str>,
+        ports: &[u16],
+    ) -> Option<&'static str> {
+        // Check mDNS service advertisements first (most reliable for smart devices)
+        if let Some(ip_str) = ip {
+            let services = crate::network::mdns_lookup::MDnsLookup::get_services(ip_str);
+            for service in services {
+                match service.as_str() {
+                    // TV and streaming devices
+                    "_googlecast._tcp"
+                    | "_airplay._tcp"
+                    | "_raop._tcp"
+                    | "_roku._tcp"
+                    | "_spotify-connect._tcp" => {
+                        return Some(CLASSIFICATION_TV);
+                    }
+                    // Printers
+                    "_ipp._tcp" | "_printer._tcp" | "_pdl-datastream._tcp" => {
+                        return Some(CLASSIFICATION_PRINTER);
+                    }
+                    // Smart home (might be TVs or other devices)
+                    "_hap._tcp" | "_homekit._tcp" => {
+                        // HomeKit devices could be many things, so we'll continue checking
+                        // but give it a hint towards TV if no other info
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Check hostname patterns (also very reliable)
+        if let Some(hostname_str) = hostname {
+            let lower = hostname_str.to_lowercase();
+
+            // Printer detection by hostname
+            if lower.contains("printer")
+                || lower.contains("print")
+                || lower.contains("hp-")
+                || lower.starts_with("hp")
+                || lower.contains("canon")
+                || lower.contains("epson")
+                || lower.contains("brother")
+                || lower.contains("lexmark")
+                || lower.contains("xerox")
+                || lower.contains("ricoh")
+                || lower.contains("laserjet")
+                || lower.contains("officejet")
+                || lower.contains("pixma")
+                || lower.contains("mfc-")
+                || lower.contains("dcp-")
+                // Canon PIXMA network printers (e.g., npia2344f.local)
+                || lower.starts_with("npi")
+                || lower.starts_with("np")
+                // Brother network printers
+                || lower.starts_with("brn")
+                || lower.starts_with("brw")
+                // Epson network printers
+                || lower.starts_with("epson")
+                // HP network printers
+                || lower.contains("hpcolor")
+                || lower.contains("hplaserjet")
+                // Generic printer identifiers
+                || lower.contains("designjet")
+                || lower.contains("colorjet")
+                || lower.contains("scanjet")
+            {
+                return Some(CLASSIFICATION_PRINTER);
+            }
+
+            // TV/Streaming device detection by hostname
+            if lower.contains("tv")
+                || lower.contains("samsung")
+                || lower.contains("lg-")
+                || lower.starts_with("lg")
+                || lower.contains("sony")
+                || lower.contains("vizio")
+                || lower.contains("roku")
+                || lower.contains("chromecast")
+                || lower.contains("appletv")
+                || lower.contains("apple-tv")
+                || lower.contains("firetv")
+                || lower.contains("fire-tv")
+                || lower.contains("shield")
+                || lower.contains("androidtv")
+            {
+                return Some(CLASSIFICATION_TV);
+            }
+
+            // Gaming console detection by hostname
+            if lower.contains("xbox")
+                || lower.contains("playstation")
+                || lower.contains("ps4")
+                || lower.contains("ps5")
+                || lower.contains("nintendo")
+                || lower.contains("switch")
+                || lower.contains("steamdeck")
+                || lower.contains("steam-deck")
+            {
+                return Some(CLASSIFICATION_GAMING);
+            }
+
+            // VM/Container/Virtualization detection by hostname
+            if lower.contains("vmware")
+                || lower.contains("esxi")
+                || lower.contains("vcenter")
+                || lower.contains("proxmox")
+                || lower.contains("hyper-v")
+                || lower.contains("hyperv")
+                || lower.contains("virtualbox")
+                || lower.contains("vbox")
+                || lower.contains("kvm")
+                || lower.contains("qemu")
+                || lower.contains("xen")
+                || lower.contains("docker")
+                || lower.contains("container")
+                || lower.contains("k8s")
+                || lower.contains("kubernetes")
+                || lower.contains("rancher")
+                || lower.contains("portainer")
+                || lower.starts_with("vm-")
+                || lower.ends_with("-vm")
+            {
+                return Some(CLASSIFICATION_VIRTUALIZATION);
+            }
+
+            // Soundbar detection by hostname
+            if lower.contains("soundbar")
+                || lower.contains("sound-bar")
+                || lower.contains("sonos")
+                || lower.contains("bose")
+                || lower.contains("playbar")
+                || lower.contains("playbase")
+                || lower.contains("beam")
+                || lower.contains("arc") && (lower.contains("sonos") || lower.contains("sound"))
+                || lower.contains("yamaha") && lower.contains("sound")
+                || lower.contains("samsung") && lower.contains("sound")
+                || lower.contains("lg") && lower.contains("sound")
+                || lower.contains("vizio") && lower.contains("sound")
+                || lower.contains("jbl") && lower.contains("bar")
+            {
+                return Some(CLASSIFICATION_SOUNDBAR);
+            }
+
+            // Appliance detection (dishwashers, washing machines, dryers, etc.)
+            if lower.contains("dishwasher")
+                || lower.contains("washer")
+                || lower.contains("dryer")
+                || lower.contains("washing")
+                || lower.contains("laundry")
+                || lower.contains("refrigerator")
+                || lower.contains("fridge")
+                || lower.contains("oven")
+                || lower.contains("range")
+                || lower.contains("microwave")
+                || lower.contains("whirlpool") && !lower.contains("router")
+                || lower.contains("maytag")
+                || lower.contains("ge-") && lower.contains("appliance")
+                || lower.contains("bosch") && (lower.contains("wash") || lower.contains("dish"))
+                || lower.contains("miele")
+                || lower.contains("electrolux")
+                || lower.contains("kenmore")
+                || lower.contains("kitchenaid")
+            {
+                return Some(CLASSIFICATION_APPLIANCE);
+            }
+        }
+
+        // Port-based detection (less reliable but useful when hostname is generic)
+        for &port in ports {
+            match port {
+                // Printer ports
+                9100 | 631 | 515 => return Some(CLASSIFICATION_PRINTER),
+
+                // TV/Streaming device ports
+                8008 | 8009 => return Some(CLASSIFICATION_TV), // Chromecast
+                7000 | 7001 | 8001 | 8002 => return Some(CLASSIFICATION_TV), // Samsung TV
+                3000 | 3001 => return Some(CLASSIFICATION_TV), // LG WebOS
+                6467 | 6466 => return Some(CLASSIFICATION_TV), // Roku
+
+                // VM/Container/Virtualization ports
+                902 | 903 => return Some(CLASSIFICATION_VIRTUALIZATION), // VMware ESXi
+                8006 => return Some(CLASSIFICATION_VIRTUALIZATION),      // Proxmox
+                2179 => return Some(CLASSIFICATION_VIRTUALIZATION),      // Hyper-V
+                2375 | 2376 => return Some(CLASSIFICATION_VIRTUALIZATION), // Docker API
+                6443 => return Some(CLASSIFICATION_VIRTUALIZATION),      // Kubernetes API
+                10250 => return Some(CLASSIFICATION_VIRTUALIZATION),     // Kubelet
+                9000 => return Some(CLASSIFICATION_VIRTUALIZATION),      // Portainer
+
+                _ => continue,
+            }
+        }
+
+        None
     }
 
     pub fn create_table_if_not_exists(conn: &Connection) -> Result<()> {

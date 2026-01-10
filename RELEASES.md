@@ -2,6 +2,9 @@
 
 ## [0.2.3]
 
+### Added
+ - Better printer/VM/Gaming/appliance/etc support
+
 ### Fixes
  - Sliders auto refresh
  - Incorrect interface monitoring

@@ -508,19 +508,47 @@
         <div class="card-title" style="margin-bottom: 0; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(51, 65, 85, 0.6);">Endpoints</div>
 
         <!-- Filters -->
-        <div style="display: flex; gap: 0.375rem; margin-top: 0.75rem; margin-bottom: 0.5rem; flex-wrap: nowrap;">
-          <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
-            <input type="checkbox" id="filterLocal" checked onchange="applyFilters()" style="cursor: pointer;">
-            <span>💻 Local</span>
-          </label>
-          <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
-            <input type="checkbox" id="filterGateway" checked onchange="applyFilters()" style="cursor: pointer;">
-            <span>🌐 Gateway</span>
-          </label>
-          <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
-            <input type="checkbox" id="filterInternet" checked onchange="applyFilters()" style="cursor: pointer;">
-            <span>🌍 Internet</span>
-          </label>
+        <div style="display: flex; flex-direction: column; gap: 0.375rem; margin-top: 0.75rem; margin-bottom: 0.5rem;">
+          <div style="display: flex; gap: 0.375rem; flex-wrap: nowrap;">
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+              <input type="checkbox" id="filterLocal" checked onchange="applyFilters()" style="cursor: pointer;">
+              <span>💻 Local</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+              <input type="checkbox" id="filterGateway" checked onchange="applyFilters()" style="cursor: pointer;">
+              <span>🌐 Gateway</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+              <input type="checkbox" id="filterInternet" checked onchange="applyFilters()" style="cursor: pointer;">
+              <span>🌍 Internet</span>
+            </label>
+          </div>
+          <div style="display: flex; gap: 0.375rem; flex-wrap: wrap;">
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+              <input type="checkbox" id="filterPrinter" checked onchange="applyFilters()" style="cursor: pointer;">
+              <span>🖨️ Printer</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+              <input type="checkbox" id="filterTv" checked onchange="applyFilters()" style="cursor: pointer;">
+              <span>📺 TV</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+              <input type="checkbox" id="filterGaming" checked onchange="applyFilters()" style="cursor: pointer;">
+              <span>🎮 Gaming</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+              <input type="checkbox" id="filterVirtualization" checked onchange="applyFilters()" style="cursor: pointer;">
+              <span>🖥 VM</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+              <input type="checkbox" id="filterSoundbar" checked onchange="applyFilters()" style="cursor: pointer;">
+              <span>🔊 Soundbar</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.6); border-radius: 0.375rem; border: 1px solid rgba(51, 65, 85, 0.6); white-space: nowrap;">
+              <input type="checkbox" id="filterAppliance" checked onchange="applyFilters()" style="cursor: pointer;">
+              <span>🏠 Appliance</span>
+            </label>
+          </div>
         </div>
 
         <!-- Endpoint Limit Slider -->
@@ -542,8 +570,8 @@
           <div class="list-item {% if node == selected_node %}selected{% endif %}"
                onclick="selectNode('{{ node | safe }}')"
                data-endpoint="{{ node | safe }}"
-               data-endpoint-type="{% if node == hostname %}local{% elif endpoint_types[node] == "gateway" %}gateway{% elif endpoint_types[node] == "internet" %}internet{% else %}local{% endif %}">
-            {% if node == hostname %}🖥️{% elif endpoint_types[node] == "gateway" %}🌐{% elif endpoint_types[node] == "internet" %}🌍{% else %}💻{% endif %} {{ node | safe }}
+               data-endpoint-type="{% if node == hostname %}local{% elif endpoint_types[node] == "gateway" %}gateway{% elif endpoint_types[node] == "internet" %}internet{% elif endpoint_types[node] == "printer" %}printer{% elif endpoint_types[node] == "tv" %}tv{% elif endpoint_types[node] == "gaming" %}gaming{% elif endpoint_types[node] == "virtualization" %}virtualization{% elif endpoint_types[node] == "soundbar" %}soundbar{% elif endpoint_types[node] == "appliance" %}appliance{% else %}local{% endif %}">
+            {% if node == hostname %}🖥️{% elif endpoint_types[node] == "gateway" %}🌐{% elif endpoint_types[node] == "internet" %}🌍{% elif endpoint_types[node] == "printer" %}🖨️{% elif endpoint_types[node] == "tv" %}📺{% elif endpoint_types[node] == "gaming" %}🎮{% elif endpoint_types[node] == "virtualization" %}🖥{% elif endpoint_types[node] == "soundbar" %}🔊{% elif endpoint_types[node] == "appliance" %}🏠{% else %}💻{% endif %} {{ node | safe }}
           </div>
           {% endfor %}
         </div>
@@ -687,6 +715,12 @@
       const showLocal = document.getElementById('filterLocal').checked;
       const showGateway = document.getElementById('filterGateway').checked;
       const showInternet = document.getElementById('filterInternet').checked;
+      const showPrinter = document.getElementById('filterPrinter').checked;
+      const showTv = document.getElementById('filterTv').checked;
+      const showGaming = document.getElementById('filterGaming').checked;
+      const showVirtualization = document.getElementById('filterVirtualization').checked;
+      const showSoundbar = document.getElementById('filterSoundbar').checked;
+      const showAppliance = document.getElementById('filterAppliance').checked;
 
       endpointItems.forEach(item => {
         const endpoint = item.textContent.toLowerCase();
@@ -700,6 +734,12 @@
         if (type === 'local' && !showLocal) matchesType = false;
         else if (type === 'gateway' && !showGateway) matchesType = false;
         else if (type === 'internet' && !showInternet) matchesType = false;
+        else if (type === 'printer' && !showPrinter) matchesType = false;
+        else if (type === 'tv' && !showTv) matchesType = false;
+        else if (type === 'gaming' && !showGaming) matchesType = false;
+        else if (type === 'virtualization' && !showVirtualization) matchesType = false;
+        else if (type === 'soundbar' && !showSoundbar) matchesType = false;
+        else if (type === 'appliance' && !showAppliance) matchesType = false;
 
         // Show only if matches both search AND type filter
         item.style.display = (matchesSearch && matchesType) ? 'block' : 'none';
@@ -774,11 +814,23 @@
       const filterLocal = urlParams.get('filter_local');
       const filterGateway = urlParams.get('filter_gateway');
       const filterInternet = urlParams.get('filter_internet');
+      const filterPrinter = urlParams.get('filter_printer');
+      const filterTv = urlParams.get('filter_tv');
+      const filterGaming = urlParams.get('filter_gaming');
+      const filterVirtualization = urlParams.get('filter_virtualization');
+      const filterSoundbar = urlParams.get('filter_soundbar');
+      const filterAppliance = urlParams.get('filter_appliance');
 
       // Set checkbox states (default to checked if not specified)
       const localCheckbox = document.getElementById('filterLocal');
       const gatewayCheckbox = document.getElementById('filterGateway');
       const internetCheckbox = document.getElementById('filterInternet');
+      const printerCheckbox = document.getElementById('filterPrinter');
+      const tvCheckbox = document.getElementById('filterTv');
+      const gamingCheckbox = document.getElementById('filterGaming');
+      const virtualizationCheckbox = document.getElementById('filterVirtualization');
+      const soundbarCheckbox = document.getElementById('filterSoundbar');
+      const applianceCheckbox = document.getElementById('filterAppliance');
 
       if (localCheckbox && filterLocal !== null) {
         localCheckbox.checked = filterLocal === '1';
@@ -790,6 +842,30 @@
 
       if (internetCheckbox && filterInternet !== null) {
         internetCheckbox.checked = filterInternet === '1';
+      }
+
+      if (printerCheckbox && filterPrinter !== null) {
+        printerCheckbox.checked = filterPrinter === '1';
+      }
+
+      if (tvCheckbox && filterTv !== null) {
+        tvCheckbox.checked = filterTv === '1';
+      }
+
+      if (gamingCheckbox && filterGaming !== null) {
+        gamingCheckbox.checked = filterGaming === '1';
+      }
+
+      if (virtualizationCheckbox && filterVirtualization !== null) {
+        virtualizationCheckbox.checked = filterVirtualization === '1';
+      }
+
+      if (soundbarCheckbox && filterSoundbar !== null) {
+        soundbarCheckbox.checked = filterSoundbar === '1';
+      }
+
+      if (applianceCheckbox && filterAppliance !== null) {
+        applianceCheckbox.checked = filterAppliance === '1';
       }
 
       // Restore endpoint limit from URL or localStorage
@@ -971,6 +1047,12 @@
       const showLocal = document.getElementById('filterLocal').checked;
       const showGateway = document.getElementById('filterGateway').checked;
       const showInternet = document.getElementById('filterInternet').checked;
+      const showPrinter = document.getElementById('filterPrinter').checked;
+      const showTv = document.getElementById('filterTv').checked;
+      const showGaming = document.getElementById('filterGaming').checked;
+      const showVirtualization = document.getElementById('filterVirtualization').checked;
+      const showSoundbar = document.getElementById('filterSoundbar').checked;
+      const showAppliance = document.getElementById('filterAppliance').checked;
 
       // Save filter state to URL
       if (!skipUrlUpdate) {
@@ -978,6 +1060,12 @@
         url.searchParams.set('filter_local', showLocal ? '1' : '0');
         url.searchParams.set('filter_gateway', showGateway ? '1' : '0');
         url.searchParams.set('filter_internet', showInternet ? '1' : '0');
+        url.searchParams.set('filter_printer', showPrinter ? '1' : '0');
+        url.searchParams.set('filter_tv', showTv ? '1' : '0');
+        url.searchParams.set('filter_gaming', showGaming ? '1' : '0');
+        url.searchParams.set('filter_virtualization', showVirtualization ? '1' : '0');
+        url.searchParams.set('filter_soundbar', showSoundbar ? '1' : '0');
+        url.searchParams.set('filter_appliance', showAppliance ? '1' : '0');
         window.history.replaceState({}, '', url);
       }
 
@@ -990,6 +1078,12 @@
         if (type === 'local' && !showLocal) typeMatch = false;
         else if (type === 'gateway' && !showGateway) typeMatch = false;
         else if (type === 'internet' && !showInternet) typeMatch = false;
+        else if (type === 'printer' && !showPrinter) typeMatch = false;
+        else if (type === 'tv' && !showTv) typeMatch = false;
+        else if (type === 'gaming' && !showGaming) typeMatch = false;
+        else if (type === 'virtualization' && !showVirtualization) typeMatch = false;
+        else if (type === 'soundbar' && !showSoundbar) typeMatch = false;
+        else if (type === 'appliance' && !showAppliance) typeMatch = false;
 
         // Apply filter
         if (typeMatch) {
@@ -1337,6 +1431,60 @@
           }
         },
         {
+          selector: 'node[type = "printer"]',
+          style: {
+            'label': function(ele) { return '🖨️\n' + ele.data('id'); },
+            'background-color': '#1e3a28',
+            'border-color': '#10b981',
+            'border-width': 2
+          }
+        },
+        {
+          selector: 'node[type = "tv"]',
+          style: {
+            'label': function(ele) { return '📺\n' + ele.data('id'); },
+            'background-color': '#3c1f5f',
+            'border-color': '#c084fc',
+            'border-width': 2
+          }
+        },
+        {
+          selector: 'node[type = "gaming"]',
+          style: {
+            'label': function(ele) { return '🎮\n' + ele.data('id'); },
+            'background-color': '#5c1c2e',
+            'border-color': '#f43f5e',
+            'border-width': 2
+          }
+        },
+        {
+          selector: 'node[type = "virtualization"]',
+          style: {
+            'label': function(ele) { return '🖥\n' + ele.data('id'); },
+            'background-color': '#1e293b',
+            'border-color': '#94a3b8',
+            'border-width': 2
+          }
+        },
+        {
+          selector: 'node[type = "soundbar"]',
+          style: {
+            'label': function(ele) { return '🔊\n' + ele.data('id'); },
+            'background-color': '#312e81',
+            'border-color': '#818cf8',
+            'border-width': 2
+          }
+        },
+        {
+          selector: 'node[type = "appliance"]',
+          style: {
+            'label': function(ele) { return '🏠\n' + ele.data('id'); },
+            'background-color': '#422006',
+            'border-color': '#fb923c',
+            'border-width': 2
+          }
+        },
+        {
           selector: 'node[selected = "true"]',
           style: {
             'border-width': 4,
@@ -1357,6 +1505,30 @@
         },
         {
           selector: 'node[type = "internet"][selected = "true"]',
+          style: {
+            'border-color': '#10b981'
+          }
+        },
+        {
+          selector: 'node[type = "printer"][selected = "true"]',
+          style: {
+            'border-color': '#10b981'
+          }
+        },
+        {
+          selector: 'node[type = "tv"][selected = "true"]',
+          style: {
+            'border-color': '#10b981'
+          }
+        },
+        {
+          selector: 'node[type = "gaming"][selected = "true"]',
+          style: {
+            'border-color': '#10b981'
+          }
+        },
+        {
+          selector: 'node[type = "virtualization"][selected = "true"]',
           style: {
             'border-color': '#10b981'
           }
