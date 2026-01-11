@@ -208,6 +208,29 @@
       transition: all 0.2s;
       border: 1px solid rgba(51, 65, 85, 0.6);
       font-family: 'Monaco', 'Courier New', monospace;
+      position: relative;
+      padding-right: 4rem;
+    }
+
+    .endpoint-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: calc(100% - 3rem);
+      display: inline-block;
+    }
+
+    .endpoint-bytes {
+      position: absolute;
+      right: 0.5rem;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 0.625rem;
+      color: var(--text-secondary);
+      background: rgba(15, 23, 42, 0.5);
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      white-space: nowrap;
     }
 
     .list-item:hover {
@@ -250,6 +273,41 @@
       padding-right: 320px;
     }
 
+    /* Zoom Controls */
+    .zoom-controls {
+      position: absolute;
+      bottom: 2.5rem;
+      right: 385px;
+      display: flex;
+      flex-direction: row;
+      gap: 0.25rem;
+      z-index: 10;
+    }
+
+    .zoom-btn {
+      width: 32px;
+      height: 32px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 0.375rem;
+      color: var(--text-primary);
+      font-size: 1.25rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+    }
+
+    .zoom-btn:hover {
+      background: var(--bg-tertiary);
+      border-color: var(--accent-primary);
+    }
+
+    .zoom-btn:active {
+      transform: scale(0.95);
+    }
+
     /* Stats Badge */
     .stats {
       display: flex;
@@ -264,6 +322,16 @@
       border-radius: 0.25rem;
       font-size: 0.6875rem;
       color: var(--text-secondary);
+    }
+
+    .stat-badge.stat-link {
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .stat-badge.stat-link:hover {
+      background: rgba(139, 92, 246, 0.3);
+      color: var(--text-primary);
     }
 
     .stat-number {
@@ -605,8 +673,10 @@
                data-endpoint="{{ node | safe }}"
                data-endpoint-type="{% if node == hostname %}local{% elif endpoint_types[node] == "gateway" %}gateway{% elif endpoint_types[node] == "internet" %}internet{% elif endpoint_types[node] == "printer" %}printer{% elif endpoint_types[node] == "tv" %}tv{% elif endpoint_types[node] == "gaming" %}gaming{% elif endpoint_types[node] == "phone" %}phone{% elif endpoint_types[node] == "virtualization" %}virtualization{% elif endpoint_types[node] == "soundbar" %}soundbar{% elif endpoint_types[node] == "appliance" %}appliance{% elif endpoint_types[node] %}local{% else %}other{% endif %}"
                data-endpoint-ips="{% if endpoint_ips_macs[node] %}{{ endpoint_ips_macs[node].0 | join(sep=",") }}{% endif %}"
-               data-endpoint-macs="{% if endpoint_ips_macs[node] %}{{ endpoint_ips_macs[node].1 | join(sep=",") }}{% endif %}">
-            {% if node == hostname %}🖥️{% elif endpoint_types[node] == "gateway" %}🌐{% elif endpoint_types[node] == "internet" %}🌍{% elif endpoint_types[node] == "printer" %}🖨️{% elif endpoint_types[node] == "tv" %}📺{% elif endpoint_types[node] == "gaming" %}🎮{% elif endpoint_types[node] == "phone" %}📱{% elif endpoint_types[node] == "virtualization" %}🖥{% elif endpoint_types[node] == "soundbar" %}🔊{% elif endpoint_types[node] == "appliance" %}🏠{% elif endpoint_types[node] %}💻{% else %}❓{% endif %} {{ node | safe }}
+               data-endpoint-macs="{% if endpoint_ips_macs[node] %}{{ endpoint_ips_macs[node].1 | join(sep=",") }}{% endif %}"
+               data-endpoint-bytes="{{ endpoint_bytes[node] | default(value=0) }}">
+            <span class="endpoint-name">{% if node == hostname %}🖥️{% elif endpoint_types[node] == "gateway" %}🌐{% elif endpoint_types[node] == "internet" %}🌍{% elif endpoint_types[node] == "printer" %}🖨️{% elif endpoint_types[node] == "tv" %}📺{% elif endpoint_types[node] == "gaming" %}🎮{% elif endpoint_types[node] == "phone" %}📱{% elif endpoint_types[node] == "virtualization" %}🖥{% elif endpoint_types[node] == "soundbar" %}🔊{% elif endpoint_types[node] == "appliance" %}🏠{% elif endpoint_types[node] %}💻{% else %}❓{% endif %} {{ node | safe }}</span>
+            {% if endpoint_bytes[node] and endpoint_bytes[node] > 0 %}<span class="endpoint-bytes">{{ endpoint_bytes[node] }}</span>{% endif %}
           </div>
           {% endfor %}
         </div>
@@ -615,6 +685,13 @@
 
     <main id="graph-container">
       <div id="cy"></div>
+
+      <!-- Zoom Controls -->
+      <div class="zoom-controls">
+        <button class="zoom-btn" onclick="zoomIn()" title="Zoom in">+</button>
+        <button class="zoom-btn" onclick="zoomOut()" title="Zoom out">−</button>
+        <button class="zoom-btn" onclick="fitGraph()" title="Fit to view">⊡</button>
+      </div>
 
       <!-- No Communications Message -->
       <div id="no-communications-msg" style="display: none; position: absolute; top: 50%; left: calc(50% - 160px); transform: translate(-50%, -50%); text-align: center; color: var(--text-secondary); pointer-events: none;">
@@ -630,6 +707,10 @@
           Endpoint Details
         </div>
         <div style="margin-bottom: 0.75rem;">
+          <!-- Endpoint Name -->
+          <div style="font-size: 0.875rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; word-break: break-all;">
+            {{ endpoint }}
+          </div>
           <!-- Device Type Badge -->
           <div style="margin-bottom: 0.75rem;">
             <div class="stat-badge" style="background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.4); font-size: 0.75rem; display: inline-block;">
@@ -651,11 +732,11 @@
             </div>
           </div>
           <div class="stats">
-            <div class="stat-badge">IPs: <span class="stat-number">{{ ips|length }}</span></div>
-            <div class="stat-badge">MACs: <span class="stat-number">{{ macs|length }}</span></div>
-            <div class="stat-badge">Hosts: <span class="stat-number">{{ hostnames|length }}</span></div>
-            <div class="stat-badge">Ports: <span class="stat-number">{{ ports|length }}</span></div>
-            <div class="stat-badge">Protocols: <span class="stat-number">{{ protocols|length }}</span></div>
+            <div class="stat-badge stat-link" onclick="scrollToSection('ips-section')">IPs: <span class="stat-number">{{ ips|length }}</span></div>
+            <div class="stat-badge stat-link" onclick="scrollToSection('macs-section')">MACs: <span class="stat-number">{{ macs|length }}</span></div>
+            <div class="stat-badge stat-link" onclick="scrollToSection('hostnames-section')">Hosts: <span class="stat-number">{{ hostnames|length }}</span></div>
+            <div class="stat-badge stat-link" onclick="scrollToSection('ports-section')">Ports: <span class="stat-number">{{ ports|length }}</span></div>
+            <div class="stat-badge stat-link" onclick="scrollToSection('protocols-section')">Protocols: <span class="stat-number">{{ protocols|length }}</span></div>
           </div>
           <div class="stats" style="margin-top: 0.5rem;">
             <div class="stat-badge">⬇️ In: <span class="stat-number" id="bytes-in">{{ bytes_in }}</span></div>
@@ -663,7 +744,7 @@
           </div>
         </div>
 
-        <div class="overlay-header">
+        <div class="overlay-header" id="protocols-section">
           Protocols
           <button class="clear-filter-btn" onclick="clearProtocolFilter()" style="display: none;">Clear Filter</button>
         </div>
@@ -672,7 +753,7 @@
         </div>
 
         <!-- Ports -->
-        <div class="overlay-header">
+        <div class="overlay-header" id="ports-section">
           Ports
           <button class="clear-port-filter-btn" onclick="clearPortFilter()" style="display: none;">Clear</button>
         </div>
@@ -686,7 +767,7 @@
           {% endif %}
         </div>
 
-        <div class="overlay-header">
+        <div class="overlay-header" id="hostnames-section">
           Hostnames
         </div>
         <div style="margin-bottom: 0.75rem;">
@@ -705,7 +786,7 @@
         </div>
 
         <!-- IP Addresses -->
-        <div class="overlay-header">
+        <div class="overlay-header" id="ips-section">
           IP Addresses
         </div>
         <div style="margin-bottom: 0.75rem;">
@@ -724,7 +805,7 @@
         </div>
 
         <!-- MAC Addresses -->
-        <div class="overlay-header">
+        <div class="overlay-header" id="macs-section">
           MAC Addresses
         </div>
         <div style="margin-bottom: 0.75rem;">
@@ -908,6 +989,14 @@
         const bytesOut = parseInt(bytesOutElem.textContent);
         bytesOutElem.textContent = formatBytes(bytesOut);
       }
+
+      // Format endpoint bytes in the list
+      document.querySelectorAll('.endpoint-bytes').forEach(elem => {
+        const bytes = parseInt(elem.textContent);
+        if (!isNaN(bytes) && bytes > 0) {
+          elem.textContent = formatBytes(bytes);
+        }
+      });
 
       // Restore filter states from URL
       const urlParams = new URLSearchParams(window.location.search);
@@ -1667,17 +1756,17 @@
             'label': function(ele) { return '💻\n' + ele.data('id'); },
             'shape': 'round-rectangle',
             'background-color': '#1e293b',
-            'font-size': 11,
+            'font-size': 28,
             'font-weight': 600,
             'text-valign': 'center',
             'text-halign': 'center',
             'text-wrap': 'wrap',
-            'text-max-width': '120px',
+            'text-max-width': '280px',
             'text-outline-width': 2,
             'text-outline-color': '#0f172a',
             'color': '#f1f5f9',
-            'width': 60,
-            'height': 60,
+            'width': 150,
+            'height': 150,
             'border-width': 2,
             'border-color': '#64748b'
           }
@@ -1920,6 +2009,33 @@
         window.location.href = currentUrl.toString();
       }
     });
+
+    // Scroll to section in details panel
+    function scrollToSection(sectionId) {
+      const section = document.getElementById(sectionId);
+      if (section) {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+
+    // Zoom controls
+    function zoomIn() {
+      cy.zoom({
+        level: cy.zoom() * 1.2,
+        renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 }
+      });
+    }
+
+    function zoomOut() {
+      cy.zoom({
+        level: cy.zoom() / 1.2,
+        renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 }
+      });
+    }
+
+    function fitGraph() {
+      cy.fit(cy.elements(), 50);
+    }
 
     // Auto-refresh management
     let refreshIntervalId = null;

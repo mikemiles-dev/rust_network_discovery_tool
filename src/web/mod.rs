@@ -715,6 +715,42 @@ fn get_bytes_for_endpoint(hostname: String, internal_minutes: u64) -> BytesStats
     }
 }
 
+fn get_all_endpoints_bytes(endpoints: &[String], internal_minutes: u64) -> HashMap<String, i64> {
+    let conn = new_connection();
+    let mut result: HashMap<String, i64> = HashMap::new();
+
+    for endpoint in endpoints {
+        // Get total bytes (in + out) for this endpoint
+        let bytes_in: i64 = conn
+            .query_row(
+                "SELECT COALESCE(SUM(c.bytes), 0)
+                 FROM communications c
+                 JOIN endpoints dst ON c.dst_endpoint_id = dst.id
+                 WHERE LOWER(dst.name) = LOWER(?1)
+                 AND c.last_seen_at >= (strftime('%s', 'now') - (?2 * 60))",
+                params![endpoint, &internal_minutes.to_string()],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        let bytes_out: i64 = conn
+            .query_row(
+                "SELECT COALESCE(SUM(c.bytes), 0)
+                 FROM communications c
+                 JOIN endpoints src ON c.src_endpoint_id = src.id
+                 WHERE LOWER(src.name) = LOWER(?1)
+                 AND c.last_seen_at >= (strftime('%s', 'now') - (?2 * 60))",
+                params![endpoint, &internal_minutes.to_string()],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        result.insert(endpoint.clone(), bytes_in + bytes_out);
+    }
+
+    result
+}
+
 pub fn start(preferred_port: u16) {
     task::spawn_blocking(move || {
         println!("Starting web server");
@@ -824,6 +860,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let supported_protocols = ProtocolPort::get_supported_protocols();
     let dropdown_endpoints = dropdown_endpoints(query.scan_interval.unwrap_or(60));
     let endpoint_ips_macs = get_endpoint_ips_and_macs(&dropdown_endpoints);
+    let endpoint_bytes = get_all_endpoints_bytes(&dropdown_endpoints, query.scan_interval.unwrap_or(60));
     let mut endpoint_types = get_endpoint_types(&communications);
     let dropdown_types = get_all_endpoint_types(&dropdown_endpoints);
     // Merge dropdown types into endpoint_types
@@ -861,6 +898,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     context.insert("selected_node", &query.node);
     context.insert("dropdown_endpoints", &dropdown_endpoints);
     context.insert("endpoint_ips_macs", &endpoint_ips_macs);
+    context.insert("endpoint_bytes", &endpoint_bytes);
     context.insert("scan_interval", &query.scan_interval.unwrap_or(60));
     context.insert("ips", &ips);
     context.insert("macs", &macs);
