@@ -209,6 +209,38 @@ fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String
         .collect::<Vec<String>>()
 }
 
+/// Extract ports from communications data (already filtered for graph)
+/// This ensures ports shown match what's visible in the graph
+fn get_ports_from_communications(communications: &[Node], selected_endpoint: &str) -> Vec<String> {
+    let mut ports: std::collections::HashSet<i64> = std::collections::HashSet::new();
+
+    for node in communications {
+        // Get port where selected endpoint is involved
+        if node.src_hostname == selected_endpoint
+            && let Some(ref port_str) = node.dst_port
+        {
+            for p in port_str.split(',') {
+                if let Ok(port) = p.trim().parse::<i64>() {
+                    ports.insert(port);
+                }
+            }
+        }
+        if node.dst_hostname == selected_endpoint
+            && let Some(ref port_str) = node.src_port
+        {
+            for p in port_str.split(',') {
+                if let Ok(port) = p.trim().parse::<i64>() {
+                    ports.insert(port);
+                }
+            }
+        }
+    }
+
+    let mut ports_vec: Vec<i64> = ports.into_iter().collect();
+    ports_vec.sort();
+    ports_vec.into_iter().map(|p| p.to_string()).collect()
+}
+
 fn get_endpoint_ips_and_macs(endpoints: &[String]) -> HashMap<String, (Vec<String>, Vec<String>)> {
     let conn = new_connection();
     let mut result: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
@@ -940,7 +972,19 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     }
     let interfaces = get_interfaces();
     let supported_protocols = ProtocolPort::get_supported_protocols();
-    let dropdown_endpoints = dropdown_endpoints(query.scan_interval.unwrap_or(60));
+    // Get all active endpoints, then filter to only those in the graph when a node is selected
+    let dropdown_endpoints = {
+        let all_endpoints = dropdown_endpoints(query.scan_interval.unwrap_or(60));
+        if query.node.is_some() {
+            // Filter to only endpoints that appear in the graph (communicated with selected node)
+            all_endpoints
+                .into_iter()
+                .filter(|e| endpoints.contains(e))
+                .collect()
+        } else {
+            all_endpoints
+        }
+    };
     let endpoint_ips_macs = get_endpoint_ips_and_macs(&dropdown_endpoints);
     let endpoint_bytes =
         get_all_endpoints_bytes(&dropdown_endpoints, query.scan_interval.unwrap_or(60));
@@ -973,8 +1017,13 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     );
     let protocols =
         get_protocols_for_endpoint(selected_endpoint.clone(), query.scan_interval.unwrap_or(60));
-    let ports =
-        get_ports_for_endpoint(selected_endpoint.clone(), query.scan_interval.unwrap_or(60));
+    // Use ports from communications data when a node is selected (matches graph)
+    // Otherwise use database query for all ports
+    let ports = if query.node.is_some() {
+        get_ports_from_communications(&communications, &selected_endpoint)
+    } else {
+        get_ports_for_endpoint(selected_endpoint.clone(), query.scan_interval.unwrap_or(60))
+    };
     let bytes_stats =
         get_bytes_for_endpoint(selected_endpoint.clone(), query.scan_interval.unwrap_or(60));
 

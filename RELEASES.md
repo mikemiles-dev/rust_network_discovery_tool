@@ -5,6 +5,7 @@
 ### Added
 - Manual refresh button (🔄) next to auto-refresh stop button for on-demand data refresh
 - Clicking an endpoint now clears the search filter for cleaner navigation
+- Selected node indicator in sidebar showing "Selected: [node]" with unselect (X) button
 - **Device Remote Control** - Control compatible devices directly from the UI
   - New "Control" tab in endpoint details panel (next to "Details")
   - **Roku TV/streaming device support** via External Control Protocol (ECP):
@@ -44,6 +45,8 @@
   - Enabled WAL (Write-Ahead Logging) mode for concurrent reads during writes
   - Added 5-second busy timeout to wait for locks instead of failing
   - Set synchronous mode to NORMAL for better performance
+- Endpoint list now filters to only show nodes visible in the graph when a node is selected
+- Ports list now only shows ports from communications visible in the graph (prevents port filter from showing hidden edges)
 
 ## [0.3.4]
 
