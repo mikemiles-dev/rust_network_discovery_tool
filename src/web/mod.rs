@@ -32,6 +32,8 @@ pub struct Node {
     sub_protocol: String,
     src_type: Option<&'static str>,
     dst_type: Option<&'static str>,
+    src_port: Option<String>,
+    dst_port: Option<String>,
 }
 
 // Internal struct for query results
@@ -41,6 +43,8 @@ struct CommunicationRow {
     sub_protocol: String,
     src_ip: Option<String>,
     dst_ip: Option<String>,
+    src_port: Option<u16>,
+    dst_port: Option<u16>,
 }
 
 fn get_interfaces() -> Vec<String> {
@@ -412,6 +416,7 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
                 "SELECT
                 src_endpoint.name AS src_hostname,
                 dst_endpoint.name AS dst_hostname,
+                c.source_port as src_port,
                 c.destination_port as dst_port,
                 c.ip_header_protocol as header_protocol,
                 c.sub_protocol,
@@ -442,6 +447,7 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
             let query = "SELECT
                 src_endpoint.name AS src_hostname,
                 dst_endpoint.name AS dst_hostname,
+                c.source_port as src_port,
                 c.destination_port as dst_port,
                 c.ip_header_protocol as header_protocol,
                 c.sub_protocol,
@@ -477,44 +483,96 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
                 sub_protocol,
                 src_ip: row.get::<_, Option<String>>("src_ip").ok().flatten(),
                 dst_ip: row.get::<_, Option<String>>("dst_ip").ok().flatten(),
+                src_port: row.get::<_, Option<u16>>("src_port").ok().flatten(),
+                dst_port: row.get::<_, Option<u16>>("dst_port").ok().flatten(),
             })
         })
         .expect("Failed to execute query");
 
-    // Group by source and destination, collecting all protocols
+    // Group by source and destination, collecting all protocols and ports
     type CommKey = (String, String);
-    type CommData = (Vec<String>, Option<String>, Option<String>);
+    type CommData = (
+        Vec<String>,
+        Option<String>,
+        Option<String>,
+        Vec<u16>,
+        Vec<u16>,
+    );
     let mut comm_map: std::collections::HashMap<CommKey, CommData> =
         std::collections::HashMap::new();
 
     for row in rows.flatten() {
         let key = (row.src_hostname.clone(), row.dst_hostname.clone());
-        let entry = comm_map
-            .entry(key)
-            .or_insert((vec![], row.src_ip.clone(), row.dst_ip.clone()));
+        let entry = comm_map.entry(key).or_insert((
+            vec![],
+            row.src_ip.clone(),
+            row.dst_ip.clone(),
+            vec![],
+            vec![],
+        ));
         if !entry.0.contains(&row.sub_protocol) {
             entry.0.push(row.sub_protocol);
         }
+        // Add source port if present and not already in list
+        if let Some(src_port) = row.src_port
+            && !entry.3.contains(&src_port)
+        {
+            entry.3.push(src_port);
+        }
+        // Add destination port if present and not already in list
+        if let Some(dst_port) = row.dst_port
+            && !entry.4.contains(&dst_port)
+        {
+            entry.4.push(dst_port);
+        }
     }
 
-    // Convert to nodes with aggregated protocols
+    // Convert to nodes with aggregated protocols and ports
     comm_map
         .into_iter()
-        .map(|((src, dst), (protocols, src_ip, dst_ip))| {
-            let src_type = EndPoint::classify_endpoint(src_ip, Some(src.clone()));
-            let dst_type = EndPoint::classify_endpoint(dst_ip, Some(dst.clone()));
+        .map(
+            |((src, dst), (protocols, src_ip, dst_ip, src_ports, dst_ports))| {
+                let src_type = EndPoint::classify_endpoint(src_ip, Some(src.clone()));
+                let dst_type = EndPoint::classify_endpoint(dst_ip, Some(dst.clone()));
 
-            // Join protocols with comma for display, but keep them separate for filtering
-            let sub_protocol = protocols.join(",");
+                // Join protocols with comma for display, but keep them separate for filtering
+                let sub_protocol = protocols.join(",");
 
-            Node {
-                src_hostname: src,
-                dst_hostname: dst,
-                sub_protocol,
-                src_type,
-                dst_type,
-            }
-        })
+                // Join all ports with comma for filtering (convert Vec<u16> to comma-separated string)
+                let src_port = if src_ports.is_empty() {
+                    None
+                } else {
+                    Some(
+                        src_ports
+                            .iter()
+                            .map(|p| p.to_string())
+                            .collect::<Vec<_>>()
+                            .join(","),
+                    )
+                };
+                let dst_port = if dst_ports.is_empty() {
+                    None
+                } else {
+                    Some(
+                        dst_ports
+                            .iter()
+                            .map(|p| p.to_string())
+                            .collect::<Vec<_>>()
+                            .join(","),
+                    )
+                };
+
+                Node {
+                    src_hostname: src,
+                    dst_hostname: dst,
+                    sub_protocol,
+                    src_type,
+                    dst_type,
+                    src_port,
+                    dst_port,
+                }
+            },
+        )
         .collect()
 }
 

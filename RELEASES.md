@@ -2,6 +2,28 @@
 
 ## [0.3.2]
 
+### Added
+- Port filtering functionality to match protocol filtering behavior
+  - Click on any port badge to filter the graph to show only communications using that port
+  - Port data now included on graph edges for filtering
+  - Clear button to remove port filter
+  - Filtered ports highlighted with visual feedback
+
+### Changed
+- Hostnames, IP addresses, MAC addresses, and ports in the right pane are now plain text displays
+  - No longer clickable buttons with hover effects
+  - Text can be selected and copied normally
+  - Cleaner, simpler display that focuses on readability
+  - Removed confusing interactive styling
+  - Text items indented slightly to the right for better visual hierarchy
+- Endpoint limit slider now applies consistently in all views
+  - Previously bypassed when viewing a specific endpoint
+  - Now limits the number of visible endpoints in both overall and specific endpoint views
+- Ports now display as clickable badges matching protocol styling
+  - Ports appear as styled badges that can be clicked to filter the graph
+  - Port filtering shows only endpoints and communications using the selected port
+  - Visual feedback with highlighting and dimming for better UX
+
 ### Fixed
 - Critical bug where isolated endpoints (endpoints with no recent communications) were not visible on the graph
   - Backend was assigning type "device" to unclassified endpoints, but frontend only recognized specific types
@@ -11,12 +33,14 @@
 - Issue where local network devices (with private IP addresses) were classified as "Other" instead of "Local"
   - Endpoints with local IPs (192.168.x.x, 10.x.x.x, etc.) that don't match specific device types (printer, TV, etc.) are now properly classified as 🖥️ Local
   - Only truly unclassified endpoints (no IP or hostname) remain as ❓ Other
+- Critical bug where clicking some ports in the ports list would show no endpoints on the graph
+  - Previously only the first port for each communication pair was stored on graph edges
+  - Now all ports are stored as comma-separated strings on edges (matching protocol behavior)
+  - Port filtering now correctly shows all communications using the selected port
 
 ## [0.3.1]
 
 ### Added
-- SQL cleanup script (`cleanup_duplicates.sql`) for one-time cleanup of existing duplicate endpoints
-- Script merges duplicate endpoints sharing the same MAC address into a single endpoint
 - Automatic duplicate prevention now active - duplicates are merged immediately when detected during network scanning
 
 ### Fixed
@@ -26,14 +50,6 @@
   - Selected endpoint now always appears on the graph, even if it has no communications within the time range
   - Displays as an isolated node with no edges
   - This includes endpoints identified by IP address (e.g., 192.168.7.219) that have communications filtered out due to unnamed communication partners
-
-### Usage
-To clean up existing duplicates in your database:
-1. Stop the network discovery tool
-2. Run: `sqlite3 test.db < cleanup_duplicates.sql`
-3. Restart the tool
-
-The automatic merging logic will prevent new duplicates from forming going forward.
 
 ## [0.3.0]
 

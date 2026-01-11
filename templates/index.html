@@ -414,7 +414,7 @@
       margin-top: 0.75rem;
     }
 
-    .clear-filter-btn {
+    .clear-filter-btn, .clear-port-filter-btn {
       background: var(--accent-secondary);
       color: white;
       border: none;
@@ -428,7 +428,7 @@
       letter-spacing: 0.3px;
     }
 
-    .clear-filter-btn:hover {
+    .clear-filter-btn:hover, .clear-port-filter-btn:hover {
       background: #7c3aed;
       transform: translateY(-1px);
     }
@@ -484,28 +484,18 @@
     }
 
     .hostname-item {
-      background: rgba(51, 65, 85, 0.5);
+      background: transparent;
       color: var(--text-primary);
-      padding: 0.375rem 0.75rem;
-      border-radius: 0.375rem;
+      padding: 0.25rem 0 0.25rem 0.75rem;
       font-size: 0.75rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s;
-      border: 1px solid rgba(51, 65, 85, 0.6);
+      font-weight: 400;
+      cursor: default;
       font-family: 'Monaco', 'Courier New', monospace;
-    }
-
-    .hostname-item:hover {
-      background: var(--accent-primary);
-      color: white;
-      border-color: var(--accent-primary);
-      transform: translateY(-1px);
-      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
-    }
-
-    .hostname-item:active {
-      transform: translateY(0);
+      user-select: text;
+      -webkit-user-select: text;
+      -moz-user-select: text;
+      -ms-user-select: text;
+      line-height: 1.4;
     }
   </style>
 </head>
@@ -695,6 +685,21 @@
           <!-- Protocols will be dynamically generated from graph data -->
         </div>
 
+        <!-- Ports -->
+        <div class="overlay-header">
+          Ports
+          <button class="clear-port-filter-btn" onclick="clearPortFilter()" style="display: none;">Clear</button>
+        </div>
+        <div class="overlay-content" id="ports-container">
+          {% if ports %}
+            {% for port in ports %}
+            <div class="protocol-badge" data-port="{{ port | safe }}" onclick="filterByPort('{{ port | safe }}', this)">{{ port | safe }}</div>
+            {% endfor %}
+          {% else %}
+            <div class="empty-state">No ports</div>
+          {% endif %}
+        </div>
+
         <div class="overlay-header">
           Hostnames
         </div>
@@ -706,7 +711,7 @@
         <div class="overlay-hostnames" id="hostnames-container">
           {% if hostnames %}
             {% for hostname in hostnames %}
-            <div class="hostname-item" onclick="copyToClipboard('{{ hostname | safe }}', this)">{{ hostname | safe }}</div>
+            <div class="hostname-item">{{ hostname | safe }}</div>
             {% endfor %}
           {% else %}
             <div class="empty-state">No hostnames</div>
@@ -725,7 +730,7 @@
         <div class="overlay-hostnames" id="ips-container">
           {% if ips %}
             {% for ip in ips %}
-            <div class="hostname-item" onclick="copyToClipboard('{{ ip | safe }}', this)">{{ ip | safe }}</div>
+            <div class="hostname-item">{{ ip | safe }}</div>
             {% endfor %}
           {% else %}
             <div class="empty-state">No IP addresses</div>
@@ -744,29 +749,10 @@
         <div class="overlay-hostnames" id="macs-container">
           {% if macs %}
             {% for mac in macs %}
-            <div class="hostname-item" onclick="copyToClipboard('{{ mac | safe }}', this)">{{ mac | safe }}</div>
+            <div class="hostname-item">{{ mac | safe }}</div>
             {% endfor %}
           {% else %}
             <div class="empty-state">No MAC addresses</div>
-          {% endif %}
-        </div>
-
-        <!-- Ports -->
-        <div class="overlay-header">
-          Ports
-        </div>
-        <div style="margin-bottom: 0.75rem;">
-          <input type="text" id="portsListSearch" placeholder="Filter ports..."
-                 oninput="filterPortsList(this.value)"
-                 style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
-        </div>
-        <div class="overlay-hostnames" id="ports-container">
-          {% if ports %}
-            {% for port in ports %}
-            <div class="hostname-item" onclick="copyToClipboard('{{ port | safe }}', this)">{{ port | safe }}</div>
-            {% endfor %}
-          {% else %}
-            <div class="empty-state">No ports</div>
           {% endif %}
         </div>
       </div>
@@ -1038,7 +1024,6 @@
       const filterHostnamesValue = urlParams.get('filter_hostnames');
       const filterIpsValue = urlParams.get('filter_ips');
       const filterMacsValue = urlParams.get('filter_macs');
-      const filterPortsValue = urlParams.get('filter_ports');
 
       if (filterHostnamesValue) {
         const hostnamesInput = document.getElementById('hostnamesListSearch');
@@ -1061,14 +1046,6 @@
         if (macsInput) {
           macsInput.value = filterMacsValue;
           filterMacsList(filterMacsValue, true);
-        }
-      }
-
-      if (filterPortsValue) {
-        const portsInput = document.getElementById('portsListSearch');
-        if (portsInput) {
-          portsInput.value = filterPortsValue;
-          filterPortsList(filterPortsValue, true);
         }
       }
 
@@ -1262,7 +1239,6 @@
       }
 
       // Check if a specific endpoint is selected from URL
-      // Only bypass slider when explicitly viewing a specific endpoint via URL parameter
       const urlParams = new URLSearchParams(window.location.search);
       const selectedEndpointFromUrl = urlParams.get('node');
       const isEndpointSelected = selectedEndpointFromUrl !== null && selectedEndpointFromUrl !== '';
@@ -1270,63 +1246,44 @@
       // Build set of endpoints that should be visible
       const visibleEndpointNames = new Set();
 
-      if (isEndpointSelected) {
-        // When viewing a specific endpoint: Show all endpoints it communicates with
-        // (ignore endpoint limit slider, only apply type filters)
-        cy.nodes().forEach(node => {
-          const nodeName = node.data('id');
-          let type = node.data('type');
+      // Always apply endpoint limit slider (both overall view and specific endpoint view)
+      const limit = parseInt(localStorage.getItem('endpointLimit') || '20');
+      const searchTerm = document.getElementById('endpointSearchInput')?.value.trim().toLowerCase() || '';
 
-          // Treat null/undefined/empty as 'other'
-          if (!type || type === '') {
-            type = 'other';
-          }
+      // Build a list of graph nodes with their sidebar data
+      const nodeData = [];
+      cy.nodes().forEach(node => {
+        const nodeName = node.data('id');
+        let type = node.data('type');
 
-          // Only apply type filter, no endpoint limit
-          if (matchesTypeFilter(type)) {
-            visibleEndpointNames.add(nodeName);
-          }
-        });
-      } else {
-        // Overall network view: Apply both type filters AND endpoint limit
-        const limit = parseInt(localStorage.getItem('endpointLimit') || '20');
-        const searchTerm = document.getElementById('endpointSearchInput')?.value.trim().toLowerCase() || '';
-
-        // Build a list of graph nodes with their sidebar data
-        const nodeData = [];
-        cy.nodes().forEach(node => {
-          const nodeName = node.data('id');
-          let type = node.data('type');
-
-          // Treat null/undefined/empty as 'other'
-          if (!type || type === '') {
-            type = 'other';
-          }
-
-          // Find corresponding sidebar item for search data
-          const sidebarItem = document.querySelector(`#endpoints-container .list-item[data-endpoint="${nodeName}"]`);
-          const endpointText = sidebarItem ? sidebarItem.textContent.toLowerCase() : nodeName.toLowerCase();
-          const ips = sidebarItem ? (sidebarItem.getAttribute('data-endpoint-ips') || '').toLowerCase() : '';
-          const macs = sidebarItem ? (sidebarItem.getAttribute('data-endpoint-macs') || '').toLowerCase() : '';
-
-          // Check if matches search term
-          const matchesSearch = searchTerm === ''
-            || endpointText.includes(searchTerm)
-            || ips.includes(searchTerm)
-            || macs.includes(searchTerm);
-
-          // Check if matches type filter
-          const matchesType = matchesTypeFilter(type);
-
-          if (matchesSearch && matchesType) {
-            nodeData.push({ name: nodeName, type: type });
-          }
-        });
-
-        // Apply limit to the filtered list
-        for (let i = 0; i < Math.min(limit, nodeData.length); i++) {
-          visibleEndpointNames.add(nodeData[i].name);
+        // Treat null/undefined/empty as 'other'
+        if (!type || type === '') {
+          type = 'other';
         }
+
+        // Find corresponding sidebar item for search data
+        const sidebarItem = document.querySelector(`#endpoints-container .list-item[data-endpoint="${nodeName}"]`);
+        const endpointText = sidebarItem ? sidebarItem.textContent.toLowerCase() : nodeName.toLowerCase();
+        const ips = sidebarItem ? (sidebarItem.getAttribute('data-endpoint-ips') || '').toLowerCase() : '';
+        const macs = sidebarItem ? (sidebarItem.getAttribute('data-endpoint-macs') || '').toLowerCase() : '';
+
+        // Check if matches search term
+        const matchesSearch = searchTerm === ''
+          || endpointText.includes(searchTerm)
+          || ips.includes(searchTerm)
+          || macs.includes(searchTerm);
+
+        // Check if matches type filter
+        const matchesType = matchesTypeFilter(type);
+
+        if (matchesSearch && matchesType) {
+          nodeData.push({ name: nodeName, type: type });
+        }
+      });
+
+      // Apply limit to the filtered list
+      for (let i = 0; i < Math.min(limit, nodeData.length); i++) {
+        visibleEndpointNames.add(nodeData[i].name);
       }
 
       // Filter nodes in graph based on the visible set
@@ -1474,31 +1431,6 @@
       });
     }
 
-    // Filter ports list in right pane
-    function filterPortsList(searchTerm, skipUrlUpdate = false) {
-      const normalizedSearch = searchTerm.trim().toLowerCase();
-      const portItems = document.querySelectorAll('#ports-container .hostname-item');
-
-      // Save to URL parameters
-      if (!skipUrlUpdate) {
-        const url = new URL(window.location.href);
-        if (normalizedSearch) {
-          url.searchParams.set('filter_ports', searchTerm);
-        } else {
-          url.searchParams.delete('filter_ports');
-        }
-        window.history.replaceState({}, '', url);
-      }
-
-      portItems.forEach(item => {
-        const port = item.textContent.toLowerCase();
-        if (normalizedSearch === '' || port.includes(normalizedSearch)) {
-          item.style.display = 'block';
-        } else {
-          item.style.display = 'none';
-        }
-      });
-    }
 
     // Global variable to track selected protocol
     let selectedProtocol = null;
@@ -1593,6 +1525,109 @@
       document.querySelector('.clear-filter-btn').style.display = 'none';
     }
 
+    // Filter graph by port
+    let selectedPort = null;
+    function filterByPort(port, element, skipUrlUpdate = false) {
+      selectedPort = port;
+
+      // Save to URL parameters
+      if (!skipUrlUpdate) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('port', port);
+        window.history.replaceState({}, '', url);
+      }
+
+      // Find all nodes that communicate with this port
+      const relevantNodeIds = new Set();
+      cy.edges().forEach(edge => {
+        const srcPorts = edge.data('src_port');
+        const dstPorts = edge.data('dst_port');
+
+        // Split comma-separated port strings and check if port is in either list
+        const srcPortList = srcPorts ? srcPorts.split(',') : [];
+        const dstPortList = dstPorts ? dstPorts.split(',') : [];
+
+        if (srcPortList.includes(port) || dstPortList.includes(port)) {
+          relevantNodeIds.add(edge.source().id());
+          relevantNodeIds.add(edge.target().id());
+        }
+      });
+
+      // Show/hide nodes based on port
+      cy.nodes().forEach(node => {
+        if (relevantNodeIds.has(node.id())) {
+          node.style('display', 'element');
+        } else {
+          node.style('display', 'none');
+        }
+      });
+
+      // Show/hide edges based on port
+      cy.edges().forEach(edge => {
+        const srcPorts = edge.data('src_port');
+        const dstPorts = edge.data('dst_port');
+
+        // Split comma-separated port strings and check if port is in either list
+        const srcPortList = srcPorts ? srcPorts.split(',') : [];
+        const dstPortList = dstPorts ? dstPorts.split(',') : [];
+
+        if (srcPortList.includes(port) || dstPortList.includes(port)) {
+          edge.style('display', 'element');
+          edge.style('opacity', 0.8);
+          edge.style('width', 2);
+        } else {
+          edge.style('display', 'none');
+        }
+      });
+
+      // Update UI - highlight selected port badge, dim others
+      document.querySelectorAll('[data-port]').forEach(badge => {
+        if (badge.dataset.port == port) {
+          badge.classList.add('selected');
+          badge.classList.remove('dimmed');
+        } else {
+          badge.classList.remove('selected');
+          badge.classList.add('dimmed');
+        }
+      });
+
+      // Show clear filter button
+      document.querySelector('.clear-port-filter-btn').style.display = 'block';
+    }
+
+    // Clear port filter
+    function clearPortFilter() {
+      selectedPort = null;
+
+      // Remove from URL parameters
+      const url = new URL(window.location.href);
+      url.searchParams.delete('port');
+      window.history.replaceState({}, '', url);
+
+      // Reset all nodes and edges to visible
+      cy.nodes().forEach(node => {
+        node.style('display', 'element');
+      });
+
+      cy.edges().forEach(edge => {
+        edge.style('display', 'element');
+        edge.style('opacity', 0.4);
+        edge.style('width', 1.5);
+      });
+
+      // Reset port badges
+      document.querySelectorAll('[data-port]').forEach(badge => {
+        badge.classList.remove('selected');
+        badge.classList.remove('dimmed');
+      });
+
+      // Re-apply type filters
+      applyFilters();
+
+      // Hide clear filter button
+      document.querySelector('.clear-port-filter-btn').style.display = 'none';
+    }
+
     // Copy to clipboard with visual feedback
     function copyToClipboard(text, element) {
       navigator.clipboard.writeText(text).then(() => {
@@ -1640,7 +1675,9 @@
             source: '{{ comm.src_hostname | safe }}',
             target: '{{ comm.dst_hostname | safe }}',
             label: '{{ comm.sub_protocol | safe }}',
-            protocol: '{{ comm.sub_protocol | safe }}'
+            protocol: '{{ comm.sub_protocol | safe }}',
+            src_port: {% if comm.src_port %}'{{ comm.src_port | safe }}'{% else %}null{% endif %},
+            dst_port: {% if comm.dst_port %}'{{ comm.dst_port | safe }}'{% else %}null{% endif %}
           }},
           {% endif %}
         {% endfor %}
