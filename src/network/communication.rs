@@ -50,13 +50,25 @@ impl Communication {
         if let Some(ip_header_protocol) = &communication.ip_header_protocol
             && (ip_header_protocol == "Tcp" || ip_header_protocol == "Udp")
         {
+            // Try destination port first (most reliable for client→server requests)
             communication.sub_protocol = communication
                 .destination_port
                 .and_then(|port| packet_wrapper.get_sub_protocol(port))
                 .or_else(|| {
-                    communication
-                        .source_port
-                        .and_then(|port| packet_wrapper.get_sub_protocol(port))
+                    // Only fall back to source port if destination is in ephemeral range
+                    // This handles server→client responses while avoiding false positives
+                    // from ephemeral ports that happen to match well-known service ports
+                    let dst_is_ephemeral = communication
+                        .destination_port
+                        .map(|p| p >= 32768)
+                        .unwrap_or(false);
+                    if dst_is_ephemeral {
+                        communication
+                            .source_port
+                            .and_then(|port| packet_wrapper.get_sub_protocol(port))
+                    } else {
+                        None
+                    }
                 });
         }
 
