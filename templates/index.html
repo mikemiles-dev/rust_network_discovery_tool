@@ -339,6 +339,91 @@
       font-weight: 600;
     }
 
+    /* Device Type Dropdown */
+    .device-type-selector {
+      position: relative;
+      display: inline-block;
+    }
+
+    .device-type-btn {
+      background: rgba(59, 130, 246, 0.2);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+    }
+
+    .device-type-btn:hover {
+      background: rgba(59, 130, 246, 0.3);
+      border-color: rgba(59, 130, 246, 0.6);
+    }
+
+    .device-type-btn .dropdown-arrow {
+      font-size: 0.5rem;
+      opacity: 0.7;
+    }
+
+    .device-type-btn.manual-override {
+      background: rgba(139, 92, 246, 0.2);
+      border-color: rgba(139, 92, 246, 0.4);
+    }
+
+    .device-type-btn.manual-override:hover {
+      background: rgba(139, 92, 246, 0.3);
+      border-color: rgba(139, 92, 246, 0.6);
+    }
+
+    .device-type-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      margin-top: 0.25rem;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 0.5rem;
+      box-shadow: 0 4px 12px var(--shadow);
+      z-index: 1000;
+      min-width: 160px;
+      display: none;
+      overflow: hidden;
+    }
+
+    .device-type-dropdown.open {
+      display: block;
+    }
+
+    .device-type-option {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .device-type-option:hover {
+      background: rgba(59, 130, 246, 0.1);
+      color: var(--text-primary);
+    }
+
+    .device-type-option.selected {
+      background: rgba(59, 130, 246, 0.2);
+      color: var(--text-primary);
+    }
+
+    .device-type-option.auto-option {
+      border-bottom: 1px solid var(--border-color);
+      color: var(--accent-primary);
+    }
+
     .pulse {
       width: 8px;
       height: 8px;
@@ -801,25 +886,42 @@
           <div style="font-size: 0.875rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; word-break: break-all;">
             {{ endpoint }}
           </div>
-          <!-- Device Type Badge -->
+          <!-- Device Type Dropdown -->
           <div style="margin-bottom: 0.75rem;">
-            <div class="stat-badge" style="background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.4); font-size: 0.75rem; display: inline-block;">
-              Type: <span class="stat-number" style="font-weight: 600;">
-                {% if endpoint == hostname %}🖥️ Local
-                {% elif endpoint_types[endpoint] == "gateway" %}🌐 Gateway
-                {% elif endpoint_types[endpoint] == "internet" %}🌍 Internet
-                {% elif endpoint_types[endpoint] == "printer" %}🖨️ Printer
-                {% elif endpoint_types[endpoint] == "tv" %}📺 TV
-                {% elif endpoint_types[endpoint] == "gaming" %}🎮 Gaming
-                {% elif endpoint_types[endpoint] == "phone" %}📱 Phone
-                {% elif endpoint_types[endpoint] == "virtualization" %}🖥 VM
-                {% elif endpoint_types[endpoint] == "soundbar" %}🔊 Soundbar
-                {% elif endpoint_types[endpoint] == "appliance" %}🏠 Appliance
-                {% elif endpoint_types[endpoint] %}💻 {{ endpoint_types[endpoint] }}
-                {% else %}❓ Other
-                {% endif %}
-              </span>
+            <div class="device-type-selector">
+              <button class="device-type-btn {% if endpoint in manual_overrides %}manual-override{% endif %}" onclick="toggleDeviceTypeDropdown(event)" id="device-type-btn">
+                <span>Type:</span>
+                <span id="current-device-type">
+                  {% if endpoint_types[endpoint] == "gateway" %}🌐 Gateway
+                  {% elif endpoint_types[endpoint] == "internet" %}🌍 Internet
+                  {% elif endpoint_types[endpoint] == "printer" %}🖨️ Printer
+                  {% elif endpoint_types[endpoint] == "tv" %}📺 TV
+                  {% elif endpoint_types[endpoint] == "gaming" %}🎮 Gaming
+                  {% elif endpoint_types[endpoint] == "phone" %}📱 Phone
+                  {% elif endpoint_types[endpoint] == "virtualization" %}🖥 VM
+                  {% elif endpoint_types[endpoint] == "soundbar" %}🔊 Soundbar
+                  {% elif endpoint_types[endpoint] == "appliance" %}🏠 Appliance
+                  {% elif endpoint_types[endpoint] == "local" %}🖥️ Local
+                  {% elif endpoint_types[endpoint] %}💻 {{ endpoint_types[endpoint] }}
+                  {% else %}❓ Other
+                  {% endif %}
+                </span>
+                <span class="dropdown-arrow">▼</span>
+              </button>
+              <div class="device-type-dropdown" id="device-type-dropdown">
+                <div class="device-type-option auto-option" onclick="reclassifyEndpoint('auto')">🔄 Auto (detect automatically)</div>
+                <div class="device-type-option {% if endpoint_types[endpoint] == 'local' %}selected{% endif %}" onclick="reclassifyEndpoint('local')">🖥️ Local</div>
+                <div class="device-type-option {% if endpoint_types[endpoint] == 'printer' %}selected{% endif %}" onclick="reclassifyEndpoint('printer')">🖨️ Printer</div>
+                <div class="device-type-option {% if endpoint_types[endpoint] == 'tv' %}selected{% endif %}" onclick="reclassifyEndpoint('tv')">📺 TV</div>
+                <div class="device-type-option {% if endpoint_types[endpoint] == 'gaming' %}selected{% endif %}" onclick="reclassifyEndpoint('gaming')">🎮 Gaming</div>
+                <div class="device-type-option {% if endpoint_types[endpoint] == 'phone' %}selected{% endif %}" onclick="reclassifyEndpoint('phone')">📱 Phone</div>
+                <div class="device-type-option {% if endpoint_types[endpoint] == 'virtualization' %}selected{% endif %}" onclick="reclassifyEndpoint('virtualization')">🖥 VM</div>
+                <div class="device-type-option {% if endpoint_types[endpoint] == 'soundbar' %}selected{% endif %}" onclick="reclassifyEndpoint('soundbar')">🔊 Soundbar</div>
+                <div class="device-type-option {% if endpoint_types[endpoint] == 'appliance' %}selected{% endif %}" onclick="reclassifyEndpoint('appliance')">🏠 Appliance</div>
+                <div class="device-type-option {% if endpoint_types[endpoint] == 'other' %}selected{% endif %}" onclick="reclassifyEndpoint('other')">❓ Other</div>
+              </div>
             </div>
+            {% if endpoint in manual_overrides %}<span style="font-size: 0.625rem; color: var(--accent-secondary); margin-left: 0.5rem;">(manually set)</span>{% endif %}
           </div>
           <div class="stats">
             <div class="stat-badge stat-link" onclick="scrollToSection('ips-section')">IPs: <span class="stat-number">{{ ips|length }}</span></div>
@@ -950,6 +1052,9 @@
   </div><!-- End DNS Tab -->
 
   <script>
+    // Track active tab
+    let activeTab = 'network';
+
     // Tab switching function
     function switchTab(tabName) {
       // Hide all tab contents
@@ -965,26 +1070,55 @@
       // Activate clicked button
       event.target.classList.add('active');
 
-      // Show/hide controls and disable/enable auto-refresh based on tab
-      const autoRefreshControls = document.getElementById('auto-refresh-controls');
-      const timeRangeControls = document.getElementById('time-range-controls');
+      // Update active tab
+      activeTab = tabName;
+
+      // If switching to DNS tab, do an immediate refresh of DNS entries
       if (tabName === 'dns') {
-        autoRefreshControls.style.display = 'none';
-        timeRangeControls.style.display = 'none';
-        // Stop auto-refresh when on DNS tab
-        if (refreshIntervalId) {
-          clearInterval(refreshIntervalId);
-          refreshIntervalId = null;
-        }
-      } else {
-        autoRefreshControls.style.display = 'block';
-        timeRangeControls.style.display = 'block';
-        // Restore auto-refresh when returning to Network tab
-        const savedInterval = document.getElementById('refreshInterval').value;
-        if (savedInterval !== '0') {
-          updateRefreshInterval(savedInterval);
-        }
+        refreshDnsEntries();
       }
+    }
+
+    // Fetch and update DNS entries table
+    async function refreshDnsEntries() {
+      try {
+        const response = await fetch('/api/dns-entries');
+        const entries = await response.json();
+
+        const tbody = document.querySelector('.dns-table tbody');
+        if (!tbody) return;
+
+        // Clear existing rows
+        tbody.innerHTML = '';
+
+        // Add new rows
+        entries.forEach(entry => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${escapeHtml(entry.timestamp)}</td>
+            <td>${escapeHtml(entry.ip)}</td>
+            <td>${escapeHtml(entry.hostname)}</td>
+            <td>${escapeHtml(entry.services)}</td>
+          `;
+          tbody.appendChild(row);
+        });
+
+        // Show empty state if no entries
+        if (entries.length === 0) {
+          const row = document.createElement('tr');
+          row.innerHTML = '<td colspan="4" style="text-align: center; color: var(--text-secondary);">No mDNS entries discovered yet</td>';
+          tbody.appendChild(row);
+        }
+      } catch (error) {
+        // Silently fail - DNS refresh is non-critical
+      }
+    }
+
+    // Helper to escape HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
     }
 
     // Debounce utility for performance optimization
@@ -1586,7 +1720,26 @@
 
       // Check if any communications are visible after filtering
       checkForCommunications();
+
+      // Re-layout visible elements to prevent flower/disjointed pattern
+      relayoutVisibleElements();
     }
+
+    // Debounced re-layout to prevent excessive layout runs
+    const relayoutVisibleElements = debounce(() => {
+      const visibleElements = cy.elements().filter(ele => ele.style('display') === 'element');
+      if (visibleElements.length > 0) {
+        visibleElements.layout({
+          name: 'cose',
+          nodeRepulsion: 400000,
+          nodeDimensionsIncludeLabels: true,
+          padding: 80,
+          animate: true,
+          animationDuration: 300,
+          fit: true
+        }).run();
+      }
+    }, 100);
 
     // Filter hostnames list in right pane
     function filterHostnamesList(searchTerm, skipUrlUpdate = false) {
@@ -2197,6 +2350,68 @@
       cy.fit(cy.elements(), 50);
     }
 
+    // Device type reclassification
+    let savedRefreshInterval = null;
+
+    function toggleDeviceTypeDropdown(event) {
+      event.stopPropagation();
+      const dropdown = document.getElementById('device-type-dropdown');
+      const isOpening = !dropdown.classList.contains('open');
+
+      if (isOpening) {
+        // Pause auto-refresh while dropdown is open
+        if (refreshIntervalId) {
+          savedRefreshInterval = document.getElementById('refreshInterval').value;
+          clearInterval(refreshIntervalId);
+          refreshIntervalId = null;
+        }
+      }
+
+      dropdown.classList.toggle('open');
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(event) {
+      const dropdown = document.getElementById('device-type-dropdown');
+      const btn = document.getElementById('device-type-btn');
+      if (dropdown && !dropdown.contains(event.target) && !btn.contains(event.target)) {
+        dropdown.classList.remove('open');
+        // Resume auto-refresh if it was paused
+        if (savedRefreshInterval && savedRefreshInterval !== '0') {
+          updateRefreshInterval(savedRefreshInterval);
+          savedRefreshInterval = null;
+        }
+      }
+    });
+
+    async function reclassifyEndpoint(deviceType) {
+      const endpointName = '{{ endpoint | safe }}';
+      const dropdown = document.getElementById('device-type-dropdown');
+      dropdown.classList.remove('open');
+
+      try {
+        const response = await fetch('/api/endpoint/classify', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            endpoint_name: endpointName,
+            device_type: deviceType === 'auto' ? null : deviceType,
+          }),
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          window.location.reload();
+        } else {
+          alert('Failed to update device type: ' + result.message);
+        }
+      } catch (error) {
+        alert('Failed to update device type. Please try again.');
+      }
+    }
+
     // Auto-refresh management
     let refreshIntervalId = null;
 
@@ -2225,9 +2440,15 @@
         toggleBtn.classList.remove('play');
         toggleBtn.title = 'Stop auto-refresh';
 
-        // Set new interval
+        // Set new interval - behavior depends on active tab
         refreshIntervalId = setInterval(() => {
-          window.location.reload();
+          if (activeTab === 'dns') {
+            // Refresh DNS entries without page reload
+            refreshDnsEntries();
+          } else {
+            // Reload page for network tab
+            window.location.reload();
+          }
         }, seconds * 1000);
       }
     }

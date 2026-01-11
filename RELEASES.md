@@ -1,5 +1,29 @@
 # Release Notes
 
+## [0.3.4]
+
+### Added
+- Manual device reclassification - click the device type badge in endpoint details to change classification
+  - Dropdown with all device types: Local, Printer, TV, Gaming, Phone, VM, Soundbar, Appliance, Other
+  - Select "Auto" to revert to automatic detection
+  - Manual overrides persist in database and are indicated with "(manually set)" label
+  - Manual overrides shown with purple highlight
+- LG ThinQ smart appliance detection for dishwashers, washers, dryers, and refrigerators
+  - Detects model number patterns: LMA, LMW, LDF, LDT, LDP, WM, DLE, DLEX, LRMV
+  - Prevents misclassification as TV when appliances advertise AirPlay
+- API endpoint `/api/dns-entries` for fetching mDNS entries as JSON
+- API endpoint `/api/endpoint/classify` for setting manual device types
+
+### Changed
+- Auto-refresh now works on mDNS Entries tab - updates DNS table without page reload
+- Auto-refresh and time range controls remain visible on both tabs
+- Graph re-layouts automatically after filtering to prevent flower/disjointed patterns
+- Removed Gateway and Internet from manual classification options (network-level, not device types)
+
+### Fixed
+- Device type display now respects manual overrides instead of always showing auto-detected type
+- Local machine no longer forced to show as "Local" when manually reclassified
+
 ## [0.3.3]
 
 ### Added

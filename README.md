@@ -2,6 +2,8 @@ Rust Network Discovery Tool
 
 ![Screenshot](screenshot.png)
 
+![Screenshot](screenshot_dns.png)
+
 A lightweight network traffic monitoring tool that captures and visualizes network connections on your local network. Shows "what's talking to what" in an easy-to-use web interface.
 
 ## Features

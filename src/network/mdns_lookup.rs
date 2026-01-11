@@ -98,9 +98,8 @@ impl MDnsLookup {
                                     }
 
                                     // Add to DNS entries log
-                                    if let Ok(mut entries) = DNS_ENTRIES
-                                        .get_or_init(|| RwLock::new(Vec::new()))
-                                        .write()
+                                    if let Ok(mut entries) =
+                                        DNS_ENTRIES.get_or_init(|| RwLock::new(Vec::new())).write()
                                     {
                                         entries.push(DnsEntry {
                                             ip: addr.to_string(),

@@ -134,6 +134,30 @@ impl EndPoint {
         ip: Option<&str>,
         ports: &[u16],
     ) -> Option<&'static str> {
+        // Check for LG ThinQ appliances FIRST (they advertise AirPlay but aren't TVs)
+        // LG ThinQ appliance model numbers: LMA/LMW (general), LDF/LDT/LDP (dishwashers),
+        // WM (washers), DLE/DLEX (dryers), LRMV (refrigerators)
+        if let Some(hostname_str) = hostname {
+            let lower = hostname_str.to_lowercase();
+            if lower.starts_with("lma")
+                || lower.starts_with("lmw")
+                || lower.starts_with("ldf")
+                || lower.starts_with("ldt")
+                || lower.starts_with("ldp")
+                || lower.starts_with("wm")
+                    && lower
+                        .chars()
+                        .nth(2)
+                        .map(|c| c.is_ascii_digit())
+                        .unwrap_or(false)
+                || lower.starts_with("dle")
+                || lower.starts_with("dlex")
+                || lower.starts_with("lrmv")
+            {
+                return Some(CLASSIFICATION_APPLIANCE);
+            }
+        }
+
         // Check mDNS service advertisements first (most reliable for smart devices)
         if let Some(ip_str) = ip {
             let services = crate::network::mdns_lookup::MDnsLookup::get_services(ip_str);
@@ -372,7 +396,49 @@ impl EndPoint {
             "CREATE INDEX IF NOT EXISTS idx_endpoints_name_lower ON endpoints (LOWER(name));",
             [],
         )?;
+        // Migration: Add manual_device_type column if it doesn't exist
+        let has_column: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_table_info('endpoints') WHERE name = 'manual_device_type'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !has_column {
+            conn.execute(
+                "ALTER TABLE endpoints ADD COLUMN manual_device_type TEXT",
+                [],
+            )?;
+        }
         Ok(())
+    }
+
+    /// Set the manual device type for an endpoint by name
+    /// Pass None to clear the manual override and revert to automatic classification
+    pub fn set_manual_device_type(
+        conn: &Connection,
+        endpoint_name: &str,
+        device_type: Option<&str>,
+    ) -> Result<usize> {
+        conn.execute(
+            "UPDATE endpoints SET manual_device_type = ? WHERE LOWER(name) = LOWER(?)",
+            params![device_type, endpoint_name],
+        )
+    }
+
+    /// Get all manual device types as a HashMap
+    pub fn get_all_manual_device_types(conn: &Connection) -> HashMap<String, String> {
+        let mut map = HashMap::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT name, manual_device_type FROM endpoints WHERE manual_device_type IS NOT NULL AND name IS NOT NULL",
+        ) && let Ok(rows) = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        }) {
+            for row in rows.flatten() {
+                map.insert(row.0, row.1);
+            }
+        }
+        map
     }
 
     fn insert_endpoint(

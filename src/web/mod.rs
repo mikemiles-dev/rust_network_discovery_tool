@@ -1,8 +1,8 @@
 use actix_web::{
     App, HttpServer,
-    web::{Data, Query},
+    web::{Data, Json, Query},
 };
-use actix_web::{HttpResponse, Responder, get};
+use actix_web::{HttpResponse, Responder, get, post};
 use dns_lookup::get_hostname;
 use pnet::datalink;
 use rust_embed::RustEmbed;
@@ -606,11 +606,45 @@ fn get_endpoint_types(communications: &[Node]) -> std::collections::HashMap<Stri
     types
 }
 
-fn get_all_endpoint_types(endpoints: &[String]) -> std::collections::HashMap<String, &'static str> {
+fn get_all_endpoint_types(
+    endpoints: &[String],
+) -> (
+    std::collections::HashMap<String, &'static str>,
+    std::collections::HashSet<String>,
+) {
     let conn = new_connection();
     let mut types = std::collections::HashMap::new();
+    let mut manual_overrides = std::collections::HashSet::new();
+
+    // Get all manual device types first
+    let manual_types = EndPoint::get_all_manual_device_types(&conn);
 
     for endpoint in endpoints {
+        // Check for manual override first (case-insensitive)
+        let manual_type = manual_types
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(endpoint))
+            .map(|(_, v)| v.clone());
+        if let Some(manual_type) = manual_type {
+            // Convert the manual type string to a static str
+            let static_type: &'static str = match manual_type.as_str() {
+                "local" => "local",
+                "gateway" => "gateway",
+                "internet" => "internet",
+                "printer" => "printer",
+                "tv" => "tv",
+                "gaming" => "gaming",
+                "phone" => "phone",
+                "virtualization" => "virtualization",
+                "soundbar" => "soundbar",
+                "appliance" => "appliance",
+                _ => "other",
+            };
+            types.insert(endpoint.clone(), static_type);
+            manual_overrides.insert(endpoint.clone());
+            continue;
+        }
+
         // Get IP address for this endpoint from endpoint_attributes
         let mut stmt = conn
             .prepare(
@@ -672,7 +706,7 @@ fn get_all_endpoint_types(endpoints: &[String]) -> std::collections::HashMap<Str
         }
     }
 
-    types
+    (types, manual_overrides)
 }
 
 #[derive(Serialize)]
@@ -696,12 +730,12 @@ fn get_dns_entries() -> Vec<DnsEntryView> {
     entries
         .into_iter()
         .map(|e| {
-            let timestamp = e.timestamp
+            let timestamp = e
+                .timestamp
                 .duration_since(UNIX_EPOCH)
                 .map(|d| {
                     let secs = d.as_secs();
-                    let dt = chrono::DateTime::from_timestamp(secs as i64, 0)
-                        .unwrap_or_default();
+                    let dt = chrono::DateTime::from_timestamp(secs as i64, 0).unwrap_or_default();
                     dt.format("%Y-%m-%d %H:%M:%S").to_string()
                 })
                 .unwrap_or_else(|_| "Unknown".to_string());
@@ -714,6 +748,11 @@ fn get_dns_entries() -> Vec<DnsEntryView> {
             }
         })
         .collect()
+}
+
+#[get("/api/dns-entries")]
+async fn get_dns_entries_api() -> impl Responder {
+    HttpResponse::Ok().json(get_dns_entries())
 }
 
 fn get_bytes_for_endpoint(hostname: String, internal_minutes: u64) -> BytesStats {
@@ -820,6 +859,8 @@ pub fn start(preferred_port: u16) {
                         .app_data(Data::new(tera_clone.clone()))
                         .service(static_files)
                         .service(index)
+                        .service(set_endpoint_type)
+                        .service(get_dns_entries_api)
                 })
                 .bind(("127.0.0.1", port))
                 {
@@ -896,12 +937,19 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let supported_protocols = ProtocolPort::get_supported_protocols();
     let dropdown_endpoints = dropdown_endpoints(query.scan_interval.unwrap_or(60));
     let endpoint_ips_macs = get_endpoint_ips_and_macs(&dropdown_endpoints);
-    let endpoint_bytes = get_all_endpoints_bytes(&dropdown_endpoints, query.scan_interval.unwrap_or(60));
+    let endpoint_bytes =
+        get_all_endpoints_bytes(&dropdown_endpoints, query.scan_interval.unwrap_or(60));
     let mut endpoint_types = get_endpoint_types(&communications);
-    let dropdown_types = get_all_endpoint_types(&dropdown_endpoints);
+    let (dropdown_types, manual_overrides) = get_all_endpoint_types(&dropdown_endpoints);
     // Merge dropdown types into endpoint_types
+    // Manual overrides should take priority, so use insert() for those
     for (endpoint, type_str) in dropdown_types {
-        endpoint_types.entry(endpoint).or_insert(type_str);
+        if manual_overrides.contains(&endpoint) {
+            // Manual override - always use this type
+            endpoint_types.insert(endpoint, type_str);
+        } else {
+            endpoint_types.entry(endpoint).or_insert(type_str);
+        }
     }
     // Ensure all dropdown endpoints have a type (default to "other" if not classified)
     for endpoint in &dropdown_endpoints {
@@ -911,6 +959,8 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     for endpoint in &endpoints {
         endpoint_types.entry(endpoint.clone()).or_insert("other");
     }
+    // Convert manual_overrides to Vec for serialization
+    let manual_overrides: Vec<String> = manual_overrides.into_iter().collect();
 
     let (ips, macs, hostnames) = get_all_ips_macs_and_hostnames_from_single_hostname(
         selected_endpoint.clone(),
@@ -944,6 +994,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     context.insert("bytes_in", &bytes_stats.bytes_in);
     context.insert("bytes_out", &bytes_stats.bytes_out);
     context.insert("dns_entries", &get_dns_entries());
+    context.insert("manual_overrides", &manual_overrides);
 
     let rendered = tera
         .render("index.html", &context)
@@ -956,4 +1007,54 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
 struct NodeQuery {
     node: Option<String>,
     scan_interval: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct ClassifyRequest {
+    endpoint_name: String,
+    device_type: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ClassifyResponse {
+    success: bool,
+    message: String,
+}
+
+#[post("/api/endpoint/classify")]
+async fn set_endpoint_type(body: Json<ClassifyRequest>) -> impl Responder {
+    let conn = new_connection();
+
+    // If device_type is "auto" or empty, clear the manual override
+    let device_type = match &body.device_type {
+        Some(t) if t == "auto" || t.is_empty() => None,
+        Some(t) => Some(t.as_str()),
+        None => None,
+    };
+
+    match EndPoint::set_manual_device_type(&conn, &body.endpoint_name, device_type) {
+        Ok(rows_updated) => {
+            if rows_updated > 0 {
+                HttpResponse::Ok().json(ClassifyResponse {
+                    success: true,
+                    message: format!(
+                        "Device type {} for {}",
+                        device_type
+                            .map(|t| format!("set to '{}'", t))
+                            .unwrap_or_else(|| "cleared".to_string()),
+                        body.endpoint_name
+                    ),
+                })
+            } else {
+                HttpResponse::NotFound().json(ClassifyResponse {
+                    success: false,
+                    message: format!("Endpoint '{}' not found", body.endpoint_name),
+                })
+            }
+        }
+        Err(e) => HttpResponse::InternalServerError().json(ClassifyResponse {
+            success: false,
+            message: format!("Database error: {}", e),
+        }),
+    }
 }
