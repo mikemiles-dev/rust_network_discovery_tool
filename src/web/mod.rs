@@ -11,6 +11,7 @@ use tera::{Context, Tera};
 use tokio::task;
 
 use crate::db::new_connection;
+use crate::network::device_control::DeviceController;
 use crate::network::endpoint::EndPoint;
 use crate::network::mdns_lookup::MDnsLookup;
 use crate::network::protocol::ProtocolPort;
@@ -861,6 +862,10 @@ pub fn start(preferred_port: u16) {
                         .service(index)
                         .service(set_endpoint_type)
                         .service(get_dns_entries_api)
+                        .service(get_device_capabilities)
+                        .service(send_device_command)
+                        .service(launch_device_app)
+                        .service(pair_device)
                 })
                 .bind(("127.0.0.1", port))
                 {
@@ -1056,5 +1061,100 @@ async fn set_endpoint_type(body: Json<ClassifyRequest>) -> impl Responder {
             success: false,
             message: format!("Database error: {}", e),
         }),
+    }
+}
+
+// Device Control API
+
+#[derive(Deserialize)]
+struct DeviceQuery {
+    ip: String,
+    device_type: Option<String>,
+    hostname: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct DeviceCommandRequest {
+    ip: String,
+    command: String,
+    device_type: String,
+}
+
+#[derive(Deserialize)]
+struct LaunchAppRequest {
+    ip: String,
+    app_id: String,
+    device_type: String,
+}
+
+#[get("/api/device/capabilities")]
+async fn get_device_capabilities(query: Query<DeviceQuery>) -> impl Responder {
+    let ip = query.ip.clone();
+    let device_type = query.device_type.clone();
+    let hostname = query.hostname.clone();
+
+    // Run blocking device detection in a separate thread
+    let capabilities = actix_web::web::block(move || {
+        DeviceController::get_capabilities(&ip, device_type.as_deref(), hostname.as_deref())
+    })
+    .await;
+
+    match capabilities {
+        Ok(caps) => HttpResponse::Ok().json(caps),
+        Err(_) => HttpResponse::InternalServerError().body("Failed to get device capabilities"),
+    }
+}
+
+#[post("/api/device/command")]
+async fn send_device_command(body: Json<DeviceCommandRequest>) -> impl Responder {
+    let ip = body.ip.clone();
+    let command = body.command.clone();
+    let device_type = body.device_type.clone();
+
+    let result =
+        actix_web::web::block(move || DeviceController::send_command(&ip, &command, &device_type))
+            .await;
+
+    match result {
+        Ok(r) if r.success => HttpResponse::Ok().json(r),
+        Ok(r) => HttpResponse::BadRequest().json(r),
+        Err(_) => HttpResponse::InternalServerError().body("Command failed"),
+    }
+}
+
+#[post("/api/device/launch")]
+async fn launch_device_app(body: Json<LaunchAppRequest>) -> impl Responder {
+    let ip = body.ip.clone();
+    let app_id = body.app_id.clone();
+    let device_type = body.device_type.clone();
+
+    let result =
+        actix_web::web::block(move || DeviceController::launch_app(&ip, &app_id, &device_type))
+            .await;
+
+    match result {
+        Ok(r) if r.success => HttpResponse::Ok().json(r),
+        Ok(r) => HttpResponse::BadRequest().json(r),
+        Err(_) => HttpResponse::InternalServerError().body("Launch failed"),
+    }
+}
+
+#[derive(Deserialize)]
+struct PairRequest {
+    ip: String,
+    device_type: String,
+}
+
+#[post("/api/device/pair")]
+async fn pair_device(body: Json<PairRequest>) -> impl Responder {
+    let ip = body.ip.clone();
+    let device_type = body.device_type.clone();
+
+    let result = actix_web::web::block(move || DeviceController::pair(&ip, &device_type)).await;
+
+    match result {
+        Ok(r) if r.success => HttpResponse::Ok().json(r),
+        Ok(r) => HttpResponse::BadRequest().json(r),
+        Err(_) => HttpResponse::InternalServerError().body("Pairing failed"),
     }
 }

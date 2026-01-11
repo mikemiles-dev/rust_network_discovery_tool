@@ -1,4 +1,5 @@
 pub mod communication;
+pub mod device_control;
 pub mod endpoint;
 pub mod endpoint_attribute;
 pub mod mdns_lookup;

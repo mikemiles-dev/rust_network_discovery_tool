@@ -5,6 +5,24 @@
 ### Added
 - Manual refresh button (🔄) next to auto-refresh stop button for on-demand data refresh
 - Clicking an endpoint now clears the search filter for cleaner navigation
+- **Device Remote Control** - Control compatible devices directly from the UI
+  - New "Control" tab in endpoint details panel (next to "Details")
+  - **Roku TV/streaming device support** via External Control Protocol (ECP):
+    - Navigation controls (D-pad: Up/Down/Left/Right/OK, Back, Home)
+    - Playback controls (Play/Pause, Rewind, Fast Forward)
+    - Volume controls (Up/Down/Mute)
+    - Power control (Power Off)
+    - App launcher with icons for installed apps
+    - Device info display (model, name, software version)
+  - **Samsung Smart TV support** via WebSocket API:
+    - One-time pairing with approval on TV screen (token stored for future use)
+    - Navigation controls (D-pad, Back, Home, Exit)
+    - Playback controls (Play, Pause, Stop, Rewind, Fast Forward)
+    - Volume and channel controls
+    - Power, Source, and Menu buttons
+    - Automatic token storage in database for seamless reconnection
+  - API endpoints: `/api/device/capabilities`, `/api/device/command`, `/api/device/launch`, `/api/device/pair`
+  - Automatic device detection - shows "No remote control available" for non-supported devices
 
 ### Performance
 - **Database query optimization**: Reduced from 8+ connections per page load to 3 (with explicit drops to avoid lock contention)

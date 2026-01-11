@@ -718,6 +718,182 @@
       -ms-user-select: text;
       line-height: 1.4;
     }
+
+    /* Detail Tabs (inside right panel) */
+    .detail-tabs {
+      display: flex;
+      gap: 0.25rem;
+    }
+
+    .detail-tab {
+      padding: 0.25rem 0.5rem;
+      background: rgba(51, 65, 85, 0.4);
+      border: 1px solid var(--border-color);
+      border-radius: 0.25rem;
+      color: var(--text-secondary);
+      font-size: 0.65rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .detail-tab:hover {
+      background: rgba(59, 130, 246, 0.2);
+      border-color: rgba(59, 130, 246, 0.4);
+      color: var(--text-primary);
+    }
+
+    .detail-tab.active {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+      color: white;
+    }
+
+    .detail-tab-content {
+      display: none;
+    }
+
+    .detail-tab-content.active {
+      display: block;
+    }
+
+    /* Remote Control Styles */
+    .remote-section {
+      margin-bottom: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.4);
+    }
+
+    .remote-section:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+    }
+
+    .remote-label {
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+    }
+
+    .remote-dpad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 0.25rem;
+      max-width: 150px;
+      margin: 0 auto;
+    }
+
+    .remote-btn {
+      padding: 0.5rem;
+      background: rgba(51, 65, 85, 0.6);
+      border: 1px solid var(--border-color);
+      border-radius: 0.375rem;
+      color: var(--text-primary);
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+    }
+
+    .remote-btn:hover {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+      transform: translateY(-1px);
+    }
+
+    .remote-btn:active {
+      transform: translateY(0);
+      background: #2563eb;
+    }
+
+    .remote-btn.dpad-up {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    .remote-btn.dpad-left {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    .remote-btn.dpad-ok {
+      grid-column: 2;
+      grid-row: 2;
+      background: var(--accent-primary);
+      font-weight: 600;
+    }
+
+    .remote-btn.dpad-right {
+      grid-column: 3;
+      grid-row: 2;
+    }
+
+    .remote-btn.dpad-down {
+      grid-column: 2;
+      grid-row: 3;
+    }
+
+    .remote-row {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: center;
+    }
+
+    .remote-btn.power-btn {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: rgba(239, 68, 68, 0.4);
+      color: #f87171;
+      width: 100%;
+    }
+
+    .remote-btn.power-btn:hover {
+      background: #ef4444;
+      border-color: #ef4444;
+      color: white;
+    }
+
+    .apps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .app-btn {
+      padding: 0.5rem;
+      background: rgba(51, 65, 85, 0.5);
+      border: 1px solid var(--border-color);
+      border-radius: 0.375rem;
+      color: var(--text-primary);
+      font-size: 0.65rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.25rem;
+      text-align: center;
+      word-break: break-word;
+    }
+
+    .app-btn:hover {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+    }
+
+    .app-btn img {
+      width: 32px;
+      height: 32px;
+      border-radius: 0.25rem;
+    }
   </style>
 </head>
 <body>
@@ -880,10 +1056,17 @@
 
       <!-- Protocols Overlay -->
       <div class="protocols-overlay">
-        <!-- Endpoint Details -->
-        <div class="overlay-header">
-          Endpoint Details
+        <!-- Endpoint Details Header with Tabs -->
+        <div class="overlay-header" style="display: flex; justify-content: space-between; align-items: center;">
+          <span>Endpoint Details</span>
+          <div class="detail-tabs">
+            <button class="detail-tab active" data-tab="details-tab-content" onclick="switchDetailTab(this, 'details-tab-content')">Details</button>
+            <button class="detail-tab" data-tab="control-tab-content" onclick="switchDetailTab(this, 'control-tab-content')">Control</button>
+          </div>
         </div>
+
+        <!-- Details Tab Content -->
+        <div id="details-tab-content" class="detail-tab-content active">
         <div style="margin-bottom: 0.75rem;">
           <!-- Endpoint Name -->
           <div style="font-size: 0.875rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; word-break: break-all;">
@@ -1017,6 +1200,155 @@
             <div class="empty-state">No MAC addresses</div>
           {% endif %}
         </div>
+        </div><!-- End Details Tab Content -->
+
+        <!-- Control Tab Content -->
+        <div id="control-tab-content" class="detail-tab-content">
+          <div id="device-control-container">
+            <div class="control-loading" id="control-loading">
+              <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                Loading device capabilities...
+              </div>
+            </div>
+            <div id="control-content" style="display: none;">
+              <!-- Device info -->
+              <div id="device-info-section" style="margin-bottom: 1rem; display: none;">
+                <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Device</div>
+                <div id="device-model" style="font-weight: 600;"></div>
+              </div>
+
+              <!-- No control available message -->
+              <div id="no-control-message" style="display: none; text-align: center; padding: 2rem; color: var(--text-secondary);">
+                <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🔒</div>
+                <div>No remote control available for this device type.</div>
+                <div style="font-size: 0.75rem; margin-top: 0.5rem;">Currently supports: Roku and Samsung TVs</div>
+              </div>
+
+              <!-- Pairing Required Message -->
+              <div id="pairing-required" style="display: none; text-align: center; padding: 1.5rem;">
+                <div style="font-size: 2rem; margin-bottom: 0.75rem;">📺</div>
+                <div style="font-weight: 600; margin-bottom: 0.5rem;">Pairing Required</div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                  Click the button below, then approve the connection on your TV screen.
+                </div>
+                <button class="remote-btn" onclick="pairDevice()" style="width: 100%; padding: 0.75rem; font-size: 0.9rem; background: var(--accent-secondary);">
+                  🔗 Pair with TV
+                </button>
+                <div id="pairing-status" style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-secondary);"></div>
+              </div>
+
+              <!-- Roku Remote Control -->
+              <div id="roku-remote" style="display: none;">
+                <!-- Navigation Pad -->
+                <div class="remote-section">
+                  <div class="remote-label">Navigation</div>
+                  <div class="remote-dpad">
+                    <button class="remote-btn dpad-up" onclick="sendCommand('Up')" title="Up">▲</button>
+                    <button class="remote-btn dpad-left" onclick="sendCommand('Left')" title="Left">◀</button>
+                    <button class="remote-btn dpad-ok" onclick="sendCommand('Select')" title="OK">OK</button>
+                    <button class="remote-btn dpad-right" onclick="sendCommand('Right')" title="Right">▶</button>
+                    <button class="remote-btn dpad-down" onclick="sendCommand('Down')" title="Down">▼</button>
+                  </div>
+                  <div class="remote-row" style="margin-top: 0.5rem;">
+                    <button class="remote-btn" onclick="sendCommand('Back')" title="Back">↩️ Back</button>
+                    <button class="remote-btn" onclick="sendCommand('Home')" title="Home">🏠 Home</button>
+                  </div>
+                </div>
+
+                <!-- Playback Controls -->
+                <div class="remote-section">
+                  <div class="remote-label">Playback</div>
+                  <div class="remote-row">
+                    <button class="remote-btn" onclick="sendCommand('Rev')" title="Rewind">⏪</button>
+                    <button class="remote-btn" onclick="sendCommand('Play')" title="Play/Pause">⏯️</button>
+                    <button class="remote-btn" onclick="sendCommand('Fwd')" title="Fast Forward">⏩</button>
+                  </div>
+                </div>
+
+                <!-- Volume Controls -->
+                <div class="remote-section">
+                  <div class="remote-label">Volume</div>
+                  <div class="remote-row">
+                    <button class="remote-btn" onclick="sendCommand('VolumeDown')" title="Volume Down">🔉</button>
+                    <button class="remote-btn" onclick="sendCommand('VolumeMute')" title="Mute">🔇</button>
+                    <button class="remote-btn" onclick="sendCommand('VolumeUp')" title="Volume Up">🔊</button>
+                  </div>
+                </div>
+
+                <!-- Power -->
+                <div class="remote-section">
+                  <div class="remote-row">
+                    <button class="remote-btn power-btn" onclick="sendCommand('PowerOff')" title="Power Off">⏻ Power Off</button>
+                  </div>
+                </div>
+
+                <!-- Apps -->
+                <div id="apps-section" style="display: none;">
+                  <div class="remote-label">Apps</div>
+                  <div id="apps-grid" class="apps-grid">
+                    <!-- Apps will be loaded dynamically -->
+                  </div>
+                </div>
+              </div>
+
+              <!-- Samsung Remote Control -->
+              <div id="samsung-remote" style="display: none;">
+                <!-- Navigation Pad -->
+                <div class="remote-section">
+                  <div class="remote-label">Navigation</div>
+                  <div class="remote-dpad">
+                    <button class="remote-btn dpad-up" onclick="sendCommand('KEY_UP')" title="Up">▲</button>
+                    <button class="remote-btn dpad-left" onclick="sendCommand('KEY_LEFT')" title="Left">◀</button>
+                    <button class="remote-btn dpad-ok" onclick="sendCommand('KEY_ENTER')" title="OK">OK</button>
+                    <button class="remote-btn dpad-right" onclick="sendCommand('KEY_RIGHT')" title="Right">▶</button>
+                    <button class="remote-btn dpad-down" onclick="sendCommand('KEY_DOWN')" title="Down">▼</button>
+                  </div>
+                  <div class="remote-row" style="margin-top: 0.5rem;">
+                    <button class="remote-btn" onclick="sendCommand('KEY_RETURN')" title="Back">↩️ Back</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_HOME')" title="Home">🏠 Home</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_EXIT')" title="Exit">✕ Exit</button>
+                  </div>
+                </div>
+
+                <!-- Playback Controls -->
+                <div class="remote-section">
+                  <div class="remote-label">Playback</div>
+                  <div class="remote-row">
+                    <button class="remote-btn" onclick="sendCommand('KEY_REWIND')" title="Rewind">⏪</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_PLAY')" title="Play">▶️</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_PAUSE')" title="Pause">⏸️</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_FF')" title="Fast Forward">⏩</button>
+                  </div>
+                </div>
+
+                <!-- Volume & Channel Controls -->
+                <div class="remote-section">
+                  <div class="remote-label">Volume / Channel</div>
+                  <div class="remote-row">
+                    <button class="remote-btn" onclick="sendCommand('KEY_VOLDOWN')" title="Volume Down">🔉</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_MUTE')" title="Mute">🔇</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_VOLUP')" title="Volume Up">🔊</button>
+                  </div>
+                  <div class="remote-row" style="margin-top: 0.5rem;">
+                    <button class="remote-btn" onclick="sendCommand('KEY_CHDOWN')" title="Channel Down">📺-</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_CHUP')" title="Channel Up">📺+</button>
+                  </div>
+                </div>
+
+                <!-- Power & Input -->
+                <div class="remote-section">
+                  <div class="remote-row">
+                    <button class="remote-btn" onclick="sendCommand('KEY_SOURCE')" title="Source">🔌 Source</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_MENU')" title="Menu">☰ Menu</button>
+                  </div>
+                  <div class="remote-row" style="margin-top: 0.5rem;">
+                    <button class="remote-btn power-btn" onclick="sendCommand('KEY_POWER')" title="Power">⏻ Power</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div><!-- End Control Tab Content -->
       </div>
     </main>
   </div>
@@ -2499,6 +2831,251 @@
       document.getElementById('refreshInterval').value = savedInterval;
       updateRefreshInterval(savedInterval);
     });
+
+    // ============================================
+    // Device Control Functions
+    // ============================================
+
+    // Store current device control state
+    let currentDeviceIp = null;
+    let currentDeviceType = null;
+    let deviceCapabilitiesLoaded = false;
+
+    // Switch between Details and Control tabs
+    function switchDetailTab(btn, tabId) {
+      // Deactivate all tabs
+      document.querySelectorAll('.detail-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.detail-tab-content').forEach(c => c.classList.remove('active'));
+
+      // Activate clicked tab
+      btn.classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+
+      // Load device capabilities when Control tab is clicked
+      if (tabId === 'control-tab-content' && !deviceCapabilitiesLoaded) {
+        loadDeviceCapabilities();
+      }
+    }
+
+    // Load device capabilities from the API
+    async function loadDeviceCapabilities() {
+      const loadingEl = document.getElementById('control-loading');
+      const contentEl = document.getElementById('control-content');
+      const noControlEl = document.getElementById('no-control-message');
+      const pairingRequiredEl = document.getElementById('pairing-required');
+      const rokuRemoteEl = document.getElementById('roku-remote');
+      const samsungRemoteEl = document.getElementById('samsung-remote');
+      const deviceInfoEl = document.getElementById('device-info-section');
+      const appsSectionEl = document.getElementById('apps-section');
+
+      // Hide all control elements first
+      const hideAll = () => {
+        noControlEl.style.display = 'none';
+        pairingRequiredEl.style.display = 'none';
+        rokuRemoteEl.style.display = 'none';
+        samsungRemoteEl.style.display = 'none';
+        deviceInfoEl.style.display = 'none';
+        appsSectionEl.style.display = 'none';
+      };
+
+      // Show loading state
+      loadingEl.style.display = 'block';
+      contentEl.style.display = 'none';
+      hideAll();
+
+      // Get device IP from the current endpoint data
+      const ipsStr = '{{ ips | join(sep=",") }}';
+      const ips = ipsStr.split(',').filter(ip => ip.trim());
+
+      if (ips.length === 0) {
+        loadingEl.style.display = 'none';
+        contentEl.style.display = 'block';
+        noControlEl.style.display = 'block';
+        deviceCapabilitiesLoaded = true;
+        return;
+      }
+
+      currentDeviceIp = ips[0].trim();
+
+      // Get device type and hostname from template
+      const endpointTypeStr = '{{ endpoint_types[endpoint] | default(value="") }}';
+      const deviceType = endpointTypeStr || null;
+      const endpointName = '{{ endpoint | default(value="") }}';
+
+      try {
+        let url = `/api/device/capabilities?ip=${encodeURIComponent(currentDeviceIp)}`;
+        if (deviceType) url += `&device_type=${encodeURIComponent(deviceType)}`;
+        if (endpointName) url += `&hostname=${encodeURIComponent(endpointName)}`;
+        const response = await fetch(url);
+        const capabilities = await response.json();
+
+        loadingEl.style.display = 'none';
+        contentEl.style.display = 'block';
+        hideAll();
+
+        if (capabilities.can_control) {
+          currentDeviceType = capabilities.device_type;
+
+          // Check if pairing is required (Samsung TVs)
+          if (capabilities.needs_pairing && !capabilities.is_paired) {
+            pairingRequiredEl.style.display = 'block';
+            deviceCapabilitiesLoaded = true;
+            return;
+          }
+
+          // Show device info if available
+          if (capabilities.device_info) {
+            deviceInfoEl.style.display = 'block';
+            const modelEl = document.getElementById('device-model');
+            const info = capabilities.device_info;
+            let infoText = info.name || info.model || (capabilities.device_type === 'roku' ? 'Roku Device' : 'Samsung TV');
+            if (info.software_version) {
+              infoText += ` (v${info.software_version})`;
+            }
+            modelEl.textContent = infoText;
+          }
+
+          // Show device-specific controls
+          if (capabilities.device_type === 'roku') {
+            rokuRemoteEl.style.display = 'block';
+
+            // Show apps if available
+            if (capabilities.apps && capabilities.apps.length > 0) {
+              appsSectionEl.style.display = 'block';
+              const appsGrid = document.getElementById('apps-grid');
+              appsGrid.innerHTML = '';
+
+              capabilities.apps.forEach(app => {
+                const btn = document.createElement('button');
+                btn.className = 'app-btn';
+                btn.onclick = () => launchApp(app.id);
+                btn.title = app.name;
+
+                if (app.icon_url) {
+                  const img = document.createElement('img');
+                  img.src = app.icon_url;
+                  img.alt = app.name;
+                  img.onerror = () => { img.style.display = 'none'; };
+                  btn.appendChild(img);
+                }
+
+                const name = document.createElement('span');
+                name.textContent = app.name.length > 12 ? app.name.substring(0, 12) + '...' : app.name;
+                btn.appendChild(name);
+
+                appsGrid.appendChild(btn);
+              });
+            }
+          } else if (capabilities.device_type === 'samsung') {
+            samsungRemoteEl.style.display = 'block';
+          }
+        } else {
+          noControlEl.style.display = 'block';
+        }
+
+        deviceCapabilitiesLoaded = true;
+      } catch (error) {
+        console.error('Failed to load device capabilities:', error);
+        loadingEl.style.display = 'none';
+        contentEl.style.display = 'block';
+        noControlEl.style.display = 'block';
+        rokuRemoteEl.style.display = 'none';
+        deviceCapabilitiesLoaded = true;
+      }
+    }
+
+    // Send a command to the device
+    async function sendCommand(command) {
+      if (!currentDeviceIp || !currentDeviceType) {
+        console.error('No device selected');
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/device/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ip: currentDeviceIp,
+            command: command,
+            device_type: currentDeviceType
+          })
+        });
+
+        const result = await response.json();
+        if (!result.success) {
+          console.error('Command failed:', result.message);
+        }
+      } catch (error) {
+        console.error('Failed to send command:', error);
+      }
+    }
+
+    // Launch an app on the device
+    async function launchApp(appId) {
+      if (!currentDeviceIp || !currentDeviceType) {
+        console.error('No device selected');
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/device/launch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ip: currentDeviceIp,
+            app_id: appId,
+            device_type: currentDeviceType
+          })
+        });
+
+        const result = await response.json();
+        if (!result.success) {
+          console.error('App launch failed:', result.message);
+        }
+      } catch (error) {
+        console.error('Failed to launch app:', error);
+      }
+    }
+
+    // Pair with a device (Samsung TVs)
+    async function pairDevice() {
+      if (!currentDeviceIp || !currentDeviceType) {
+        console.error('No device selected');
+        return;
+      }
+
+      const statusEl = document.getElementById('pairing-status');
+      statusEl.textContent = 'Connecting... Please check your TV for an approval prompt.';
+      statusEl.style.color = 'var(--accent-primary)';
+
+      try {
+        const response = await fetch('/api/device/pair', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ip: currentDeviceIp,
+            device_type: currentDeviceType
+          })
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          statusEl.textContent = result.message;
+          statusEl.style.color = 'var(--accent-success)';
+          // Reload capabilities to show the remote
+          deviceCapabilitiesLoaded = false;
+          setTimeout(() => loadDeviceCapabilities(), 1000);
+        } else {
+          statusEl.textContent = result.message;
+          statusEl.style.color = '#ef4444';
+        }
+      } catch (error) {
+        console.error('Pairing failed:', error);
+        statusEl.textContent = 'Pairing failed. Please try again.';
+        statusEl.style.color = '#ef4444';
+      }
+    }
   </script>
 </body>
 </html>
