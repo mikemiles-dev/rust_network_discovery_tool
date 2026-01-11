@@ -23,6 +23,10 @@
   - Ports appear as styled badges that can be clicked to filter the graph
   - Port filtering shows only endpoints and communications using the selected port
   - Visual feedback with highlighting and dimming for better UX
+- Protocol and port filters now work together instead of overriding each other
+  - Selecting both a protocol and a port shows only communications that match BOTH filters (intersection)
+  - Clearing one filter preserves the other filter
+  - Previously, selecting a second filter would completely replace the first filter
 
 ### Fixed
 - Critical bug where isolated endpoints (endpoints with no recent communications) were not visible on the graph

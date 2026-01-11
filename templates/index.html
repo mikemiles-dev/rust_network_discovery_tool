@@ -1435,6 +1435,53 @@
     // Global variable to track selected protocol
     let selectedProtocol = null;
 
+    // Apply combined protocol and port filters
+    function applyCombinedFilters() {
+      const relevantNodeIds = new Set();
+
+      // Check each edge to see if it matches ALL active filters
+      cy.edges().forEach(edge => {
+        let matchesProtocol = true;
+        let matchesPort = true;
+
+        // Check protocol filter
+        if (selectedProtocol) {
+          const edgeProtocols = edge.data('protocol').split(',');
+          matchesProtocol = edgeProtocols.includes(selectedProtocol);
+        }
+
+        // Check port filter
+        if (selectedPort) {
+          const portStr = String(selectedPort);
+          const srcPorts = edge.data('src_port');
+          const dstPorts = edge.data('dst_port');
+          const srcPortList = srcPorts ? String(srcPorts).split(',').map(p => p.trim()) : [];
+          const dstPortList = dstPorts ? String(dstPorts).split(',').map(p => p.trim()) : [];
+          matchesPort = srcPortList.includes(portStr) || dstPortList.includes(portStr);
+        }
+
+        // Edge must match ALL active filters
+        if (matchesProtocol && matchesPort) {
+          relevantNodeIds.add(edge.source().id());
+          relevantNodeIds.add(edge.target().id());
+          edge.style('display', 'element');
+          edge.style('opacity', 0.8);
+          edge.style('width', 2);
+        } else {
+          edge.style('display', 'none');
+        }
+      });
+
+      // Show/hide nodes based on relevant edges
+      cy.nodes().forEach(node => {
+        if (relevantNodeIds.has(node.id())) {
+          node.style('display', 'element');
+        } else {
+          node.style('display', 'none');
+        }
+      });
+    }
+
     // Filter graph by protocol
     function filterByProtocol(protocol, element, skipUrlUpdate = false) {
       selectedProtocol = protocol;
@@ -1446,36 +1493,8 @@
         window.history.replaceState({}, '', url);
       }
 
-      // Find all nodes that communicate with this protocol
-      const relevantNodeIds = new Set();
-      cy.edges().forEach(edge => {
-        const edgeProtocols = edge.data('protocol').split(',');
-        if (edgeProtocols.includes(protocol)) {
-          relevantNodeIds.add(edge.source().id());
-          relevantNodeIds.add(edge.target().id());
-        }
-      });
-
-      // Show/hide nodes based on protocol
-      cy.nodes().forEach(node => {
-        if (relevantNodeIds.has(node.id())) {
-          node.style('display', 'element');
-        } else {
-          node.style('display', 'none');
-        }
-      });
-
-      // Show/hide edges based on protocol
-      cy.edges().forEach(edge => {
-        const edgeProtocols = edge.data('protocol').split(',');
-        if (edgeProtocols.includes(protocol)) {
-          edge.style('display', 'element');
-          edge.style('opacity', 0.8);
-          edge.style('width', 2);
-        } else {
-          edge.style('display', 'none');
-        }
-      });
+      // Apply combined filters
+      applyCombinedFilters();
 
       // Update UI - highlight selected protocol badge, dim others
       document.querySelectorAll('.protocol-badge').forEach(badge => {
@@ -1501,28 +1520,31 @@
       url.searchParams.delete('protocol');
       window.history.replaceState({}, '', url);
 
-      // Reset all nodes and edges to visible
-      cy.nodes().forEach(node => {
-        node.style('display', 'element');
-      });
-
-      cy.edges().forEach(edge => {
-        edge.style('display', 'element');
-        edge.style('opacity', 0.4);
-        edge.style('width', 1.5);
-      });
-
-      // Reset protocol badges first
+      // Reset protocol badges
       document.querySelectorAll('.protocol-badge').forEach(badge => {
         badge.classList.remove('selected');
         badge.classList.remove('dimmed');
       });
 
-      // Re-apply type filters (this will also update visible protocols)
-      applyFilters();
-
       // Hide clear filter button
       document.querySelector('.clear-filter-btn').style.display = 'none';
+
+      // If port filter is still active, apply it; otherwise reset everything
+      if (selectedPort) {
+        applyCombinedFilters();
+      } else {
+        // Reset all nodes and edges to visible
+        cy.nodes().forEach(node => {
+          node.style('display', 'element');
+        });
+        cy.edges().forEach(edge => {
+          edge.style('display', 'element');
+          edge.style('opacity', 0.4);
+          edge.style('width', 1.5);
+        });
+        // Re-apply type filters
+        applyFilters();
+      }
     }
 
     // Filter graph by port
@@ -1530,7 +1552,6 @@
     function filterByPort(port, element, skipUrlUpdate = false) {
       selectedPort = port;
       const portStr = String(port);
-      console.log('Filtering by port:', portStr);
 
       // Save to URL parameters
       if (!skipUrlUpdate) {
@@ -1539,53 +1560,8 @@
         window.history.replaceState({}, '', url);
       }
 
-      // Find all nodes that communicate with this port
-      const relevantNodeIds = new Set();
-      let matchCount = 0;
-      cy.edges().forEach(edge => {
-        const srcPorts = edge.data('src_port');
-        const dstPorts = edge.data('dst_port');
-
-        // Split comma-separated port strings and check if port is in either list
-        const srcPortList = srcPorts ? String(srcPorts).split(',').map(p => p.trim()) : [];
-        const dstPortList = dstPorts ? String(dstPorts).split(',').map(p => p.trim()) : [];
-
-        if (srcPortList.includes(portStr) || dstPortList.includes(portStr)) {
-          matchCount++;
-          relevantNodeIds.add(edge.source().id());
-          relevantNodeIds.add(edge.target().id());
-        }
-      });
-
-      console.log('Found', matchCount, 'edges with port', portStr);
-      console.log('Relevant nodes:', relevantNodeIds.size);
-
-      // Show/hide nodes based on port
-      cy.nodes().forEach(node => {
-        if (relevantNodeIds.has(node.id())) {
-          node.style('display', 'element');
-        } else {
-          node.style('display', 'none');
-        }
-      });
-
-      // Show/hide edges based on port
-      cy.edges().forEach(edge => {
-        const srcPorts = edge.data('src_port');
-        const dstPorts = edge.data('dst_port');
-
-        // Split comma-separated port strings and check if port is in either list
-        const srcPortList = srcPorts ? String(srcPorts).split(',').map(p => p.trim()) : [];
-        const dstPortList = dstPorts ? String(dstPorts).split(',').map(p => p.trim()) : [];
-
-        if (srcPortList.includes(portStr) || dstPortList.includes(portStr)) {
-          edge.style('display', 'element');
-          edge.style('opacity', 0.8);
-          edge.style('width', 2);
-        } else {
-          edge.style('display', 'none');
-        }
-      });
+      // Apply combined filters
+      applyCombinedFilters();
 
       // Update UI - highlight selected port badge, dim others
       document.querySelectorAll('[data-port]').forEach(badge => {
@@ -1614,28 +1590,31 @@
       url.searchParams.delete('port');
       window.history.replaceState({}, '', url);
 
-      // Reset all nodes and edges to visible
-      cy.nodes().forEach(node => {
-        node.style('display', 'element');
-      });
-
-      cy.edges().forEach(edge => {
-        edge.style('display', 'element');
-        edge.style('opacity', 0.4);
-        edge.style('width', 1.5);
-      });
-
       // Reset port badges
       document.querySelectorAll('[data-port]').forEach(badge => {
         badge.classList.remove('selected');
         badge.classList.remove('dimmed');
       });
 
-      // Re-apply type filters
-      applyFilters();
-
       // Hide clear filter button
       document.querySelector('.clear-port-filter-btn').style.display = 'none';
+
+      // If protocol filter is still active, apply it; otherwise reset everything
+      if (selectedProtocol) {
+        applyCombinedFilters();
+      } else {
+        // Reset all nodes and edges to visible
+        cy.nodes().forEach(node => {
+          node.style('display', 'element');
+        });
+        cy.edges().forEach(edge => {
+          edge.style('display', 'element');
+          edge.style('opacity', 0.4);
+          edge.style('width', 1.5);
+        });
+        // Re-apply type filters
+        applyFilters();
+      }
 
       // Check if any communications are visible
       checkForCommunications();
