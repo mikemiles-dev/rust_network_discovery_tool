@@ -1,9 +1,10 @@
 use dns_lookup::{get_hostname, lookup_addr};
 use pnet::datalink::interfaces;
+use pnet::ipnetwork::IpNetwork;
 use rusqlite::{Connection, Result, params};
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use crate::network::endpoint_attribute::EndPointAttribute;
@@ -13,6 +14,18 @@ use crate::network::mdns_lookup::MDnsLookup;
 lazy_static::lazy_static! {
     static ref DNS_CACHE: Arc<Mutex<HashMap<String, (String, Instant)>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref GATEWAY_INFO: Arc<Mutex<Option<(String, Instant)>>> = Arc::new(Mutex::new(None));
+}
+
+// Cache for local network CIDR blocks (computed once at startup)
+static LOCAL_NETWORKS: OnceLock<Vec<IpNetwork>> = OnceLock::new();
+
+fn get_local_networks() -> &'static Vec<IpNetwork> {
+    LOCAL_NETWORKS.get_or_init(|| {
+        interfaces()
+            .into_iter()
+            .flat_map(|iface| iface.ips)
+            .collect()
+    })
 }
 
 const DNS_CACHE_TTL: Duration = Duration::from_secs(300); // 5 minutes
@@ -663,13 +676,10 @@ impl EndPoint {
             return true;
         }
 
-        // Check all local interfaces to see if IP is on same subnet
-        for interface in interfaces() {
-            for ip_network in &interface.ips {
-                // Check if the IP is in the same subnet
-                if ip_network.contains(ip_addr) {
-                    return true;
-                }
+        // Check cached local networks (computed once at startup)
+        for ip_network in get_local_networks() {
+            if ip_network.contains(ip_addr) {
+                return true;
             }
         }
 
@@ -707,9 +717,14 @@ impl EndPoint {
         // Cache the result
         if let Ok(mut cache) = DNS_CACHE.lock() {
             cache.insert(ip_str, (final_hostname.clone(), Instant::now()));
-            // Limit cache size to prevent memory growth
+            // LRU-style eviction: remove oldest entries instead of clearing all
             if cache.len() > 10000 {
-                cache.clear();
+                // Find and remove the 1000 oldest entries
+                let mut entries: Vec<_> = cache.iter().map(|(k, (_, t))| (k.clone(), *t)).collect();
+                entries.sort_by_key(|(_, t)| *t);
+                for (key, _) in entries.into_iter().take(1000) {
+                    cache.remove(&key);
+                }
             }
         }
 

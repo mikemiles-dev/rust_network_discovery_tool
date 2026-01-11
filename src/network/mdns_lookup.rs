@@ -1,5 +1,5 @@
 use mdns_sd::{ServiceDaemon, ServiceEvent};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{OnceLock, RwLock};
 use std::time::SystemTime;
 use tokio::task;
@@ -16,7 +16,10 @@ pub struct DnsEntry {
     pub timestamp: SystemTime,
 }
 
-static DNS_ENTRIES: OnceLock<RwLock<Vec<DnsEntry>>> = OnceLock::new();
+// Maximum number of DNS entries to keep (circular buffer)
+const MAX_DNS_ENTRIES: usize = 10000;
+
+static DNS_ENTRIES: OnceLock<RwLock<VecDeque<DnsEntry>>> = OnceLock::new();
 
 pub struct MDnsLookup;
 
@@ -97,11 +100,15 @@ impl MDnsLookup {
                                             .insert(service_name.clone());
                                     }
 
-                                    // Add to DNS entries log
+                                    // Add to DNS entries log (bounded circular buffer)
                                     if let Ok(mut entries) =
-                                        DNS_ENTRIES.get_or_init(|| RwLock::new(Vec::new())).write()
+                                        DNS_ENTRIES.get_or_init(|| RwLock::new(VecDeque::new())).write()
                                     {
-                                        entries.push(DnsEntry {
+                                        // Remove oldest entries if at capacity
+                                        while entries.len() >= MAX_DNS_ENTRIES {
+                                            entries.pop_front();
+                                        }
+                                        entries.push_back(DnsEntry {
                                             ip: addr.to_string(),
                                             hostname: host.to_string(),
                                             services: vec![service_name.clone()],
@@ -139,9 +146,10 @@ impl MDnsLookup {
     }
 
     pub fn get_all_entries() -> Vec<DnsEntry> {
-        let entries = DNS_ENTRIES.get_or_init(|| RwLock::new(Vec::new()));
-        if let Ok(map) = entries.read() {
-            map.clone()
+        let entries = DNS_ENTRIES.get_or_init(|| RwLock::new(VecDeque::new()));
+        if let Ok(deque) = entries.read() {
+            // Convert VecDeque to Vec (most recent entries last)
+            deque.iter().cloned().collect()
         } else {
             Vec::new()
         }

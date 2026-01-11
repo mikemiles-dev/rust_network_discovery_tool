@@ -752,6 +752,9 @@
             <option value="30">30 seconds</option>
             <option value="60">1 minute</option>
           </select>
+          <button onclick="manualRefresh()" class="stop-refresh-btn" title="Refresh now">
+            🔄
+          </button>
           <button id="refreshToggleBtn" onclick="toggleRefresh()" class="stop-refresh-btn" style="margin-right: 0.5rem;" title="Stop auto-refresh">
             ⏹️
           </button>
@@ -1088,27 +1091,30 @@
         const tbody = document.querySelector('.dns-table tbody');
         if (!tbody) return;
 
-        // Clear existing rows
-        tbody.innerHTML = '';
+        // Use DocumentFragment for batched DOM updates (avoids multiple reflows)
+        const fragment = document.createDocumentFragment();
 
-        // Add new rows
-        entries.forEach(entry => {
-          const row = document.createElement('tr');
-          row.innerHTML = `
-            <td>${escapeHtml(entry.timestamp)}</td>
-            <td>${escapeHtml(entry.ip)}</td>
-            <td>${escapeHtml(entry.hostname)}</td>
-            <td>${escapeHtml(entry.services)}</td>
-          `;
-          tbody.appendChild(row);
-        });
-
-        // Show empty state if no entries
+        // Build all rows in the fragment first
         if (entries.length === 0) {
           const row = document.createElement('tr');
           row.innerHTML = '<td colspan="4" style="text-align: center; color: var(--text-secondary);">No mDNS entries discovered yet</td>';
-          tbody.appendChild(row);
+          fragment.appendChild(row);
+        } else {
+          entries.forEach(entry => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td>${escapeHtml(entry.timestamp)}</td>
+              <td>${escapeHtml(entry.ip)}</td>
+              <td>${escapeHtml(entry.hostname)}</td>
+              <td>${escapeHtml(entry.services)}</td>
+            `;
+            fragment.appendChild(row);
+          });
         }
+
+        // Single DOM operation: clear and append all at once
+        tbody.innerHTML = '';
+        tbody.appendChild(fragment);
       } catch (error) {
         // Silently fail - DNS refresh is non-critical
       }
@@ -1146,8 +1152,15 @@
 
     // Navigation functions
     function selectNode(nodeId) {
+      // Clear search input
+      const searchInput = document.getElementById('endpointSearchInput');
+      if (searchInput) {
+        searchInput.value = '';
+      }
+
       const url = new URL(window.location.href);
       url.searchParams.set('node', nodeId);
+      url.searchParams.delete('filter_endpoints'); // Clear search from URL
       window.location.href = url.toString();
     }
 
@@ -2468,6 +2481,15 @@
         localStorage.setItem('lastRefreshInterval', currentValue);
         refreshSelect.value = '0';
         updateRefreshInterval('0');
+      }
+    }
+
+    // Manual refresh - respects current tab
+    function manualRefresh() {
+      if (activeTab === 'dns') {
+        refreshDnsEntries();
+      } else {
+        window.location.reload();
       }
     }
 

@@ -1,5 +1,32 @@
 # Release Notes
 
+## [0.3.5]
+
+### Added
+- Manual refresh button (🔄) next to auto-refresh stop button for on-demand data refresh
+- Clicking an endpoint now clears the search filter for cleaner navigation
+
+### Performance
+- **Database query optimization**: Reduced from 8+ connections per page load to 3 (with explicit drops to avoid lock contention)
+- **N+1 query elimination**: Batch queries for endpoint types, IPs, MACs, and bytes instead of per-endpoint queries
+  - Reduced from 100+ queries to 2-4 queries per page load
+- **O(n²) to O(1)**: Replaced `Vec::contains()` with `HashSet` for deduplication
+- **Scalar subquery elimination**: Replaced per-row subqueries with JOINs in communications query
+- **Optimized identifier resolution**: Removed expensive GROUP BY with JOIN on communications table
+- **Network interface caching**: Local network CIDR blocks computed once at startup instead of per-packet
+- **LRU DNS cache eviction**: Removes oldest 1,000 entries instead of clearing all 10,000
+- **Bounded mDNS entries**: Circular buffer (10,000 max) prevents unbounded memory growth
+- **DocumentFragment batching**: DNS table refresh uses single DOM operation instead of per-row appends
+
+### Changed
+- Hostname lookup cached globally to avoid repeated system calls
+
+### Fixed
+- Database locking issues with concurrent read/write access
+  - Enabled WAL (Write-Ahead Logging) mode for concurrent reads during writes
+  - Added 5-second busy timeout to wait for locks instead of failing
+  - Set synchronous mode to NORMAL for better performance
+
 ## [0.3.4]
 
 ### Added
