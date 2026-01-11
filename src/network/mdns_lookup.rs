@@ -101,8 +101,9 @@ impl MDnsLookup {
                                     }
 
                                     // Add to DNS entries log (bounded circular buffer)
-                                    if let Ok(mut entries) =
-                                        DNS_ENTRIES.get_or_init(|| RwLock::new(VecDeque::new())).write()
+                                    if let Ok(mut entries) = DNS_ENTRIES
+                                        .get_or_init(|| RwLock::new(VecDeque::new()))
+                                        .write()
                                     {
                                         // Remove oldest entries if at capacity
                                         while entries.len() >= MAX_DNS_ENTRIES {
