@@ -1529,29 +1529,36 @@
     let selectedPort = null;
     function filterByPort(port, element, skipUrlUpdate = false) {
       selectedPort = port;
+      const portStr = String(port);
+      console.log('Filtering by port:', portStr);
 
       // Save to URL parameters
       if (!skipUrlUpdate) {
         const url = new URL(window.location.href);
-        url.searchParams.set('port', port);
+        url.searchParams.set('port', portStr);
         window.history.replaceState({}, '', url);
       }
 
       // Find all nodes that communicate with this port
       const relevantNodeIds = new Set();
+      let matchCount = 0;
       cy.edges().forEach(edge => {
         const srcPorts = edge.data('src_port');
         const dstPorts = edge.data('dst_port');
 
         // Split comma-separated port strings and check if port is in either list
-        const srcPortList = srcPorts ? srcPorts.split(',') : [];
-        const dstPortList = dstPorts ? dstPorts.split(',') : [];
+        const srcPortList = srcPorts ? String(srcPorts).split(',').map(p => p.trim()) : [];
+        const dstPortList = dstPorts ? String(dstPorts).split(',').map(p => p.trim()) : [];
 
-        if (srcPortList.includes(port) || dstPortList.includes(port)) {
+        if (srcPortList.includes(portStr) || dstPortList.includes(portStr)) {
+          matchCount++;
           relevantNodeIds.add(edge.source().id());
           relevantNodeIds.add(edge.target().id());
         }
       });
+
+      console.log('Found', matchCount, 'edges with port', portStr);
+      console.log('Relevant nodes:', relevantNodeIds.size);
 
       // Show/hide nodes based on port
       cy.nodes().forEach(node => {
@@ -1568,10 +1575,10 @@
         const dstPorts = edge.data('dst_port');
 
         // Split comma-separated port strings and check if port is in either list
-        const srcPortList = srcPorts ? srcPorts.split(',') : [];
-        const dstPortList = dstPorts ? dstPorts.split(',') : [];
+        const srcPortList = srcPorts ? String(srcPorts).split(',').map(p => p.trim()) : [];
+        const dstPortList = dstPorts ? String(dstPorts).split(',').map(p => p.trim()) : [];
 
-        if (srcPortList.includes(port) || dstPortList.includes(port)) {
+        if (srcPortList.includes(portStr) || dstPortList.includes(portStr)) {
           edge.style('display', 'element');
           edge.style('opacity', 0.8);
           edge.style('width', 2);
@@ -1593,6 +1600,9 @@
 
       // Show clear filter button
       document.querySelector('.clear-port-filter-btn').style.display = 'block';
+
+      // Check if any communications are visible
+      checkForCommunications();
     }
 
     // Clear port filter
@@ -1626,6 +1636,9 @@
 
       // Hide clear filter button
       document.querySelector('.clear-port-filter-btn').style.display = 'none';
+
+      // Check if any communications are visible
+      checkForCommunications();
     }
 
     // Copy to clipboard with visual feedback

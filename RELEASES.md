@@ -37,6 +37,13 @@
   - Previously only the first port for each communication pair was stored on graph edges
   - Now all ports are stored as comma-separated strings on edges (matching protocol behavior)
   - Port filtering now correctly shows all communications using the selected port
+  - Added string conversion and trimming to ensure robust port comparisons
+- Issue where "No Communications Found" message would not appear when port filtering resulted in no visible nodes
+  - Added `checkForCommunications()` calls to port filtering functions
+- Critical bug where ports list would show ports that don't appear on any graph edges
+  - Ports from communications with unnamed endpoints would appear in the list but clicking them showed nothing
+  - Added endpoint name filters to `get_ports_for_endpoint` query to match graph edge filters
+  - Ports list now only shows ports that are actually visible on the graph
 
 ## [0.3.1]
 

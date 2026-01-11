@@ -173,9 +173,13 @@ fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String
                 WHEN c.dst_endpoint_id IN ({0}) THEN c.source_port
             END as port
         FROM communications c
+        LEFT JOIN endpoints AS src_endpoint ON c.src_endpoint_id = src_endpoint.id
+        LEFT JOIN endpoints AS dst_endpoint ON c.dst_endpoint_id = dst_endpoint.id
         WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
             AND (c.src_endpoint_id IN ({0}) OR c.dst_endpoint_id IN ({0}))
             AND port IS NOT NULL
+            AND src_endpoint.name != '' AND dst_endpoint.name != ''
+            AND src_endpoint.name IS NOT NULL AND dst_endpoint.name IS NOT NULL
         ORDER BY CAST(port AS INTEGER)
         ",
         placeholders
