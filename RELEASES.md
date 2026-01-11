@@ -1,5 +1,27 @@
 # Release Notes
 
+## [0.3.3]
+
+### Added
+- mDNS Entries tab in the header for viewing discovered mDNS/DNS entries
+  - Displays timestamp, IP address, hostname, and services for each discovery
+  - Tab-based navigation between Network view and mDNS Entries table
+  - Tabs styled as buttons positioned under the logo
+- Zoom controls on network graph (zoom in, zoom out, fit to view)
+- Total bytes indicator on endpoints list showing traffic volume per endpoint
+- Clickable stat badges in endpoint details that scroll to corresponding sections
+- Endpoint name now displayed in endpoint details panel
+- More robust protocol identification - only falls back to source port when destination is in ephemeral range (>=32768)
+
+### Changed
+- Auto-refresh and time range controls now hide when viewing mDNS Entries tab
+- Auto-refresh is disabled when on the mDNS Entries tab to prevent unwanted page reloads
+- Removed mDNS console log messages for cleaner output
+- Increased node size and font on network graph for better visibility
+
+### Fixed
+- Protocol identification could incorrectly identify against ephemeral source ports
+
 ## [0.3.2]
 
 ### Added

@@ -12,6 +12,7 @@ use tokio::task;
 
 use crate::db::new_connection;
 use crate::network::endpoint::EndPoint;
+use crate::network::mdns_lookup::MDnsLookup;
 use crate::network::protocol::ProtocolPort;
 use rusqlite::{Connection, params};
 
@@ -680,6 +681,41 @@ struct BytesStats {
     bytes_out: i64,
 }
 
+#[derive(Serialize)]
+struct DnsEntryView {
+    ip: String,
+    hostname: String,
+    services: String,
+    timestamp: String,
+}
+
+fn get_dns_entries() -> Vec<DnsEntryView> {
+    use std::time::UNIX_EPOCH;
+
+    let entries = MDnsLookup::get_all_entries();
+    entries
+        .into_iter()
+        .map(|e| {
+            let timestamp = e.timestamp
+                .duration_since(UNIX_EPOCH)
+                .map(|d| {
+                    let secs = d.as_secs();
+                    let dt = chrono::DateTime::from_timestamp(secs as i64, 0)
+                        .unwrap_or_default();
+                    dt.format("%Y-%m-%d %H:%M:%S").to_string()
+                })
+                .unwrap_or_else(|_| "Unknown".to_string());
+
+            DnsEntryView {
+                ip: e.ip,
+                hostname: e.hostname,
+                services: e.services.join(", "),
+                timestamp,
+            }
+        })
+        .collect()
+}
+
 fn get_bytes_for_endpoint(hostname: String, internal_minutes: u64) -> BytesStats {
     let conn = new_connection();
 
@@ -907,6 +943,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     context.insert("protocols", &protocols);
     context.insert("bytes_in", &bytes_stats.bytes_in);
     context.insert("bytes_out", &bytes_stats.bytes_out);
+    context.insert("dns_entries", &get_dns_entries());
 
     let rendered = tera
         .render("index.html", &context)

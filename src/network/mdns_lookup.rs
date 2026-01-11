@@ -1,11 +1,22 @@
 use mdns_sd::{ServiceDaemon, ServiceEvent};
 use std::collections::{HashMap, HashSet};
 use std::sync::{OnceLock, RwLock};
+use std::time::SystemTime;
 use tokio::task;
 
 static MDNS_LOOKUPS: OnceLock<std::sync::RwLock<HashMap<String, String>>> = OnceLock::new();
 static MDNS_SERVICES: OnceLock<std::sync::RwLock<HashMap<String, HashSet<String>>>> =
     OnceLock::new();
+
+#[derive(Clone)]
+pub struct DnsEntry {
+    pub ip: String,
+    pub hostname: String,
+    pub services: Vec<String>,
+    pub timestamp: SystemTime,
+}
+
+static DNS_ENTRIES: OnceLock<RwLock<Vec<DnsEntry>>> = OnceLock::new();
 
 pub struct MDnsLookup;
 
@@ -73,7 +84,6 @@ impl MDnsLookup {
                                         .write()
                                     {
                                         lookups.insert(addr.to_string(), host.to_string());
-                                        println!("mDNS lookup added: {} -> {}", addr, host);
                                     }
 
                                     // Store service type
@@ -85,10 +95,19 @@ impl MDnsLookup {
                                             .entry(addr.to_string())
                                             .or_insert_with(HashSet::new)
                                             .insert(service_name.clone());
-                                        println!(
-                                            "mDNS service added: {} -> {}",
-                                            addr, service_name
-                                        );
+                                    }
+
+                                    // Add to DNS entries log
+                                    if let Ok(mut entries) = DNS_ENTRIES
+                                        .get_or_init(|| RwLock::new(Vec::new()))
+                                        .write()
+                                    {
+                                        entries.push(DnsEntry {
+                                            ip: addr.to_string(),
+                                            hostname: host.to_string(),
+                                            services: vec![service_name.clone()],
+                                            timestamp: SystemTime::now(),
+                                        });
                                     }
                                 }
                             }
@@ -96,7 +115,6 @@ impl MDnsLookup {
                             _ => {}
                         }
                     }
-                    println!("Sleeping for 1 seconds before restarting mDNS browse...");
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
             });
@@ -116,6 +134,15 @@ impl MDnsLookup {
                 .cloned()
                 .map(|set| set.into_iter().collect())
                 .unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    }
+
+    pub fn get_all_entries() -> Vec<DnsEntry> {
+        let entries = DNS_ENTRIES.get_or_init(|| RwLock::new(Vec::new()));
+        if let Ok(map) = entries.read() {
+            map.clone()
         } else {
             Vec::new()
         }
