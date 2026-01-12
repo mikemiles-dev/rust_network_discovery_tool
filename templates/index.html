@@ -1121,7 +1121,7 @@
               </div>
             </div>
             {% if endpoint in manual_overrides %}<span style="font-size: 0.625rem; color: var(--accent-secondary); margin-left: 0.5rem;">(manually set)</span>{% endif %}
-            {% if device_vendor %}<span style="font-size: 0.625rem; color: #60a5fa; background: rgba(59, 130, 246, 0.15); padding: 0.125rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem;">{{ device_vendor }}</span>{% endif %}
+            {% if device_vendor %}<span style="font-size: 0.875rem; font-weight: bold; color: #60a5fa; background: rgba(59, 130, 246, 0.15); padding: 0.25rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem;">{{ device_vendor }}</span>{% endif %}
           </div>
           <div class="stats">
             <div class="stat-badge stat-link" onclick="scrollToSection('ips-section')">IPs: <span class="stat-number">{{ ips|length }}</span></div>

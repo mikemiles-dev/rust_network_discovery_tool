@@ -1085,7 +1085,7 @@ const APPLIANCE_VENDORS: &[&str] = &[
 ];
 
 // Gaming vendors that should be classified as gaming devices
-const GAMING_VENDORS: &[&str] = &["Nintendo"];
+const GAMING_VENDORS: &[&str] = &["Nintendo", "Sony"];
 
 // TV/streaming vendors that should be classified as TV
 const TV_VENDORS: &[&str] = &["Roku"];
@@ -1172,6 +1172,14 @@ pub fn get_hostname_vendor(hostname: &str) -> Option<&'static str> {
     if lower.contains("eero") {
         return Some("eero");
     }
+    // Sony PlayStation
+    if lower.starts_with("ps4") || lower.starts_with("ps5") || lower.contains("playstation") {
+        return Some("Sony");
+    }
+    // Xbox
+    if lower.starts_with("xbox") {
+        return Some("Microsoft");
+    }
     // HP printers
     if lower.starts_with("hp") || lower.starts_with("npi") {
         return Some("HP");
@@ -1194,38 +1202,20 @@ pub fn get_hostname_vendor(hostname: &str) -> Option<&'static str> {
 
 /// Check if any MAC address matches known IoT/appliance vendor OUIs
 fn is_appliance_mac(macs: &[String]) -> bool {
-    for mac in macs {
-        if let Some(vendor) = get_mac_vendor(mac) {
-            if APPLIANCE_VENDORS.contains(&vendor) {
-                return true;
-            }
-        }
-    }
-    false
+    macs.iter()
+        .any(|mac| get_mac_vendor(mac).is_some_and(|v| APPLIANCE_VENDORS.contains(&v)))
 }
 
 /// Check if any MAC address matches known gaming vendor OUIs
 fn is_gaming_mac(macs: &[String]) -> bool {
-    for mac in macs {
-        if let Some(vendor) = get_mac_vendor(mac) {
-            if GAMING_VENDORS.contains(&vendor) {
-                return true;
-            }
-        }
-    }
-    false
+    macs.iter()
+        .any(|mac| get_mac_vendor(mac).is_some_and(|v| GAMING_VENDORS.contains(&v)))
 }
 
 /// Check if any MAC address matches known TV/streaming vendor OUIs
 fn is_tv_mac(macs: &[String]) -> bool {
-    for mac in macs {
-        if let Some(vendor) = get_mac_vendor(mac) {
-            if TV_VENDORS.contains(&vendor) {
-                return true;
-            }
-        }
-    }
-    false
+    macs.iter()
+        .any(|mac| get_mac_vendor(mac).is_some_and(|v| TV_VENDORS.contains(&v)))
 }
 
 /// Check if hostname indicates an LG ThinQ appliance

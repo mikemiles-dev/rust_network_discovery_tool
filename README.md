@@ -14,6 +14,7 @@ A lightweight network traffic monitoring tool that captures and visualizes netwo
 
 - **Passive Monitoring**: Captures network traffic to see what's communicating
 - **Active Network Scanning**: Discover devices that aren't actively communicating
+  - **Automatic Scan on Startup**: Runs ARP and SSDP scans automatically when launched
   - **ARP Scanning**: Find all devices on your local subnet by MAC address (requires root/admin)
   - **ICMP Ping Sweep**: Discover responsive hosts via ICMP echo (requires root/admin)
   - **TCP Port Scanning**: Probe common ports (22, 80, 443, 8080, etc.) to identify services
@@ -32,6 +33,8 @@ A lightweight network traffic monitoring tool that captures and visualizes netwo
 ## Active Network Scanning
 
 The active scanner discovers devices on your network even if they're not currently communicating.
+
+**Automatic Scan on Startup**: When the application starts, it automatically runs an initial network scan using the default scan types (ARP and SSDP). This provides immediate device discovery without requiring manual intervention.
 
 ### Scan Types
 

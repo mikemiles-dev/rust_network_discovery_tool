@@ -23,6 +23,9 @@
   - Works even when device hostname is just an IP address
 - **mDNS Local Filter** - Filters out local machine's own mDNS entries from the mDNS tab
   - Reduces clutter by hiding services advertised by your own machine
+- **Automatic Scan on Startup** - Runs initial network scan when the application launches
+  - Uses default scan types (ARP and SSDP) for immediate device discovery
+  - No manual intervention required to discover devices
 
 ### Changed
 - Scanner moved to dedicated "Scanner" tab in the header (previously in sidebar)

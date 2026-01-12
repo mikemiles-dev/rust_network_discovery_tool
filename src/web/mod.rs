@@ -899,6 +899,22 @@ pub fn start(preferred_port: u16) {
                         }
                         println!("Web server listening on http://127.0.0.1:{}", port);
 
+                        // Start initial network scan on startup
+                        tokio::spawn(async {
+                            // Small delay to let the server fully initialize
+                            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                            let manager = get_scan_manager();
+                            let config = manager.get_config().await;
+                            let scan_types: Vec<ScanType> =
+                                config.enabled_scanners.into_iter().collect();
+                            if !scan_types.is_empty() {
+                                println!("Starting initial network scan...");
+                                if let Err(e) = manager.start_scan(scan_types).await {
+                                    eprintln!("Failed to start initial scan: {}", e);
+                                }
+                            }
+                        });
+
                         if let Err(e) = server.run().await {
                             eprintln!("Web server error: {}", e);
                         }
