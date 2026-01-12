@@ -857,29 +857,36 @@ impl LgThinQController {
     const API_KEY: &'static str = "v6GFvkweNo7DK7yD3ylIZ9w52aKBU0eJ7wLXkSR3";
     const TIMEOUT: Duration = Duration::from_secs(10);
 
-    /// Get region code from country code
-    fn get_region(country_code: &str) -> &'static str {
-        match country_code.to_uppercase().as_str() {
+    /// Build API base URL for PAT authentication
+    /// PAT tokens use the connect-pat endpoint regardless of region
+    /// Get the API URL based on country code
+    /// The actual API uses regional endpoints, not the PAT portal
+    fn get_api_url(country_code: &str) -> String {
+        // Map country codes to regional API endpoints
+        // Based on LG ThinQ Connect SDK: https://api-{region}.lgthinq.com/
+        let region = match country_code.to_uppercase().as_str() {
             // North America
             "US" | "CA" | "MX" => "us",
-            // Europe
-            "GB" | "DE" | "FR" | "IT" | "ES" | "NL" | "BE" | "AT" | "CH" | "PL" | "SE" | "NO"
-            | "DK" | "FI" | "PT" | "IE" | "CZ" | "HU" | "RO" | "BG" | "SK" | "HR" | "SI" | "EE"
-            | "LV" | "LT" | "GR" | "CY" | "MT" | "LU" => "eu",
             // Korea
             "KR" => "kr",
-            // Asia Pacific
-            "AU" | "NZ" | "SG" | "MY" | "TH" | "PH" | "ID" | "VN" | "IN" | "JP" | "TW" | "HK" => {
-                "ap"
-            }
-            // Default to US
+            // Europe
+            "GB" | "UK" | "DE" | "FR" | "IT" | "ES" | "NL" | "BE" | "AT" | "CH" | "PL" | "SE"
+            | "NO" | "DK" | "FI" | "IE" | "PT" | "GR" | "CZ" | "HU" | "RO" | "BG" | "SK" | "SI"
+            | "HR" | "EE" | "LV" | "LT" | "LU" | "MT" | "CY" => "eu",
+            // Asia Pacific (excluding Korea)
+            "JP" => "jp",
+            "AU" | "NZ" => "au",
+            "CN" => "cn",
+            "TW" | "HK" | "SG" | "MY" | "TH" | "VN" | "PH" | "ID" | "IN" => "ap",
+            // Russia
+            "RU" => "ru",
+            // Middle East / Africa
+            "AE" | "SA" | "IL" | "TR" | "ZA" | "EG" => "mea",
+            // Brazil / South America
+            "BR" | "AR" | "CL" | "CO" | "PE" | "VE" => "br",
+            // Default to US region for unknown countries
             _ => "us",
-        }
-    }
-
-    /// Build API base URL for a country
-    fn get_api_url(country_code: &str) -> String {
-        let region = Self::get_region(country_code);
+        };
         format!("https://api-{}.lgthinq.com", region)
     }
 
@@ -1039,13 +1046,29 @@ impl LgThinQController {
             .send()
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if !response.status().is_success() {
-            return Err(format!("API error: {}", response.status()));
+        let status = response.status();
+        let response_text = response
+            .text()
+            .map_err(|e| format!("Failed to read response: {}", e))?;
+
+        if !status.is_success() {
+            return Err(format!(
+                "API error {}: {}",
+                status,
+                if response_text.len() > 200 {
+                    &response_text[..200]
+                } else {
+                    &response_text
+                }
+            ));
         }
 
-        let json: serde_json::Value = response
-            .json()
-            .map_err(|e| format!("Failed to parse response: {}", e))?;
+        if response_text.is_empty() {
+            return Err("API returned empty response".to_string());
+        }
+
+        let json: serde_json::Value = serde_json::from_str(&response_text)
+            .map_err(|e| format!("Failed to parse JSON: {}. Response: {}", e, &response_text[..response_text.len().min(200)]))?;
 
         // Extract the response field
         if let Some(resp) = json.get("response") {
