@@ -24,6 +24,15 @@ fn get_local_networks() -> &'static Vec<IpNetwork> {
         interfaces()
             .into_iter()
             .flat_map(|iface| iface.ips)
+            .filter(|network| {
+                // Filter out catch-all networks (0.0.0.0/0 and ::/0) that match everything
+                // These are not actual local networks
+                let is_catch_all = match network.ip() {
+                    IpAddr::V4(ipv4) => ipv4.is_unspecified() && network.prefix() == 0,
+                    IpAddr::V6(ipv6) => ipv6.is_unspecified() && network.prefix() == 0,
+                };
+                !is_catch_all
+            })
             .collect()
     })
 }

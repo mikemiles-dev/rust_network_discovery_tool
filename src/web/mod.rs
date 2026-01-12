@@ -656,13 +656,25 @@ fn get_all_endpoint_types(
             )
             .expect("Failed to prepare statement");
 
-        let ip = ip_stmt
+        let mut ip = ip_stmt
             .query_row([endpoint], |row| {
                 let ip_value: Option<String> = row.get(0).ok();
                 Ok(ip_value)
             })
             .ok()
             .flatten();
+
+        // If no IP found in database, try to extract from hostname like "162-254-199-179.valve.net"
+        if ip.is_none() {
+            // Try to parse IP from hostname pattern: xxx-xxx-xxx-xxx.domain
+            let parts: Vec<&str> = endpoint.split('.').collect();
+            if let Some(first_part) = parts.first() {
+                let ip_candidate = first_part.replace('-', ".");
+                if ip_candidate.parse::<std::net::IpAddr>().is_ok() {
+                    ip = Some(ip_candidate);
+                }
+            }
+        }
 
         // Get MAC addresses for this endpoint
         let mut mac_stmt = conn
@@ -715,9 +727,11 @@ fn get_all_endpoint_types(
                 EndPoint::classify_device_type(Some(endpoint), ip.as_deref(), &ports, &macs)
             {
                 types.insert(endpoint.clone(), device_type);
-            } else if ip.is_some() {
-                // If we have an IP but no specific classification, it's a local network device
-                types.insert(endpoint.clone(), "local");
+            } else if let Some(ref ip_str) = ip {
+                // Only classify as local if the IP is actually on the local network
+                if EndPoint::is_on_local_network(ip_str) {
+                    types.insert(endpoint.clone(), "local");
+                }
             }
         }
     }

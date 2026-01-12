@@ -38,6 +38,11 @@
   - Added comprehensive retry logic with exponential backoff for database operations
   - SQLWriter batch processing now properly retries on lock errors instead of failing
 - Auto-refresh no longer causes redirect away from Scanner tab
+- **Critical bug where public IPs were misclassified as "local"**
+  - Virtual network adapters (Hyper-V, Docker, WSL, VPN) with 0.0.0.0/0 routing caused every IP to match as "local"
+  - Internet endpoints (e.g., valve.net, Cloudflare IPs) were incorrectly shown as 🖥️ Local instead of 🌐 Internet
+  - Now filters out catch-all networks (0.0.0.0/0 and ::/0) from local network detection
+  - Added IP extraction from hostnames in pattern "xxx-xxx-xxx-xxx.domain" when IP not found in database
 
 ### Performance
 - Removed redundant `CREATE TABLE IF NOT EXISTS` calls from hot paths (was causing exclusive locks on every scan result insert)
