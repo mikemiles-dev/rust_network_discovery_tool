@@ -152,8 +152,814 @@ const APPLIANCE_PATTERNS: &[&str] = &[
     "electrolux",
     "kenmore",
     "kitchenaid",
+    "echo",
+    "alexa",
+    "amazon-",
+    "ring-",
+    "nest-",
+    "google-home",
+    "homepod",
 ];
 const LG_APPLIANCE_PREFIXES: &[&str] = &["lma", "lmw", "ldf", "ldt", "ldp", "dle", "dlex", "lrmv"];
+
+// MAC OUI prefixes mapped to vendor names (first 3 bytes, lowercase, colon-separated)
+// Used for both appliance classification and vendor display
+const MAC_VENDOR_MAP: &[(&str, &str)] = &[
+    // Amazon (Echo, Fire TV Stick, Ring, etc.)
+    ("00:fc:8b", "Amazon"),
+    ("0c:47:c9", "Amazon"),
+    ("10:2c:6b", "Amazon"),
+    ("14:91:82", "Amazon"),
+    ("18:74:2e", "Amazon"),
+    ("24:4c:e3", "Amazon"),
+    ("34:d2:70", "Amazon"),
+    ("38:f7:3d", "Amazon"),
+    ("3c:5c:c4", "Amazon"),
+    ("40:a2:db", "Amazon"),
+    ("44:65:0d", "Amazon"),
+    ("48:e6:c0", "Amazon"),
+    ("4c:ef:c0", "Amazon"),
+    ("50:dc:e7", "Amazon"),
+    ("50:f5:da", "Amazon"),
+    ("54:c8:0f", "Amazon"),
+    ("68:37:e9", "Amazon"),
+    ("68:54:fd", "Amazon"),
+    ("6c:56:97", "Amazon"),
+    ("74:c2:46", "Amazon"),
+    ("78:e1:03", "Amazon"),
+    ("7c:61:66", "Amazon"),
+    ("84:d6:d0", "Amazon"),
+    ("88:71:b1", "Amazon"),
+    ("8c:85:80", "Amazon"),
+    ("94:e3:6d", "Amazon"),
+    ("a4:08:ea", "Amazon"),
+    ("ac:63:be", "Amazon"),
+    ("b0:fc:0d", "Amazon"),
+    ("b4:7c:9c", "Amazon"),
+    ("c8:f7:33", "Amazon"),
+    ("cc:9e:a2", "Amazon"),
+    ("dc:54:75", "Amazon"),
+    ("f0:27:2d", "Amazon"),
+    ("f0:81:73", "Amazon"),
+    ("f0:f0:a4", "Amazon"),
+    ("fc:65:de", "Amazon"),
+    // Google/Nest (Nest thermostat, Home, Chromecast, etc.)
+    ("18:d6:c7", "Google"),
+    ("1c:f2:9a", "Google"),
+    ("20:df:b9", "Google"),
+    ("30:fd:38", "Google"),
+    ("48:d6:d5", "Google"),
+    ("54:60:09", "Google"),
+    ("5c:e9:31", "Google"),
+    ("64:16:7f", "Google"),
+    ("6c:ad:f8", "Google"),
+    ("94:94:26", "Google"),
+    ("a4:77:33", "Google"),
+    ("cc:47:40", "Google"),
+    ("d4:f5:47", "Google"),
+    ("e4:f0:42", "Google"),
+    ("f4:f5:d8", "Google"),
+    ("f4:f5:e8", "Google"),
+    // Ring (doorbells, cameras)
+    ("34:3e:a4", "Ring"),
+    ("90:48:9a", "Ring"),
+    // Philips Hue
+    ("00:17:88", "Philips Hue"),
+    ("ec:b5:fa", "Philips Hue"),
+    // Ecobee (thermostats)
+    ("44:61:32", "Ecobee"),
+    // TP-Link/Kasa smart plugs
+    ("50:c7:bf", "TP-Link"),
+    ("60:32:b1", "TP-Link"),
+    ("68:ff:7b", "TP-Link"),
+    ("98:da:c4", "TP-Link"),
+    ("b0:be:76", "TP-Link"),
+    // Wemo (Belkin smart plugs)
+    ("08:86:3b", "Belkin"),
+    ("14:91:38", "Belkin"),
+    ("24:f5:a2", "Belkin"),
+    ("58:ef:68", "Belkin"),
+    ("94:10:3e", "Belkin"),
+    ("b4:75:0e", "Belkin"),
+    ("c4:41:1e", "Belkin"),
+    ("ec:1a:59", "Belkin"),
+    // Wyze (cameras, plugs)
+    ("2c:aa:8e", "Wyze"),
+    ("7c:78:b2", "Wyze"),
+    ("d0:3f:27", "Wyze"),
+    // iRobot (Roomba)
+    ("50:14:79", "iRobot"),
+    ("80:c5:f2", "iRobot"),
+    // Tuya (generic IoT devices)
+    ("10:d5:61", "Tuya"),
+    ("48:e1:e9", "Tuya"),
+    ("50:8a:06", "Tuya"),
+    ("68:57:2d", "Tuya"),
+    ("7c:f6:66", "Tuya"),
+    ("84:e3:42", "Tuya"),
+    ("a4:cf:12", "Tuya"),
+    ("cc:8d:a2", "Tuya"),
+    ("d4:a6:51", "Tuya"),
+    ("dc:23:4e", "Tuya"),
+    // Apple devices
+    ("00:03:93", "Apple"),
+    ("00:05:02", "Apple"),
+    ("00:0a:27", "Apple"),
+    ("00:0a:95", "Apple"),
+    ("00:0d:93", "Apple"),
+    ("00:10:fa", "Apple"),
+    ("00:11:24", "Apple"),
+    ("00:14:51", "Apple"),
+    ("00:16:cb", "Apple"),
+    ("00:17:f2", "Apple"),
+    ("00:19:e3", "Apple"),
+    ("00:1b:63", "Apple"),
+    ("00:1c:b3", "Apple"),
+    ("00:1d:4f", "Apple"),
+    ("00:1e:52", "Apple"),
+    ("00:1e:c2", "Apple"),
+    ("00:1f:5b", "Apple"),
+    ("00:1f:f3", "Apple"),
+    ("00:21:e9", "Apple"),
+    ("00:22:41", "Apple"),
+    ("00:23:12", "Apple"),
+    ("00:23:32", "Apple"),
+    ("00:23:6c", "Apple"),
+    ("00:23:df", "Apple"),
+    ("00:24:36", "Apple"),
+    ("00:25:00", "Apple"),
+    ("00:25:4b", "Apple"),
+    ("00:25:bc", "Apple"),
+    ("00:26:08", "Apple"),
+    ("00:26:4a", "Apple"),
+    ("00:26:b0", "Apple"),
+    ("00:26:bb", "Apple"),
+    ("04:0c:ce", "Apple"),
+    ("04:15:52", "Apple"),
+    ("04:1e:64", "Apple"),
+    ("04:26:65", "Apple"),
+    ("04:48:9a", "Apple"),
+    ("04:4b:ed", "Apple"),
+    ("04:52:f3", "Apple"),
+    ("04:54:53", "Apple"),
+    ("04:69:f8", "Apple"),
+    ("04:d3:cf", "Apple"),
+    ("04:db:56", "Apple"),
+    ("04:e5:36", "Apple"),
+    ("04:f1:3e", "Apple"),
+    ("04:f7:e4", "Apple"),
+    ("08:00:07", "Apple"),
+    ("08:66:98", "Apple"),
+    ("08:6d:41", "Apple"),
+    ("0c:74:c2", "Apple"),
+    ("10:40:f3", "Apple"),
+    ("14:10:9f", "Apple"),
+    ("18:af:61", "Apple"),
+    ("1c:36:bb", "Apple"),
+    ("20:78:f0", "Apple"),
+    ("24:a0:74", "Apple"),
+    ("28:cf:da", "Apple"),
+    ("2c:be:08", "Apple"),
+    ("34:c0:59", "Apple"),
+    ("38:c9:86", "Apple"),
+    ("3c:06:30", "Apple"),
+    ("40:33:1a", "Apple"),
+    ("40:a6:d9", "Apple"),
+    ("44:2a:60", "Apple"),
+    ("48:60:bc", "Apple"),
+    ("4c:32:75", "Apple"),
+    ("4c:57:ca", "Apple"),
+    ("50:32:37", "Apple"),
+    ("54:26:96", "Apple"),
+    ("54:72:4f", "Apple"),
+    ("54:ae:27", "Apple"),
+    ("58:55:ca", "Apple"),
+    ("5c:59:48", "Apple"),
+    ("5c:96:9d", "Apple"),
+    ("5c:f7:e6", "Apple"),
+    ("60:03:08", "Apple"),
+    ("60:69:44", "Apple"),
+    ("60:c5:47", "Apple"),
+    ("60:d9:c7", "Apple"),
+    ("60:f8:1d", "Apple"),
+    ("60:fa:cd", "Apple"),
+    ("64:20:0c", "Apple"),
+    ("64:76:ba", "Apple"),
+    ("64:a3:cb", "Apple"),
+    ("64:b9:e8", "Apple"),
+    ("64:e6:82", "Apple"),
+    ("68:5b:35", "Apple"),
+    ("68:64:4b", "Apple"),
+    ("68:96:7b", "Apple"),
+    ("68:9c:70", "Apple"),
+    ("68:a8:6d", "Apple"),
+    ("68:ab:1e", "Apple"),
+    ("68:d9:3c", "Apple"),
+    ("68:db:ca", "Apple"),
+    ("68:fe:f7", "Apple"),
+    ("6c:3e:6d", "Apple"),
+    ("6c:70:9f", "Apple"),
+    ("6c:94:f8", "Apple"),
+    ("6c:c2:6b", "Apple"),
+    ("70:11:24", "Apple"),
+    ("70:3e:ac", "Apple"),
+    ("70:56:81", "Apple"),
+    ("70:cd:60", "Apple"),
+    ("70:de:e2", "Apple"),
+    ("70:ec:e4", "Apple"),
+    ("74:1b:b2", "Apple"),
+    ("78:31:c1", "Apple"),
+    ("78:3a:84", "Apple"),
+    ("78:4f:43", "Apple"),
+    ("78:6c:1c", "Apple"),
+    ("78:7e:61", "Apple"),
+    ("78:88:6d", "Apple"),
+    ("78:9f:70", "Apple"),
+    ("78:a3:e4", "Apple"),
+    ("78:ca:39", "Apple"),
+    ("78:d7:5f", "Apple"),
+    ("78:fd:94", "Apple"),
+    ("7c:04:d0", "Apple"),
+    ("7c:11:be", "Apple"),
+    ("7c:5c:f8", "Apple"),
+    ("7c:6d:62", "Apple"),
+    ("7c:6d:f8", "Apple"),
+    ("7c:c3:a1", "Apple"),
+    ("7c:d1:c3", "Apple"),
+    ("7c:f0:5f", "Apple"),
+    ("7c:fa:df", "Apple"),
+    ("80:00:6e", "Apple"),
+    ("80:49:71", "Apple"),
+    ("80:82:23", "Apple"),
+    ("80:92:9f", "Apple"),
+    ("80:be:05", "Apple"),
+    ("80:e6:50", "Apple"),
+    ("80:ed:2c", "Apple"),
+    ("84:29:99", "Apple"),
+    ("84:38:35", "Apple"),
+    ("84:78:8b", "Apple"),
+    ("84:85:06", "Apple"),
+    ("84:89:ad", "Apple"),
+    ("84:8e:0c", "Apple"),
+    ("84:a1:34", "Apple"),
+    ("84:b1:53", "Apple"),
+    ("84:fc:ac", "Apple"),
+    ("84:fc:fe", "Apple"),
+    ("88:1f:a1", "Apple"),
+    ("88:53:95", "Apple"),
+    ("88:63:df", "Apple"),
+    ("88:66:5a", "Apple"),
+    ("88:c6:63", "Apple"),
+    ("88:cb:87", "Apple"),
+    ("88:e8:7f", "Apple"),
+    ("8c:00:6d", "Apple"),
+    ("8c:29:37", "Apple"),
+    ("8c:2d:aa", "Apple"),
+    ("8c:58:77", "Apple"),
+    ("8c:7b:9d", "Apple"),
+    ("8c:7c:92", "Apple"),
+    ("8c:85:90", "Apple"),
+    ("8c:fa:ba", "Apple"),
+    ("90:27:e4", "Apple"),
+    ("90:3c:92", "Apple"),
+    ("90:72:40", "Apple"),
+    ("90:84:0d", "Apple"),
+    ("90:8d:6c", "Apple"),
+    ("90:b0:ed", "Apple"),
+    ("90:b2:1f", "Apple"),
+    ("90:b6:bf", "Apple"),
+    ("90:c1:c6", "Apple"),
+    ("90:fd:61", "Apple"),
+    ("94:94:26", "Apple"),
+    ("94:e9:6a", "Apple"),
+    ("94:f6:a3", "Apple"),
+    ("98:01:a7", "Apple"),
+    ("98:03:d8", "Apple"),
+    ("98:10:e8", "Apple"),
+    ("98:5a:eb", "Apple"),
+    ("98:b8:e3", "Apple"),
+    ("98:d6:bb", "Apple"),
+    ("98:e0:d9", "Apple"),
+    ("98:f0:ab", "Apple"),
+    ("98:fe:94", "Apple"),
+    ("9c:04:eb", "Apple"),
+    ("9c:20:7b", "Apple"),
+    ("9c:35:eb", "Apple"),
+    ("9c:4f:da", "Apple"),
+    ("9c:8b:a0", "Apple"),
+    ("9c:f3:87", "Apple"),
+    ("a0:18:28", "Apple"),
+    ("a0:99:9b", "Apple"),
+    ("a0:d7:95", "Apple"),
+    ("a0:ed:cd", "Apple"),
+    ("a4:5e:60", "Apple"),
+    ("a4:67:06", "Apple"),
+    ("a4:83:e7", "Apple"),
+    ("a4:b1:97", "Apple"),
+    ("a4:b8:05", "Apple"),
+    ("a4:c3:61", "Apple"),
+    ("a4:d1:8c", "Apple"),
+    ("a4:d1:d2", "Apple"),
+    ("a8:20:66", "Apple"),
+    ("a8:5c:2c", "Apple"),
+    ("a8:66:7f", "Apple"),
+    ("a8:86:dd", "Apple"),
+    ("a8:88:08", "Apple"),
+    ("a8:8e:24", "Apple"),
+    ("a8:96:8a", "Apple"),
+    ("a8:bb:cf", "Apple"),
+    ("a8:fa:d8", "Apple"),
+    ("ac:29:3a", "Apple"),
+    ("ac:3c:0b", "Apple"),
+    ("ac:61:ea", "Apple"),
+    ("ac:7f:3e", "Apple"),
+    ("ac:87:a3", "Apple"),
+    ("ac:bc:32", "Apple"),
+    ("ac:cf:5c", "Apple"),
+    ("ac:e4:b5", "Apple"),
+    ("ac:fd:ec", "Apple"),
+    ("b0:19:c6", "Apple"),
+    ("b0:34:95", "Apple"),
+    ("b0:65:bd", "Apple"),
+    ("b0:70:2d", "Apple"),
+    ("b0:9f:ba", "Apple"),
+    ("b4:18:d1", "Apple"),
+    ("b4:8b:19", "Apple"),
+    ("b4:f0:ab", "Apple"),
+    ("b4:f6:1c", "Apple"),
+    ("b8:09:8a", "Apple"),
+    ("b8:17:c2", "Apple"),
+    ("b8:41:a4", "Apple"),
+    ("b8:44:d9", "Apple"),
+    ("b8:53:ac", "Apple"),
+    ("b8:63:4d", "Apple"),
+    ("b8:78:2e", "Apple"),
+    ("b8:8d:12", "Apple"),
+    ("b8:c1:11", "Apple"),
+    ("b8:c7:5d", "Apple"),
+    ("b8:e8:56", "Apple"),
+    ("b8:f6:b1", "Apple"),
+    ("b8:ff:61", "Apple"),
+    ("bc:3b:af", "Apple"),
+    ("bc:4c:c4", "Apple"),
+    ("bc:52:b7", "Apple"),
+    ("bc:54:36", "Apple"),
+    ("bc:67:78", "Apple"),
+    ("bc:6c:21", "Apple"),
+    ("bc:92:6b", "Apple"),
+    ("bc:9f:ef", "Apple"),
+    ("bc:a9:20", "Apple"),
+    ("bc:ec:5d", "Apple"),
+    ("bc:fe:d9", "Apple"),
+    ("c0:1a:da", "Apple"),
+    ("c0:63:94", "Apple"),
+    ("c0:84:7a", "Apple"),
+    ("c0:9f:42", "Apple"),
+    ("c0:a5:3e", "Apple"),
+    ("c0:cc:f8", "Apple"),
+    ("c0:ce:cd", "Apple"),
+    ("c0:d0:12", "Apple"),
+    ("c0:f2:fb", "Apple"),
+    ("c4:2c:03", "Apple"),
+    ("c8:1e:e7", "Apple"),
+    ("c8:2a:14", "Apple"),
+    ("c8:33:4b", "Apple"),
+    ("c8:69:cd", "Apple"),
+    ("c8:6f:1d", "Apple"),
+    ("c8:85:50", "Apple"),
+    ("c8:b5:b7", "Apple"),
+    ("c8:bc:c8", "Apple"),
+    ("c8:e0:eb", "Apple"),
+    ("c8:f6:50", "Apple"),
+    ("cc:08:8d", "Apple"),
+    ("cc:20:e8", "Apple"),
+    ("cc:25:ef", "Apple"),
+    ("cc:29:f5", "Apple"),
+    ("cc:44:63", "Apple"),
+    ("cc:78:5f", "Apple"),
+    ("cc:c7:60", "Apple"),
+    ("d0:03:4b", "Apple"),
+    ("d0:23:db", "Apple"),
+    ("d0:25:98", "Apple"),
+    ("d0:33:11", "Apple"),
+    ("d0:4f:7e", "Apple"),
+    ("d0:a6:37", "Apple"),
+    ("d0:c5:f3", "Apple"),
+    ("d0:d2:b0", "Apple"),
+    ("d0:e1:40", "Apple"),
+    ("d4:61:9d", "Apple"),
+    ("d4:9a:20", "Apple"),
+    ("d4:dc:cd", "Apple"),
+    ("d4:f4:6f", "Apple"),
+    ("d8:00:4d", "Apple"),
+    ("d8:1d:72", "Apple"),
+    ("d8:30:62", "Apple"),
+    ("d8:8f:76", "Apple"),
+    ("d8:96:95", "Apple"),
+    ("d8:9e:3f", "Apple"),
+    ("d8:a2:5e", "Apple"),
+    ("d8:bb:2c", "Apple"),
+    ("d8:cf:9c", "Apple"),
+    ("d8:d1:cb", "Apple"),
+    ("dc:0c:5c", "Apple"),
+    ("dc:2b:2a", "Apple"),
+    ("dc:2b:61", "Apple"),
+    ("dc:37:14", "Apple"),
+    ("dc:41:5f", "Apple"),
+    ("dc:56:e7", "Apple"),
+    ("dc:86:d8", "Apple"),
+    ("dc:9b:9c", "Apple"),
+    ("dc:a4:ca", "Apple"),
+    ("dc:a9:04", "Apple"),
+    ("e0:5f:45", "Apple"),
+    ("e0:66:78", "Apple"),
+    ("e0:ac:cb", "Apple"),
+    ("e0:b5:2d", "Apple"),
+    ("e0:b9:ba", "Apple"),
+    ("e0:c7:67", "Apple"),
+    ("e0:c9:7a", "Apple"),
+    ("e0:f5:c6", "Apple"),
+    ("e0:f8:47", "Apple"),
+    ("e4:25:e7", "Apple"),
+    ("e4:8b:7f", "Apple"),
+    ("e4:98:d6", "Apple"),
+    ("e4:9a:dc", "Apple"),
+    ("e4:c6:3d", "Apple"),
+    ("e4:ce:8f", "Apple"),
+    ("e4:e4:ab", "Apple"),
+    ("e8:04:0b", "Apple"),
+    ("e8:06:88", "Apple"),
+    ("e8:80:2e", "Apple"),
+    ("e8:8d:28", "Apple"),
+    ("ec:35:86", "Apple"),
+    ("ec:85:2f", "Apple"),
+    ("f0:18:98", "Apple"),
+    ("f0:24:75", "Apple"),
+    ("f0:79:60", "Apple"),
+    ("f0:99:b6", "Apple"),
+    ("f0:b0:e7", "Apple"),
+    ("f0:c1:f1", "Apple"),
+    ("f0:cb:a1", "Apple"),
+    ("f0:d1:a9", "Apple"),
+    ("f0:db:e2", "Apple"),
+    ("f0:dc:e2", "Apple"),
+    ("f0:f6:1c", "Apple"),
+    ("f4:0f:24", "Apple"),
+    ("f4:1b:a1", "Apple"),
+    ("f4:31:c3", "Apple"),
+    ("f4:37:b7", "Apple"),
+    ("f4:5c:89", "Apple"),
+    ("f8:1e:df", "Apple"),
+    ("f8:27:93", "Apple"),
+    ("f8:38:80", "Apple"),
+    ("f8:62:14", "Apple"),
+    ("fc:25:3f", "Apple"),
+    ("fc:d8:48", "Apple"),
+    ("fc:e9:98", "Apple"),
+    // Samsung devices
+    ("00:02:78", "Samsung"),
+    ("00:07:ab", "Samsung"),
+    ("00:09:18", "Samsung"),
+    ("00:0d:ae", "Samsung"),
+    ("00:12:47", "Samsung"),
+    ("00:12:fb", "Samsung"),
+    ("00:13:77", "Samsung"),
+    ("00:15:99", "Samsung"),
+    ("00:15:b9", "Samsung"),
+    ("00:16:32", "Samsung"),
+    ("00:16:6b", "Samsung"),
+    ("00:16:6c", "Samsung"),
+    ("00:17:c9", "Samsung"),
+    ("00:17:d5", "Samsung"),
+    ("00:18:af", "Samsung"),
+    ("00:1a:8a", "Samsung"),
+    ("00:1b:98", "Samsung"),
+    ("00:1c:43", "Samsung"),
+    ("00:1d:25", "Samsung"),
+    ("00:1d:f6", "Samsung"),
+    ("00:1e:7d", "Samsung"),
+    ("00:1f:cc", "Samsung"),
+    ("00:1f:cd", "Samsung"),
+    ("00:21:19", "Samsung"),
+    ("00:21:4c", "Samsung"),
+    ("00:21:d1", "Samsung"),
+    ("00:21:d2", "Samsung"),
+    ("00:23:39", "Samsung"),
+    ("00:23:3a", "Samsung"),
+    ("00:23:99", "Samsung"),
+    ("00:23:d6", "Samsung"),
+    ("00:23:d7", "Samsung"),
+    ("00:24:54", "Samsung"),
+    ("00:24:90", "Samsung"),
+    ("00:24:91", "Samsung"),
+    ("00:24:e9", "Samsung"),
+    ("00:25:66", "Samsung"),
+    ("00:25:67", "Samsung"),
+    ("00:26:37", "Samsung"),
+    ("00:26:5d", "Samsung"),
+    ("00:26:5f", "Samsung"),
+    ("04:18:0f", "Samsung"),
+    ("04:1b:ba", "Samsung"),
+    ("08:08:c2", "Samsung"),
+    ("08:37:3d", "Samsung"),
+    ("08:d4:2b", "Samsung"),
+    ("08:ec:a9", "Samsung"),
+    ("0c:14:20", "Samsung"),
+    ("0c:71:5d", "Samsung"),
+    ("0c:89:10", "Samsung"),
+    ("10:1d:c0", "Samsung"),
+    ("10:30:47", "Samsung"),
+    ("14:49:e0", "Samsung"),
+    ("14:89:fd", "Samsung"),
+    ("14:a3:64", "Samsung"),
+    ("18:22:7e", "Samsung"),
+    ("18:3a:2d", "Samsung"),
+    ("18:67:b0", "Samsung"),
+    ("18:89:5b", "Samsung"),
+    ("1c:5a:3e", "Samsung"),
+    ("1c:62:b8", "Samsung"),
+    ("1c:66:aa", "Samsung"),
+    ("20:13:e0", "Samsung"),
+    ("20:55:31", "Samsung"),
+    ("20:64:32", "Samsung"),
+    ("24:4b:03", "Samsung"),
+    ("24:c6:96", "Samsung"),
+    ("28:27:bf", "Samsung"),
+    ("28:98:7b", "Samsung"),
+    ("28:ba:b5", "Samsung"),
+    ("28:cc:01", "Samsung"),
+    ("2c:44:01", "Samsung"),
+    ("2c:ae:2b", "Samsung"),
+    ("30:19:66", "Samsung"),
+    ("30:96:fb", "Samsung"),
+    ("30:c7:ae", "Samsung"),
+    ("30:cd:a7", "Samsung"),
+    ("34:14:5f", "Samsung"),
+    ("34:23:ba", "Samsung"),
+    ("34:aa:8b", "Samsung"),
+    ("34:c3:ac", "Samsung"),
+    ("38:01:97", "Samsung"),
+    ("38:0a:94", "Samsung"),
+    ("38:16:d1", "Samsung"),
+    ("38:2d:d1", "Samsung"),
+    ("38:aa:3c", "Samsung"),
+    ("38:d4:0b", "Samsung"),
+    ("3c:5a:37", "Samsung"),
+    ("3c:62:00", "Samsung"),
+    ("3c:8b:fe", "Samsung"),
+    ("3c:a1:0d", "Samsung"),
+    ("40:0e:85", "Samsung"),
+    ("44:4e:1a", "Samsung"),
+    ("44:6d:6c", "Samsung"),
+    ("44:78:3e", "Samsung"),
+    ("48:44:f7", "Samsung"),
+    ("4c:3c:16", "Samsung"),
+    ("4c:bc:a5", "Samsung"),
+    ("50:01:bb", "Samsung"),
+    ("50:a4:c8", "Samsung"),
+    ("50:b7:c3", "Samsung"),
+    ("50:c8:e5", "Samsung"),
+    ("50:cc:f8", "Samsung"),
+    ("50:f0:d3", "Samsung"),
+    ("54:40:ad", "Samsung"),
+    ("54:88:0e", "Samsung"),
+    ("54:92:be", "Samsung"),
+    ("54:9b:12", "Samsung"),
+    ("58:c3:8b", "Samsung"),
+    ("5c:2e:59", "Samsung"),
+    ("5c:3c:27", "Samsung"),
+    ("5c:a3:9d", "Samsung"),
+    ("60:6b:bd", "Samsung"),
+    ("60:a1:0a", "Samsung"),
+    ("60:af:6d", "Samsung"),
+    ("64:1c:ae", "Samsung"),
+    ("64:77:91", "Samsung"),
+    ("64:b3:10", "Samsung"),
+    ("68:48:98", "Samsung"),
+    ("68:eb:ae", "Samsung"),
+    ("6c:2f:2c", "Samsung"),
+    ("6c:83:36", "Samsung"),
+    ("70:28:8b", "Samsung"),
+    ("70:f9:27", "Samsung"),
+    ("74:45:ce", "Samsung"),
+    ("74:9e:af", "Samsung"),
+    ("78:1f:db", "Samsung"),
+    ("78:25:ad", "Samsung"),
+    ("78:40:e4", "Samsung"),
+    ("78:47:1d", "Samsung"),
+    ("78:52:1a", "Samsung"),
+    ("78:9e:d0", "Samsung"),
+    ("78:ab:bb", "Samsung"),
+    ("78:bd:bc", "Samsung"),
+    ("78:c3:e9", "Samsung"),
+    ("78:d6:f0", "Samsung"),
+    ("7c:0a:3f", "Samsung"),
+    ("7c:78:7e", "Samsung"),
+    ("7c:f8:54", "Samsung"),
+    ("80:18:a7", "Samsung"),
+    ("80:57:19", "Samsung"),
+    ("80:65:6d", "Samsung"),
+    ("84:25:19", "Samsung"),
+    ("84:38:38", "Samsung"),
+    ("84:55:a5", "Samsung"),
+    ("84:a4:66", "Samsung"),
+    ("84:b8:02", "Samsung"),
+    ("88:32:9b", "Samsung"),
+    ("88:9b:39", "Samsung"),
+    ("88:ad:d2", "Samsung"),
+    ("8c:77:12", "Samsung"),
+    ("8c:f5:a3", "Samsung"),
+    ("90:00:4e", "Samsung"),
+    ("90:18:7c", "Samsung"),
+    ("94:01:c2", "Samsung"),
+    ("94:35:0a", "Samsung"),
+    ("94:51:03", "Samsung"),
+    ("94:b1:0a", "Samsung"),
+    ("94:d7:71", "Samsung"),
+    ("98:0c:82", "Samsung"),
+    ("98:52:b1", "Samsung"),
+    ("98:83:89", "Samsung"),
+    ("9c:02:98", "Samsung"),
+    ("9c:3a:af", "Samsung"),
+    ("9c:e6:e7", "Samsung"),
+    ("a0:0b:ba", "Samsung"),
+    ("a0:21:95", "Samsung"),
+    ("a0:82:1f", "Samsung"),
+    ("a4:07:b6", "Samsung"),
+    ("a4:e5:97", "Samsung"),
+    ("a8:06:00", "Samsung"),
+    ("a8:7c:01", "Samsung"),
+    ("ac:36:13", "Samsung"),
+    ("ac:5a:14", "Samsung"),
+    ("b0:47:bf", "Samsung"),
+    ("b0:72:bf", "Samsung"),
+    ("b0:c4:e7", "Samsung"),
+    ("b0:df:3a", "Samsung"),
+    ("b0:ec:71", "Samsung"),
+    ("b4:07:f9", "Samsung"),
+    ("b4:3a:28", "Samsung"),
+    ("b4:79:a7", "Samsung"),
+    ("b4:ef:39", "Samsung"),
+    ("b8:5a:73", "Samsung"),
+    ("b8:bb:af", "Samsung"),
+    ("b8:c6:8e", "Samsung"),
+    ("bc:14:01", "Samsung"),
+    ("bc:20:a4", "Samsung"),
+    ("bc:44:86", "Samsung"),
+    ("bc:47:60", "Samsung"),
+    ("bc:72:b1", "Samsung"),
+    ("bc:79:ad", "Samsung"),
+    ("bc:85:1f", "Samsung"),
+    ("bc:8c:cd", "Samsung"),
+    ("bc:b1:f3", "Samsung"),
+    ("c0:19:7c", "Samsung"),
+    ("c0:65:99", "Samsung"),
+    ("c0:97:27", "Samsung"),
+    ("c0:bd:d1", "Samsung"),
+    ("c4:42:02", "Samsung"),
+    ("c4:50:06", "Samsung"),
+    ("c4:73:1e", "Samsung"),
+    ("c8:19:f7", "Samsung"),
+    ("c8:3d:dc", "Samsung"),
+    ("cc:07:ab", "Samsung"),
+    ("cc:3a:61", "Samsung"),
+    ("d0:22:be", "Samsung"),
+    ("d0:59:e4", "Samsung"),
+    ("d0:66:7b", "Samsung"),
+    ("d0:87:e2", "Samsung"),
+    ("d4:87:d8", "Samsung"),
+    ("d4:88:90", "Samsung"),
+    ("d8:57:ef", "Samsung"),
+    ("d8:90:e8", "Samsung"),
+    ("dc:71:96", "Samsung"),
+    ("e4:12:1d", "Samsung"),
+    ("e4:32:cb", "Samsung"),
+    ("e4:58:b8", "Samsung"),
+    ("e4:7c:f9", "Samsung"),
+    ("e4:e0:c5", "Samsung"),
+    ("e8:03:9a", "Samsung"),
+    ("e8:50:8b", "Samsung"),
+    ("ec:1f:72", "Samsung"),
+    ("ec:9b:f3", "Samsung"),
+    ("f0:25:b7", "Samsung"),
+    ("f0:5a:09", "Samsung"),
+    ("f0:72:8c", "Samsung"),
+    ("f4:7b:5e", "Samsung"),
+    ("f4:9f:54", "Samsung"),
+    ("f8:04:2e", "Samsung"),
+    ("f8:3f:51", "Samsung"),
+    ("f8:d0:ac", "Samsung"),
+    ("fc:a1:3e", "Samsung"),
+    ("fc:f1:36", "Samsung"),
+    // Roku
+    ("08:05:81", "Roku"),
+    ("10:59:32", "Roku"),
+    ("20:ef:bd", "Roku"),
+    ("2c:e4:12", "Roku"),
+    ("ac:3a:7a", "Roku"),
+    ("b0:a7:37", "Roku"),
+    ("b8:3e:59", "Roku"),
+    ("c8:3a:6b", "Roku"),
+    ("d4:e2:2f", "Roku"),
+    ("d8:31:34", "Roku"),
+    ("dc:3a:5e", "Roku"),
+    // Sony (PlayStation, TVs)
+    ("00:01:4a", "Sony"),
+    ("00:04:1f", "Sony"),
+    ("00:13:a9", "Sony"),
+    ("00:15:c1", "Sony"),
+    ("00:19:63", "Sony"),
+    ("00:1a:80", "Sony"),
+    ("00:1d:ba", "Sony"),
+    ("00:1e:a4", "Sony"),
+    ("00:24:be", "Sony"),
+    ("00:eb:2d", "Sony"),
+    ("04:5d:4b", "Sony"),
+    ("04:76:6e", "Sony"),
+    ("28:0d:fc", "Sony"),
+    ("2c:33:61", "Sony"),
+    ("30:39:26", "Sony"),
+    ("40:b8:37", "Sony"),
+    ("54:42:49", "Sony"),
+    ("78:84:3c", "Sony"),
+    ("84:00:d2", "Sony"),
+    ("a8:e3:ee", "Sony"),
+    ("ac:9b:0a", "Sony"),
+    ("b4:52:7e", "Sony"),
+    ("c8:63:14", "Sony"),
+    ("f8:46:1c", "Sony"),
+    ("fc:0f:e6", "Sony"),
+    ("fc:f1:52", "Sony"),
+    // Microsoft (Xbox, Surface)
+    ("00:03:ff", "Microsoft"),
+    ("00:0d:3a", "Microsoft"),
+    ("00:12:5a", "Microsoft"),
+    ("00:15:5d", "Microsoft"),
+    ("00:17:fa", "Microsoft"),
+    ("00:1d:d8", "Microsoft"),
+    ("00:22:48", "Microsoft"),
+    ("00:25:ae", "Microsoft"),
+    ("00:50:f2", "Microsoft"),
+    ("28:18:78", "Microsoft"),
+    ("30:59:b7", "Microsoft"),
+    ("50:1a:c5", "Microsoft"),
+    ("58:82:a8", "Microsoft"),
+    ("60:45:bd", "Microsoft"),
+    ("7c:1e:52", "Microsoft"),
+    ("7c:ed:8d", "Microsoft"),
+    ("98:5f:d3", "Microsoft"),
+    ("b4:0e:de", "Microsoft"),
+    ("c8:3f:26", "Microsoft"),
+    ("dc:53:7c", "Microsoft"),
+    // Nintendo (Switch, Wii)
+    ("00:09:bf", "Nintendo"),
+    ("00:16:56", "Nintendo"),
+    ("00:17:ab", "Nintendo"),
+    ("00:19:1d", "Nintendo"),
+    ("00:19:fd", "Nintendo"),
+    ("00:1a:e9", "Nintendo"),
+    ("00:1b:7a", "Nintendo"),
+    ("00:1b:ea", "Nintendo"),
+    ("00:1c:be", "Nintendo"),
+    ("00:1d:bc", "Nintendo"),
+    ("00:1e:35", "Nintendo"),
+    ("00:1f:32", "Nintendo"),
+    ("00:1f:c5", "Nintendo"),
+    ("00:21:47", "Nintendo"),
+    ("00:21:bd", "Nintendo"),
+    ("00:22:4c", "Nintendo"),
+    ("00:22:aa", "Nintendo"),
+    ("00:23:31", "Nintendo"),
+    ("00:23:cc", "Nintendo"),
+    ("00:24:1e", "Nintendo"),
+    ("00:24:44", "Nintendo"),
+    ("00:24:f3", "Nintendo"),
+    ("00:25:a0", "Nintendo"),
+    ("00:26:59", "Nintendo"),
+    ("00:27:09", "Nintendo"),
+    ("04:03:d6", "Nintendo"),
+    ("2c:10:c1", "Nintendo"),
+    ("34:af:2c", "Nintendo"),
+    ("40:d2:8a", "Nintendo"),
+    ("40:f4:07", "Nintendo"),
+    ("58:2f:40", "Nintendo"),
+    ("58:bd:a3", "Nintendo"),
+    ("5c:52:1e", "Nintendo"),
+    ("7c:bb:8a", "Nintendo"),
+    ("8c:56:c5", "Nintendo"),
+    ("98:41:5c", "Nintendo"),
+    ("98:b6:e9", "Nintendo"),
+    ("a4:5c:27", "Nintendo"),
+    ("a4:c0:e1", "Nintendo"),
+    ("b8:ae:6e", "Nintendo"),
+    ("cc:9e:00", "Nintendo"),
+    ("d8:6b:f7", "Nintendo"),
+    ("dc:68:eb", "Nintendo"),
+    ("e0:0c:7f", "Nintendo"),
+    ("e0:e7:51", "Nintendo"),
+    ("e8:4e:ce", "Nintendo"),
+    ("e8:96:3a", "Nintendo"),
+];
 
 // mDNS service types for device classification
 const TV_SERVICES: &[&str] = &[
@@ -260,6 +1066,164 @@ fn is_appliance_hostname(hostname: &str) -> bool {
     // Bosch washer/dishwasher
     if hostname.contains("bosch") && (hostname.contains("wash") || hostname.contains("dish")) {
         return true;
+    }
+    false
+}
+
+// IoT vendors that should be classified as appliances (not general computing devices)
+const APPLIANCE_VENDORS: &[&str] = &[
+    "Amazon",
+    "Google",
+    "Ring",
+    "Philips Hue",
+    "Ecobee",
+    "TP-Link",
+    "Belkin",
+    "Wyze",
+    "iRobot",
+    "Tuya",
+];
+
+// Gaming vendors that should be classified as gaming devices
+const GAMING_VENDORS: &[&str] = &["Nintendo"];
+
+// TV/streaming vendors that should be classified as TV
+const TV_VENDORS: &[&str] = &["Roku"];
+
+/// Get vendor name from MAC address OUI
+pub fn get_mac_vendor(mac: &str) -> Option<&'static str> {
+    let mac_lower = mac.to_lowercase();
+    if mac_lower.len() >= 8 {
+        let oui = &mac_lower[..8];
+        for (prefix, vendor) in MAC_VENDOR_MAP {
+            if oui == *prefix {
+                return Some(vendor);
+            }
+        }
+    }
+    None
+}
+
+/// Get vendor name from hostname patterns (fallback when MAC is locally administered)
+pub fn get_hostname_vendor(hostname: &str) -> Option<&'static str> {
+    let lower = hostname.to_lowercase();
+
+    // LG ThinQ appliances (lma, lmw, wm, etc.)
+    if matches_prefix(&lower, LG_APPLIANCE_PREFIXES)
+        || (lower.starts_with("wm")
+            && lower
+                .chars()
+                .nth(2)
+                .map(|c| c.is_ascii_digit())
+                .unwrap_or(false))
+    {
+        return Some("LG");
+    }
+    // Samsung SmartThings
+    if lower.contains("samsung") || lower.contains("smartthings") {
+        return Some("Samsung");
+    }
+    // Amazon Echo/Alexa
+    if lower.contains("echo") || lower.contains("alexa") || lower.contains("amazon") {
+        return Some("Amazon");
+    }
+    // Google/Nest
+    if lower.contains("google") || lower.contains("nest-") || lower.contains("chromecast") {
+        return Some("Google");
+    }
+    // Apple
+    if lower.contains("apple")
+        || lower.contains("homepod")
+        || lower.contains("macbook")
+        || lower.contains("iphone")
+        || lower.contains("ipad")
+    {
+        return Some("Apple");
+    }
+    // Roku
+    if lower.contains("roku") {
+        return Some("Roku");
+    }
+    // Sonos
+    if lower.contains("sonos") {
+        return Some("Sonos");
+    }
+    // Philips Hue
+    if lower.contains("philips") || lower.contains("hue") {
+        return Some("Philips Hue");
+    }
+    // Ring
+    if lower.contains("ring-") || lower.starts_with("ring") {
+        return Some("Ring");
+    }
+    // Ecobee
+    if lower.contains("ecobee") {
+        return Some("Ecobee");
+    }
+    // iRobot Roomba
+    if lower.contains("irobot") || lower.contains("roomba") {
+        return Some("iRobot");
+    }
+    // Wyze
+    if lower.contains("wyze") {
+        return Some("Wyze");
+    }
+    // eero routers
+    if lower.contains("eero") {
+        return Some("eero");
+    }
+    // HP printers
+    if lower.starts_with("hp") || lower.starts_with("npi") {
+        return Some("HP");
+    }
+    // Canon printers
+    if lower.contains("canon") {
+        return Some("Canon");
+    }
+    // Epson printers
+    if lower.contains("epson") {
+        return Some("Epson");
+    }
+    // Brother printers
+    if lower.starts_with("brn") || lower.starts_with("brw") || lower.contains("brother") {
+        return Some("Brother");
+    }
+
+    None
+}
+
+/// Check if any MAC address matches known IoT/appliance vendor OUIs
+fn is_appliance_mac(macs: &[String]) -> bool {
+    for mac in macs {
+        if let Some(vendor) = get_mac_vendor(mac) {
+            if APPLIANCE_VENDORS.contains(&vendor) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Check if any MAC address matches known gaming vendor OUIs
+fn is_gaming_mac(macs: &[String]) -> bool {
+    for mac in macs {
+        if let Some(vendor) = get_mac_vendor(mac) {
+            if GAMING_VENDORS.contains(&vendor) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Check if any MAC address matches known TV/streaming vendor OUIs
+fn is_tv_mac(macs: &[String]) -> bool {
+    for mac in macs {
+        if let Some(vendor) = get_mac_vendor(mac) {
+            if TV_VENDORS.contains(&vendor) {
+                return true;
+            }
+        }
     }
     false
 }
@@ -411,13 +1375,14 @@ impl EndPoint {
             || lower.contains("mikrotik")
     }
 
-    /// Classify device type based on hostname, ports, and mDNS services
+    /// Classify device type based on hostname, ports, MACs, and mDNS services
     /// Returns device-specific classification (printer, tv, gaming) or None
     /// This is separate from network-level classification (gateway, internet)
     pub fn classify_device_type(
         hostname: Option<&str>,
         ip: Option<&str>,
         ports: &[u16],
+        macs: &[String],
     ) -> Option<&'static str> {
         // Pre-compute lowercase hostname once
         let lower_hostname = hostname.map(|h| h.to_lowercase());
@@ -462,6 +1427,17 @@ impl EndPoint {
             if is_appliance_hostname(h) {
                 return Some(CLASSIFICATION_APPLIANCE);
             }
+        }
+
+        // MAC-based detection (identifies devices by vendor OUI)
+        if is_gaming_mac(macs) {
+            return Some(CLASSIFICATION_GAMING);
+        }
+        if is_tv_mac(macs) {
+            return Some(CLASSIFICATION_TV);
+        }
+        if is_appliance_mac(macs) {
+            return Some(CLASSIFICATION_APPLIANCE);
         }
 
         // Port-based detection (less reliable, fallback)
@@ -1329,20 +2305,74 @@ mod tests {
     fn test_classify_device_type_integration() {
         // Full integration test of classify_device_type
         assert_eq!(
-            EndPoint::classify_device_type(Some("hp-laserjet"), None, &[]),
+            EndPoint::classify_device_type(Some("hp-laserjet"), None, &[], &[]),
             Some("printer")
         );
         assert_eq!(
-            EndPoint::classify_device_type(Some("roku-ultra"), None, &[]),
+            EndPoint::classify_device_type(Some("roku-ultra"), None, &[], &[]),
             Some("tv")
         );
         assert_eq!(
-            EndPoint::classify_device_type(Some("unknown-device"), None, &[9100]),
+            EndPoint::classify_device_type(Some("unknown-device"), None, &[9100], &[]),
             Some("printer")
         );
         assert_eq!(
-            EndPoint::classify_device_type(Some("my-laptop"), None, &[80, 443]),
+            EndPoint::classify_device_type(Some("my-laptop"), None, &[80, 443], &[]),
             None
+        );
+    }
+
+    #[test]
+    fn test_classify_by_mac() {
+        // Amazon device MAC
+        assert_eq!(
+            EndPoint::classify_device_type(
+                Some("unknown"),
+                None,
+                &[],
+                &["3c:5c:c4:90:a2:93".to_string()]
+            ),
+            Some("appliance")
+        );
+        // Google/Nest device MAC
+        assert_eq!(
+            EndPoint::classify_device_type(
+                Some("192.168.1.50"),
+                None,
+                &[],
+                &["18:d6:c7:12:34:56".to_string()]
+            ),
+            Some("appliance")
+        );
+        // Ring device MAC
+        assert_eq!(
+            EndPoint::classify_device_type(
+                Some("unknown"),
+                None,
+                &[],
+                &["34:3e:a4:00:00:00".to_string()]
+            ),
+            Some("appliance")
+        );
+        // Unknown MAC (Apple)
+        assert_eq!(
+            EndPoint::classify_device_type(
+                Some("unknown"),
+                None,
+                &[],
+                &["a4:83:e7:12:34:56".to_string()]
+            ),
+            None
+        );
+        // Hostname takes precedence over MAC
+        assert_eq!(
+            EndPoint::classify_device_type(
+                Some("hp-printer"),
+                None,
+                &[],
+                &["3c:5c:c4:90:a2:93".to_string()]
+            ),
+            Some("printer")
         );
     }
 }

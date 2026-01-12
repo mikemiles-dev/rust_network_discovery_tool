@@ -11,10 +11,23 @@
   - Single interface `Wi-Fi` → `Wi-Fi.db`
   - Multiple interfaces → `network.db`
   - `DATABASE_URL` environment variable still overrides this behavior
+- **MAC Vendor Detection** - Displays device manufacturer next to Type in endpoint details
+  - 500+ MAC OUI prefixes for major vendors (Apple, Samsung, Amazon, Google, Sony, Microsoft, Nintendo, Roku, etc.)
+  - Hostname-based vendor detection as fallback (for devices with locally administered MACs like LG ThinQ)
+  - Detects LG, eero, HP, Canon, Epson, Brother, Sonos, and more from hostname patterns
+  - Vendor badge shown next to device type classification
+- **Smart Device Classification** - Automatically classifies devices based on MAC vendor
+  - **Gaming**: Nintendo devices automatically classified as 🎮 Gaming
+  - **TV**: Roku devices automatically classified as 📺 TV
+  - **Appliances**: Amazon Echo/Ring, Google Nest/Chromecast, Philips Hue, TP-Link/Kasa, Wyze, iRobot, Tuya
+  - Works even when device hostname is just an IP address
+- **mDNS Local Filter** - Filters out local machine's own mDNS entries from the mDNS tab
+  - Reduces clutter by hiding services advertised by your own machine
 
 ### Changed
 - Scanner moved to dedicated "Scanner" tab in the header (previously in sidebar)
 - Scanner tab now stays active during auto-refresh (no longer redirects to network tab)
+- Selected endpoint indicator moved to above the search bar in the sidebar
 
 ### Fixed
 - **Database locking issues during scanning** - Multiple improvements:

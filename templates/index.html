@@ -948,17 +948,6 @@
       <div class="card">
         <div class="card-title" style="margin-bottom: 0; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(51, 65, 85, 0.6);">Endpoints</div>
 
-        <!-- Selected Node Indicator -->
-        {% if selected_node %}
-        <div id="selected-node-indicator" style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.75rem; padding: 0.5rem 0.75rem; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 0.5rem;">
-          <div style="display: flex; align-items: center; gap: 0.5rem; overflow: hidden;">
-            <span style="font-size: 0.7rem; color: var(--text-secondary); white-space: nowrap;">Selected:</span>
-            <span style="font-size: 0.75rem; font-weight: 500; color: #60a5fa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ selected_node }}</span>
-          </div>
-          <button onclick="unselectNode()" title="Clear selection" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; width: 1.25rem; height: 1.25rem; border-radius: 0.25rem; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; flex-shrink: 0;">&times;</button>
-        </div>
-        {% endif %}
-
         <!-- Filter Controls -->
         <div style="display: flex; justify-content: flex-start; gap: 0.5rem; margin-top: 0.75rem; margin-bottom: 0.375rem;">
           <button onclick="selectAllFilters()" style="font-size: 0.7rem; padding: 0.125rem 0.375rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; border-radius: 0.25rem; cursor: pointer; font-weight: 500;">All</button>
@@ -1027,6 +1016,17 @@
                  oninput="updateEndpointLimit(this.value)"
                  style="width: 100%; cursor: pointer; height: 4px; background: rgba(51, 65, 85, 0.6); border-radius: 2px; appearance: none; outline: none;">
         </div>
+
+        <!-- Selected Node Indicator -->
+        {% if selected_node %}
+        <div id="selected-node-indicator" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; padding: 0.5rem 0.75rem; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 0.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.5rem; overflow: hidden;">
+            <span style="font-size: 0.7rem; color: var(--text-secondary); white-space: nowrap;">Selected:</span>
+            <span style="font-size: 0.75rem; font-weight: 500; color: #60a5fa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ selected_node }}</span>
+          </div>
+          <button onclick="unselectNode()" title="Clear selection" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; width: 1.25rem; height: 1.25rem; border-radius: 0.25rem; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; flex-shrink: 0;">&times;</button>
+        </div>
+        {% endif %}
 
         <input type="text" id="endpointSearchInput" placeholder="Search endpoints..."
                oninput="debouncedEndpointSearch(this.value)"
@@ -1121,6 +1121,7 @@
               </div>
             </div>
             {% if endpoint in manual_overrides %}<span style="font-size: 0.625rem; color: var(--accent-secondary); margin-left: 0.5rem;">(manually set)</span>{% endif %}
+            {% if device_vendor %}<span style="font-size: 0.625rem; color: #60a5fa; background: rgba(59, 130, 246, 0.15); padding: 0.125rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem;">{{ device_vendor }}</span>{% endif %}
           </div>
           <div class="stats">
             <div class="stat-badge stat-link" onclick="scrollToSection('ips-section')">IPs: <span class="stat-number">{{ ips|length }}</span></div>

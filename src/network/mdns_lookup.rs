@@ -44,9 +44,7 @@ fn is_local_machine(hostname: &str, ip: &str) -> bool {
     if let Some(local_hostname) = get_local_hostname() {
         let host_lower = hostname.to_lowercase();
         // Strip .local suffix for comparison
-        let host_base = host_lower
-            .strip_suffix(".local")
-            .unwrap_or(&host_lower);
+        let host_base = host_lower.strip_suffix(".local").unwrap_or(&host_lower);
         let local_base = local_hostname
             .strip_suffix(".local")
             .unwrap_or(&local_hostname);

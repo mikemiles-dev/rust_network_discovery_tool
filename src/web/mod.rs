@@ -12,7 +12,7 @@ use tokio::task;
 
 use crate::db::new_connection;
 use crate::network::device_control::DeviceController;
-use crate::network::endpoint::EndPoint;
+use crate::network::endpoint::{EndPoint, get_hostname_vendor, get_mac_vendor};
 use crate::network::mdns_lookup::MDnsLookup;
 use crate::network::protocol::ProtocolPort;
 use crate::scanner::manager::{ScanConfig, ScanManager};
@@ -645,8 +645,8 @@ fn get_all_endpoint_types(
             continue;
         }
 
-        // Get IP address for this endpoint from endpoint_attributes
-        let mut stmt = conn
+        // Get IP address and MAC addresses for this endpoint from endpoint_attributes
+        let mut ip_stmt = conn
             .prepare(
                 "SELECT ea.ip
              FROM endpoint_attributes ea
@@ -656,7 +656,7 @@ fn get_all_endpoint_types(
             )
             .expect("Failed to prepare statement");
 
-        let ip = stmt
+        let ip = ip_stmt
             .query_row([endpoint], |row| {
                 let ip_value: Option<String> = row.get(0).ok();
                 Ok(ip_value)
@@ -664,12 +664,28 @@ fn get_all_endpoint_types(
             .ok()
             .flatten();
 
+        // Get MAC addresses for this endpoint
+        let mut mac_stmt = conn
+            .prepare(
+                "SELECT DISTINCT ea.mac
+             FROM endpoint_attributes ea
+             INNER JOIN endpoints e ON ea.endpoint_id = e.id
+             WHERE e.name = ?1 AND ea.mac IS NOT NULL",
+            )
+            .expect("Failed to prepare MAC statement");
+
+        let macs: Vec<String> = mac_stmt
+            .query_map([endpoint], |row| row.get(0))
+            .ok()
+            .map(|rows| rows.filter_map(|r| r.ok()).collect())
+            .unwrap_or_default();
+
         // First check network-level classification (gateway, internet)
         if let Some(endpoint_type) = EndPoint::classify_endpoint(ip.clone(), Some(endpoint.clone()))
         {
             types.insert(endpoint.clone(), endpoint_type);
         } else {
-            // If no network-level classification, check device type based on ports
+            // If no network-level classification, check device type based on ports and MACs
             // Get ports for this endpoint
             let mut port_stmt = conn
                 .prepare(
@@ -696,7 +712,7 @@ fn get_all_endpoint_types(
                 .unwrap_or_default();
 
             if let Some(device_type) =
-                EndPoint::classify_device_type(Some(endpoint), ip.as_deref(), &ports)
+                EndPoint::classify_device_type(Some(endpoint), ip.as_deref(), &ports, &macs)
             {
                 types.insert(endpoint.clone(), device_type);
             } else if ip.is_some() {
@@ -990,6 +1006,18 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         selected_endpoint.clone(),
         query.scan_interval.unwrap_or(60),
     );
+    // Build MAC vendor lookup
+    let mac_vendors: HashMap<String, String> = macs
+        .iter()
+        .filter_map(|mac| get_mac_vendor(mac).map(|vendor| (mac.clone(), vendor.to_string())))
+        .collect();
+    // Get first vendor for display next to device type (MAC first, then hostname fallback)
+    let device_vendor: String = macs
+        .iter()
+        .find_map(|mac| get_mac_vendor(mac))
+        .or_else(|| get_hostname_vendor(&selected_endpoint))
+        .unwrap_or("")
+        .to_string();
     let protocols =
         get_protocols_for_endpoint(selected_endpoint.clone(), query.scan_interval.unwrap_or(60));
     // Use ports from communications data when a node is selected (matches graph)
@@ -1017,6 +1045,8 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     context.insert("scan_interval", &query.scan_interval.unwrap_or(60));
     context.insert("ips", &ips);
     context.insert("macs", &macs);
+    context.insert("mac_vendors", &mac_vendors);
+    context.insert("device_vendor", &device_vendor);
     context.insert("hostnames", &hostnames);
     context.insert("ports", &ports);
     context.insert("protocols", &protocols);
