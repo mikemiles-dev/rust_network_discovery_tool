@@ -11,6 +11,41 @@ Rust Network Discovery Tool
 A lightweight network traffic monitoring tool that captures and visualizes network connections on your local network. Shows "what's talking to what" in an easy-to-use web interface.
 
 ## Features
+## Installation
+
+### Pre-built Binaries
+
+Download the latest release for your platform:
+
+- **macOS (Apple Silicon)**: [rust_network_discovery_tool-macos-aarch64.tar.gz](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/rust_network_discovery_tool-macos-aarch64.tar.gz)
+- **macOS (Intel)**: [rust_network_discovery_tool-macos-x86_64.tar.gz](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/rust_network_discovery_tool-macos-x86_64.tar.gz)
+- **Linux**: [rust_network_discovery_tool-linux-x86_64.tar.gz](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/rust_network_discovery_tool-linux-x86_64.tar.gz)
+- **Windows**: [rust_network_discovery_tool-windows-x86_64.zip](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/rust_network_discovery_tool-windows-x86_64.zip)
+
+#### macOS/Linux Installation
+
+```bash
+# Download and extract (adjust filename for your platform)
+tar -xzf rust_network_discovery_tool-macos-aarch64.tar.gz
+
+# Make executable
+chmod +x rust_network_discovery_tool
+
+# Move to PATH (optional)
+sudo mv rust_network_discovery_tool /usr/local/bin/
+
+# Run with sudo (required for packet capture)
+sudo rust_network_discovery_tool
+```
+
+#### Windows Installation
+
+1. Download and extract the ZIP file
+2. Install [Npcap](https://npcap.com/#download) (required for packet capture)
+3. Run as Administrator (required for packet capture)
+
+### Build from Source
+
 
 - **Passive Monitoring**: Captures network traffic to see what's communicating
 - **Active Network Scanning**: Discover devices that aren't actively communicating
