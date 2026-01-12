@@ -42,6 +42,278 @@ const CLASSIFICATION_SOUNDBAR: &str = "soundbar";
 const CLASSIFICATION_APPLIANCE: &str = "appliance";
 const CLASSIFICATION_PHONE: &str = "phone";
 
+// Device detection patterns
+const PRINTER_PATTERNS: &[&str] = &[
+    "printer",
+    "print",
+    "hp-",
+    "canon",
+    "epson",
+    "brother",
+    "lexmark",
+    "xerox",
+    "ricoh",
+    "laserjet",
+    "officejet",
+    "pixma",
+    "mfc-",
+    "dcp-",
+    "hpcolor",
+    "hplaserjet",
+    "designjet",
+    "colorjet",
+    "scanjet",
+];
+const PRINTER_PREFIXES: &[&str] = &["hp", "npi", "np", "brn", "brw", "epson"];
+
+const TV_PATTERNS: &[&str] = &[
+    "tv",
+    "samsung",
+    "lg-",
+    "sony",
+    "vizio",
+    "roku",
+    "chromecast",
+    "appletv",
+    "apple-tv",
+    "firetv",
+    "fire-tv",
+    "shield",
+    "androidtv",
+];
+const TV_PREFIXES: &[&str] = &["lg"];
+
+const GAMING_PATTERNS: &[&str] = &[
+    "xbox",
+    "playstation",
+    "ps4",
+    "ps5",
+    "nintendo",
+    "switch",
+    "steamdeck",
+    "steam-deck",
+];
+
+const PHONE_PATTERNS: &[&str] = &[
+    "iphone", "ipad", "ipod", "oneplus", "motorola", "oppo", "vivo", "realme", "redmi", "poco",
+];
+const PHONE_PREFIXES: &[&str] = &["sm-", "moto"];
+const PHONE_CONDITIONAL: &[(&str, &str)] = &[
+    ("galaxy", "tv"),
+    ("pixel", "tv"),
+    ("xiaomi", "tv"),
+    ("huawei", "tv"),
+    ("nokia", "tv"),
+];
+
+const VM_PATTERNS: &[&str] = &[
+    "vmware",
+    "esxi",
+    "vcenter",
+    "proxmox",
+    "hyper-v",
+    "hyperv",
+    "virtualbox",
+    "vbox",
+    "kvm",
+    "qemu",
+    "xen",
+    "docker",
+    "container",
+    "k8s",
+    "kubernetes",
+    "rancher",
+    "portainer",
+];
+
+const SOUNDBAR_PATTERNS: &[&str] = &[
+    "soundbar",
+    "sound-bar",
+    "sonos",
+    "bose",
+    "playbar",
+    "playbase",
+    "beam",
+];
+
+const APPLIANCE_PATTERNS: &[&str] = &[
+    "dishwasher",
+    "washer",
+    "dryer",
+    "washing",
+    "laundry",
+    "refrigerator",
+    "fridge",
+    "oven",
+    "range",
+    "microwave",
+    "maytag",
+    "miele",
+    "electrolux",
+    "kenmore",
+    "kitchenaid",
+];
+const LG_APPLIANCE_PREFIXES: &[&str] = &["lma", "lmw", "ldf", "ldt", "ldp", "dle", "dlex", "lrmv"];
+
+// mDNS service types for device classification
+const TV_SERVICES: &[&str] = &[
+    "_googlecast._tcp",
+    "_airplay._tcp",
+    "_raop._tcp",
+    "_roku._tcp",
+    "_spotify-connect._tcp",
+];
+const PRINTER_SERVICES: &[&str] = &["_ipp._tcp", "_printer._tcp", "_pdl-datastream._tcp"];
+
+/// Check if hostname matches any pattern in list
+fn matches_pattern(hostname: &str, patterns: &[&str]) -> bool {
+    patterns.iter().any(|p| hostname.contains(p))
+}
+
+/// Check if hostname starts with any prefix in list
+fn matches_prefix(hostname: &str, prefixes: &[&str]) -> bool {
+    prefixes.iter().any(|p| hostname.starts_with(p))
+}
+
+/// Check if hostname matches pattern but not exclusion
+fn matches_conditional(hostname: &str, conditionals: &[(&str, &str)]) -> bool {
+    conditionals
+        .iter()
+        .any(|(pattern, exclude)| hostname.contains(pattern) && !hostname.contains(exclude))
+}
+
+/// Check if hostname indicates a printer
+fn is_printer_hostname(hostname: &str) -> bool {
+    matches_pattern(hostname, PRINTER_PATTERNS) || matches_prefix(hostname, PRINTER_PREFIXES)
+}
+
+/// Check if hostname indicates a TV/streaming device
+fn is_tv_hostname(hostname: &str) -> bool {
+    matches_pattern(hostname, TV_PATTERNS) || matches_prefix(hostname, TV_PREFIXES)
+}
+
+/// Check if hostname indicates a gaming console
+fn is_gaming_hostname(hostname: &str) -> bool {
+    matches_pattern(hostname, GAMING_PATTERNS)
+}
+
+/// Check if hostname indicates a phone/tablet
+fn is_phone_hostname(hostname: &str) -> bool {
+    if matches_pattern(hostname, PHONE_PATTERNS) || matches_prefix(hostname, PHONE_PREFIXES) {
+        return true;
+    }
+    if matches_conditional(hostname, PHONE_CONDITIONAL) {
+        return true;
+    }
+    // Special case: android but not androidtv
+    if hostname.contains("android") && !hostname.contains("androidtv") && !hostname.contains("tv") {
+        return true;
+    }
+    // Special case: asus phone
+    if hostname.contains("asus") && (hostname.contains("phone") || hostname.contains("zenfone")) {
+        return true;
+    }
+    false
+}
+
+/// Check if hostname indicates a VM/container
+fn is_vm_hostname(hostname: &str) -> bool {
+    matches_pattern(hostname, VM_PATTERNS)
+        || hostname.starts_with("vm-")
+        || hostname.ends_with("-vm")
+}
+
+/// Check if hostname indicates a soundbar
+fn is_soundbar_hostname(hostname: &str) -> bool {
+    if matches_pattern(hostname, SOUNDBAR_PATTERNS) {
+        return true;
+    }
+    // Sonos Arc special case
+    if hostname.contains("arc") && (hostname.contains("sonos") || hostname.contains("sound")) {
+        return true;
+    }
+    // Brand + sound combinations
+    let sound_brands = ["yamaha", "samsung", "lg", "vizio"];
+    if sound_brands.iter().any(|b| hostname.contains(b)) && hostname.contains("sound") {
+        return true;
+    }
+    // JBL bar
+    if hostname.contains("jbl") && hostname.contains("bar") {
+        return true;
+    }
+    false
+}
+
+/// Check if hostname indicates an appliance
+fn is_appliance_hostname(hostname: &str) -> bool {
+    if matches_pattern(hostname, APPLIANCE_PATTERNS) {
+        return true;
+    }
+    // Whirlpool (but not router)
+    if hostname.contains("whirlpool") && !hostname.contains("router") {
+        return true;
+    }
+    // GE appliance
+    if hostname.contains("ge-") && hostname.contains("appliance") {
+        return true;
+    }
+    // Bosch washer/dishwasher
+    if hostname.contains("bosch") && (hostname.contains("wash") || hostname.contains("dish")) {
+        return true;
+    }
+    false
+}
+
+/// Check if hostname indicates an LG ThinQ appliance
+fn is_lg_appliance(hostname: &str) -> bool {
+    if matches_prefix(hostname, LG_APPLIANCE_PREFIXES) {
+        return true;
+    }
+    // WM with digit as third character (washer model)
+    if hostname.starts_with("wm")
+        && let Some(c) = hostname.chars().nth(2)
+        && c.is_ascii_digit()
+    {
+        return true;
+    }
+    false
+}
+
+/// Check mDNS services for device type
+fn classify_by_services(services: &[String]) -> Option<&'static str> {
+    for service in services {
+        if TV_SERVICES.contains(&service.as_str()) {
+            return Some(CLASSIFICATION_TV);
+        }
+        if PRINTER_SERVICES.contains(&service.as_str()) {
+            return Some(CLASSIFICATION_PRINTER);
+        }
+    }
+    None
+}
+
+/// Classify by port number
+fn classify_by_port(port: u16) -> Option<&'static str> {
+    match port {
+        // Printer ports
+        9100 | 631 | 515 => Some(CLASSIFICATION_PRINTER),
+        // TV/Streaming ports
+        8008 | 8009 => Some(CLASSIFICATION_TV), // Chromecast
+        7000 | 7001 | 8001 | 8002 => Some(CLASSIFICATION_TV), // Samsung TV
+        3000 | 3001 => Some(CLASSIFICATION_TV), // LG WebOS
+        6467 | 6466 => Some(CLASSIFICATION_TV), // Roku
+        // VM/Container ports
+        902 | 903 => Some(CLASSIFICATION_VIRTUALIZATION), // VMware ESXi
+        8006 => Some(CLASSIFICATION_VIRTUALIZATION),      // Proxmox
+        2179 => Some(CLASSIFICATION_VIRTUALIZATION),      // Hyper-V
+        2375 | 2376 => Some(CLASSIFICATION_VIRTUALIZATION), // Docker API
+        6443 => Some(CLASSIFICATION_VIRTUALIZATION),      // Kubernetes API
+        10250 => Some(CLASSIFICATION_VIRTUALIZATION),     // Kubelet
+        9000 => Some(CLASSIFICATION_VIRTUALIZATION),      // Portainer
+        _ => None,
+    }
+}
+
 #[derive(Debug)]
 pub enum InsertEndpointError {
     BothMacAndIpNone,
@@ -147,241 +419,55 @@ impl EndPoint {
         ip: Option<&str>,
         ports: &[u16],
     ) -> Option<&'static str> {
+        // Pre-compute lowercase hostname once
+        let lower_hostname = hostname.map(|h| h.to_lowercase());
+        let lower = lower_hostname.as_deref();
+
         // Check for LG ThinQ appliances FIRST (they advertise AirPlay but aren't TVs)
-        // LG ThinQ appliance model numbers: LMA/LMW (general), LDF/LDT/LDP (dishwashers),
-        // WM (washers), DLE/DLEX (dryers), LRMV (refrigerators)
-        if let Some(hostname_str) = hostname {
-            let lower = hostname_str.to_lowercase();
-            if lower.starts_with("lma")
-                || lower.starts_with("lmw")
-                || lower.starts_with("ldf")
-                || lower.starts_with("ldt")
-                || lower.starts_with("ldp")
-                || lower.starts_with("wm")
-                    && lower
-                        .chars()
-                        .nth(2)
-                        .map(|c| c.is_ascii_digit())
-                        .unwrap_or(false)
-                || lower.starts_with("dle")
-                || lower.starts_with("dlex")
-                || lower.starts_with("lrmv")
-            {
-                return Some(CLASSIFICATION_APPLIANCE);
-            }
+        if let Some(h) = lower
+            && is_lg_appliance(h)
+        {
+            return Some(CLASSIFICATION_APPLIANCE);
         }
 
-        // Check mDNS service advertisements first (most reliable for smart devices)
+        // Check mDNS service advertisements (most reliable for smart devices)
         if let Some(ip_str) = ip {
             let services = crate::network::mdns_lookup::MDnsLookup::get_services(ip_str);
-            for service in services {
-                match service.as_str() {
-                    // TV and streaming devices
-                    "_googlecast._tcp"
-                    | "_airplay._tcp"
-                    | "_raop._tcp"
-                    | "_roku._tcp"
-                    | "_spotify-connect._tcp" => {
-                        return Some(CLASSIFICATION_TV);
-                    }
-                    // Printers
-                    "_ipp._tcp" | "_printer._tcp" | "_pdl-datastream._tcp" => {
-                        return Some(CLASSIFICATION_PRINTER);
-                    }
-                    // Smart home (might be TVs or other devices)
-                    "_hap._tcp" | "_homekit._tcp" => {
-                        // HomeKit devices could be many things, so we'll continue checking
-                        // but give it a hint towards TV if no other info
-                    }
-                    _ => {}
-                }
+            if let Some(classification) = classify_by_services(&services) {
+                return Some(classification);
             }
         }
 
-        // Check hostname patterns (also very reliable)
-        if let Some(hostname_str) = hostname {
-            let lower = hostname_str.to_lowercase();
-
-            // Printer detection by hostname
-            if lower.contains("printer")
-                || lower.contains("print")
-                || lower.contains("hp-")
-                || lower.starts_with("hp")
-                || lower.contains("canon")
-                || lower.contains("epson")
-                || lower.contains("brother")
-                || lower.contains("lexmark")
-                || lower.contains("xerox")
-                || lower.contains("ricoh")
-                || lower.contains("laserjet")
-                || lower.contains("officejet")
-                || lower.contains("pixma")
-                || lower.contains("mfc-")
-                || lower.contains("dcp-")
-                // Canon PIXMA network printers (e.g., npia2344f.local)
-                || lower.starts_with("npi")
-                || lower.starts_with("np")
-                // Brother network printers
-                || lower.starts_with("brn")
-                || lower.starts_with("brw")
-                // Epson network printers
-                || lower.starts_with("epson")
-                // HP network printers
-                || lower.contains("hpcolor")
-                || lower.contains("hplaserjet")
-                // Generic printer identifiers
-                || lower.contains("designjet")
-                || lower.contains("colorjet")
-                || lower.contains("scanjet")
-            {
+        // Check hostname patterns
+        if let Some(h) = lower {
+            // Order matters: check more specific patterns first
+            if is_printer_hostname(h) {
                 return Some(CLASSIFICATION_PRINTER);
             }
-
-            // TV/Streaming device detection by hostname
-            if lower.contains("tv")
-                || lower.contains("samsung")
-                || lower.contains("lg-")
-                || lower.starts_with("lg")
-                || lower.contains("sony")
-                || lower.contains("vizio")
-                || lower.contains("roku")
-                || lower.contains("chromecast")
-                || lower.contains("appletv")
-                || lower.contains("apple-tv")
-                || lower.contains("firetv")
-                || lower.contains("fire-tv")
-                || lower.contains("shield")
-                || lower.contains("androidtv")
-            {
+            if is_tv_hostname(h) {
                 return Some(CLASSIFICATION_TV);
             }
-
-            // Gaming console detection by hostname
-            if lower.contains("xbox")
-                || lower.contains("playstation")
-                || lower.contains("ps4")
-                || lower.contains("ps5")
-                || lower.contains("nintendo")
-                || lower.contains("switch")
-                || lower.contains("steamdeck")
-                || lower.contains("steam-deck")
-            {
+            if is_gaming_hostname(h) {
                 return Some(CLASSIFICATION_GAMING);
             }
-
-            // Phone/Tablet detection by hostname
-            if lower.contains("iphone")
-                || lower.contains("ipad")
-                || lower.contains("ipod")
-                || lower.contains("galaxy") && !lower.contains("tv")
-                || lower.contains("pixel") && !lower.contains("tv")
-                || lower.contains("oneplus")
-                || lower.contains("xiaomi") && !lower.contains("tv")
-                || lower.contains("huawei") && !lower.contains("tv")
-                || lower.contains("motorola")
-                || lower.contains("nokia") && !lower.contains("tv")
-                || lower.contains("oppo")
-                || lower.contains("vivo")
-                || lower.contains("realme")
-                || lower.contains("redmi")
-                || lower.contains("poco")
-                || lower.contains("asus") && (lower.contains("phone") || lower.contains("zenfone"))
-                || lower.contains("android") && !lower.contains("androidtv") && !lower.contains("tv")
-                || lower.starts_with("sm-") // Samsung phone model codes (e.g., SM-G991U)
-                || lower.starts_with("moto")
-            // Motorola phones
-            {
+            if is_phone_hostname(h) {
                 return Some(CLASSIFICATION_PHONE);
             }
-
-            // VM/Container/Virtualization detection by hostname
-            if lower.contains("vmware")
-                || lower.contains("esxi")
-                || lower.contains("vcenter")
-                || lower.contains("proxmox")
-                || lower.contains("hyper-v")
-                || lower.contains("hyperv")
-                || lower.contains("virtualbox")
-                || lower.contains("vbox")
-                || lower.contains("kvm")
-                || lower.contains("qemu")
-                || lower.contains("xen")
-                || lower.contains("docker")
-                || lower.contains("container")
-                || lower.contains("k8s")
-                || lower.contains("kubernetes")
-                || lower.contains("rancher")
-                || lower.contains("portainer")
-                || lower.starts_with("vm-")
-                || lower.ends_with("-vm")
-            {
+            if is_vm_hostname(h) {
                 return Some(CLASSIFICATION_VIRTUALIZATION);
             }
-
-            // Soundbar detection by hostname
-            if lower.contains("soundbar")
-                || lower.contains("sound-bar")
-                || lower.contains("sonos")
-                || lower.contains("bose")
-                || lower.contains("playbar")
-                || lower.contains("playbase")
-                || lower.contains("beam")
-                || lower.contains("arc") && (lower.contains("sonos") || lower.contains("sound"))
-                || lower.contains("yamaha") && lower.contains("sound")
-                || lower.contains("samsung") && lower.contains("sound")
-                || lower.contains("lg") && lower.contains("sound")
-                || lower.contains("vizio") && lower.contains("sound")
-                || lower.contains("jbl") && lower.contains("bar")
-            {
+            if is_soundbar_hostname(h) {
                 return Some(CLASSIFICATION_SOUNDBAR);
             }
-
-            // Appliance detection (dishwashers, washing machines, dryers, etc.)
-            if lower.contains("dishwasher")
-                || lower.contains("washer")
-                || lower.contains("dryer")
-                || lower.contains("washing")
-                || lower.contains("laundry")
-                || lower.contains("refrigerator")
-                || lower.contains("fridge")
-                || lower.contains("oven")
-                || lower.contains("range")
-                || lower.contains("microwave")
-                || lower.contains("whirlpool") && !lower.contains("router")
-                || lower.contains("maytag")
-                || lower.contains("ge-") && lower.contains("appliance")
-                || lower.contains("bosch") && (lower.contains("wash") || lower.contains("dish"))
-                || lower.contains("miele")
-                || lower.contains("electrolux")
-                || lower.contains("kenmore")
-                || lower.contains("kitchenaid")
-            {
+            if is_appliance_hostname(h) {
                 return Some(CLASSIFICATION_APPLIANCE);
             }
         }
 
-        // Port-based detection (less reliable but useful when hostname is generic)
+        // Port-based detection (less reliable, fallback)
         for &port in ports {
-            match port {
-                // Printer ports
-                9100 | 631 | 515 => return Some(CLASSIFICATION_PRINTER),
-
-                // TV/Streaming device ports
-                8008 | 8009 => return Some(CLASSIFICATION_TV), // Chromecast
-                7000 | 7001 | 8001 | 8002 => return Some(CLASSIFICATION_TV), // Samsung TV
-                3000 | 3001 => return Some(CLASSIFICATION_TV), // LG WebOS
-                6467 | 6466 => return Some(CLASSIFICATION_TV), // Roku
-
-                // VM/Container/Virtualization ports
-                902 | 903 => return Some(CLASSIFICATION_VIRTUALIZATION), // VMware ESXi
-                8006 => return Some(CLASSIFICATION_VIRTUALIZATION),      // Proxmox
-                2179 => return Some(CLASSIFICATION_VIRTUALIZATION),      // Hyper-V
-                2375 | 2376 => return Some(CLASSIFICATION_VIRTUALIZATION), // Docker API
-                6443 => return Some(CLASSIFICATION_VIRTUALIZATION),      // Kubernetes API
-                10250 => return Some(CLASSIFICATION_VIRTUALIZATION),     // Kubelet
-                9000 => return Some(CLASSIFICATION_VIRTUALIZATION),      // Portainer
-
-                _ => continue,
+            if let Some(classification) = classify_by_port(port) {
+                return Some(classification);
             }
         }
 
@@ -1108,5 +1194,155 @@ mod tests {
         assert!(!EndPoint::is_broadcast_or_multicast_mac(
             "00:11:22:33:44:55"
         ));
+    }
+
+    // Device classification tests
+    #[test]
+    fn test_classify_printer() {
+        use super::*;
+
+        // Hostname patterns
+        assert_eq!(is_printer_hostname("hp-laserjet-pro"), true);
+        assert_eq!(is_printer_hostname("canon-mx920"), true);
+        assert_eq!(is_printer_hostname("epson-wf-7720"), true);
+        assert_eq!(is_printer_hostname("brother-mfc-9340cdw"), true);
+        assert_eq!(is_printer_hostname("npi123456"), true);
+        assert_eq!(is_printer_hostname("brn001122334455"), true);
+
+        // Non-printers
+        assert_eq!(is_printer_hostname("my-laptop"), false);
+        assert_eq!(is_printer_hostname("iphone"), false);
+    }
+
+    #[test]
+    fn test_classify_tv() {
+        use super::*;
+
+        // Hostname patterns
+        assert_eq!(is_tv_hostname("samsung-tv"), true);
+        assert_eq!(is_tv_hostname("roku-ultra"), true);
+        assert_eq!(is_tv_hostname("chromecast-living-room"), true);
+        assert_eq!(is_tv_hostname("appletv"), true);
+        assert_eq!(is_tv_hostname("lg-oled55"), true);
+        assert_eq!(is_tv_hostname("firetv-stick"), true);
+
+        // Non-TVs
+        assert_eq!(is_tv_hostname("my-laptop"), false);
+        assert_eq!(is_tv_hostname("printer"), false);
+    }
+
+    #[test]
+    fn test_classify_gaming() {
+        use super::*;
+
+        assert_eq!(is_gaming_hostname("xbox-series-x"), true);
+        assert_eq!(is_gaming_hostname("playstation-5"), true);
+        assert_eq!(is_gaming_hostname("nintendo-switch"), true);
+        assert_eq!(is_gaming_hostname("steamdeck"), true);
+
+        assert_eq!(is_gaming_hostname("my-pc"), false);
+    }
+
+    #[test]
+    fn test_classify_phone() {
+        use super::*;
+
+        assert_eq!(is_phone_hostname("iphone-14-pro"), true);
+        assert_eq!(is_phone_hostname("ipad-mini"), true);
+        assert_eq!(is_phone_hostname("galaxy-s23"), true);
+        assert_eq!(is_phone_hostname("pixel-7"), true);
+        assert_eq!(is_phone_hostname("sm-g991u"), true);
+        assert_eq!(is_phone_hostname("oneplus-11"), true);
+        assert_eq!(is_phone_hostname("moto-g-power"), true);
+
+        // Should NOT match TV variants
+        assert_eq!(is_phone_hostname("galaxy-tv"), false);
+        assert_eq!(is_phone_hostname("androidtv"), false);
+    }
+
+    #[test]
+    fn test_classify_vm() {
+        use super::*;
+
+        assert_eq!(is_vm_hostname("vmware-esxi-01"), true);
+        assert_eq!(is_vm_hostname("proxmox-server"), true);
+        assert_eq!(is_vm_hostname("docker-host"), true);
+        assert_eq!(is_vm_hostname("kubernetes-node-1"), true);
+        assert_eq!(is_vm_hostname("vm-ubuntu-22"), true);
+        assert_eq!(is_vm_hostname("webserver-vm"), true);
+
+        assert_eq!(is_vm_hostname("my-laptop"), false);
+    }
+
+    #[test]
+    fn test_classify_soundbar() {
+        use super::*;
+
+        assert_eq!(is_soundbar_hostname("sonos-beam"), true);
+        assert_eq!(is_soundbar_hostname("bose-soundbar-700"), true);
+        assert_eq!(is_soundbar_hostname("samsung-sound-plus"), true);
+        assert_eq!(is_soundbar_hostname("jbl-bar-5.1"), true);
+
+        assert_eq!(is_soundbar_hostname("samsung-tv"), false);
+    }
+
+    #[test]
+    fn test_classify_appliance() {
+        use super::*;
+
+        assert_eq!(is_appliance_hostname("lg-dishwasher"), true);
+        assert_eq!(is_appliance_hostname("samsung-washer"), true);
+        assert_eq!(is_appliance_hostname("whirlpool-dryer"), true);
+        assert_eq!(is_appliance_hostname("bosch-dishwasher-500"), true);
+
+        // LG ThinQ appliances
+        assert_eq!(is_lg_appliance("ldf7774st"), true);
+        assert_eq!(is_lg_appliance("wm3900hwa"), true);
+        assert_eq!(is_lg_appliance("dlex3900w"), true);
+
+        assert_eq!(is_appliance_hostname("my-laptop"), false);
+    }
+
+    #[test]
+    fn test_classify_by_port() {
+        use super::*;
+
+        // Printer ports
+        assert_eq!(classify_by_port(9100), Some(CLASSIFICATION_PRINTER));
+        assert_eq!(classify_by_port(631), Some(CLASSIFICATION_PRINTER));
+
+        // TV ports
+        assert_eq!(classify_by_port(8008), Some(CLASSIFICATION_TV)); // Chromecast
+        assert_eq!(classify_by_port(8001), Some(CLASSIFICATION_TV)); // Samsung
+        assert_eq!(classify_by_port(6467), Some(CLASSIFICATION_TV)); // Roku
+
+        // VM ports
+        assert_eq!(classify_by_port(8006), Some(CLASSIFICATION_VIRTUALIZATION)); // Proxmox
+        assert_eq!(classify_by_port(2375), Some(CLASSIFICATION_VIRTUALIZATION)); // Docker
+
+        // Unknown
+        assert_eq!(classify_by_port(80), None);
+        assert_eq!(classify_by_port(443), None);
+    }
+
+    #[test]
+    fn test_classify_device_type_integration() {
+        // Full integration test of classify_device_type
+        assert_eq!(
+            EndPoint::classify_device_type(Some("hp-laserjet"), None, &[]),
+            Some("printer")
+        );
+        assert_eq!(
+            EndPoint::classify_device_type(Some("roku-ultra"), None, &[]),
+            Some("tv")
+        );
+        assert_eq!(
+            EndPoint::classify_device_type(Some("unknown-device"), None, &[9100]),
+            Some("printer")
+        );
+        assert_eq!(
+            EndPoint::classify_device_type(Some("my-laptop"), None, &[80, 443]),
+            None
+        );
     }
 }

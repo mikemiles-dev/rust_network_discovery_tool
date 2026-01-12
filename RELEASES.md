@@ -1,8 +1,45 @@
 # Release Notes
 
+## [0.3.6]
+
+### Added
+- **Stop Scan Button** - Cancel running network scans from the UI
+  - Red "Stop Scan" button appears when a scan is in progress
+  - Gracefully stops the current scan phase
+- **Interface-Based Database Naming** - Database automatically named after the monitored interface
+  - Single interface `en0` → `en0.db`
+  - Single interface `Wi-Fi` → `Wi-Fi.db`
+  - Multiple interfaces → `network.db`
+  - `DATABASE_URL` environment variable still overrides this behavior
+
+### Changed
+- Scanner moved to dedicated "Scanner" tab in the header (previously in sidebar)
+- Scanner tab now stays active during auto-refresh (no longer redirects to network tab)
+
+### Fixed
+- **Database locking issues during scanning** - Multiple improvements:
+  - Tables for scan results now created at startup instead of on every insert (eliminates schema lock contention)
+  - Added comprehensive retry logic with exponential backoff for database operations
+  - SQLWriter batch processing now properly retries on lock errors instead of failing
+- Auto-refresh no longer causes redirect away from Scanner tab
+
+### Performance
+- Removed redundant `CREATE TABLE IF NOT EXISTS` calls from hot paths (was causing exclusive locks on every scan result insert)
+
+---
+
 ## [0.3.5]
 
 ### Added
+- **Active Network Scanning** - Discover devices that aren't actively communicating
+  - **ARP Scanning**: Discover all devices on local subnet by MAC address (requires root/admin)
+  - **ICMP Ping Sweep**: Find responsive hosts via ping (requires root/admin)
+  - **TCP Port Scanning**: Probe common ports (22, 80, 443, 8080, etc.) to identify services
+  - **SSDP/UPnP Discovery**: Find smart devices, media servers, and IoT devices
+  - UI controls in sidebar with scan type selection and progress indicator
+  - Scan results create new endpoints in the graph
+  - Open ports stored in database for discovered devices
+  - API endpoints: `/api/scan/start`, `/api/scan/stop`, `/api/scan/status`, `/api/scan/capabilities`
 - Manual refresh button (🔄) next to auto-refresh stop button for on-demand data refresh
 - Clicking an endpoint now clears the search filter for cleaner navigation
 - Selected node indicator in sidebar showing "Selected: [node]" with unselect (X) button
@@ -39,6 +76,7 @@
 
 ### Changed
 - Hostname lookup cached globally to avoid repeated system calls
+- Local device is now always classified as "Local" type regardless of other detection
 
 ### Fixed
 - Database locking issues with concurrent read/write access
@@ -47,6 +85,8 @@
   - Set synchronous mode to NORMAL for better performance
 - Endpoint list now filters to only show nodes visible in the graph when a node is selected
 - Ports list now only shows ports from communications visible in the graph (prevents port filter from showing hidden edges)
+- Port and protocol filters now respect device type filters (e.g., filtering by port 443 no longer shows Internet devices when Internet filter is unchecked)
+- Ports list now dynamically updates based on visible edges when device type filters change
 
 ## [0.3.4]
 

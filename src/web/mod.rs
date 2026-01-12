@@ -15,9 +15,38 @@ use crate::network::device_control::DeviceController;
 use crate::network::endpoint::EndPoint;
 use crate::network::mdns_lookup::MDnsLookup;
 use crate::network::protocol::ProtocolPort;
+use crate::scanner::manager::{ScanConfig, ScanManager};
+use crate::scanner::{ScanResult, ScanType, check_scan_privileges};
 use rusqlite::{Connection, params};
+use std::sync::OnceLock;
+use tokio::sync::mpsc;
 
 use serde::{Deserialize, Serialize};
+
+// ============================================================================
+// SQL Helper Functions
+// ============================================================================
+
+/// Build a SQL IN clause placeholder string for a given number of parameters
+fn build_in_placeholders(count: usize) -> String {
+    (0..count).map(|_| "?").collect::<Vec<_>>().join(",")
+}
+
+/// Build a boxed parameter vector from i64 slice (for endpoint IDs)
+fn box_i64_params(ids: &[i64]) -> Vec<Box<dyn rusqlite::ToSql>> {
+    ids.iter()
+        .map(|id| Box::new(*id) as Box<dyn rusqlite::ToSql>)
+        .collect()
+}
+
+/// Convert boxed params to reference slice for query execution
+fn params_to_refs(params: &[Box<dyn rusqlite::ToSql>]) -> Vec<&dyn rusqlite::ToSql> {
+    params.iter().map(|p| p.as_ref()).collect()
+}
+
+// ============================================================================
+// Type Definitions
+// ============================================================================
 
 #[derive(RustEmbed)]
 #[folder = "templates/"]
@@ -104,72 +133,49 @@ fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
 fn get_protocols_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String> {
     let conn = new_connection();
 
-    // Resolve the hostname/IP/MAC to endpoint IDs
     let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, &hostname);
-
     if endpoint_ids.is_empty() {
         return Vec::new();
     }
 
-    // Build IN clause for endpoint IDs
-    let placeholders = endpoint_ids
-        .iter()
-        .map(|_| "?")
-        .collect::<Vec<_>>()
-        .join(",");
-
+    let placeholders = build_in_placeholders(endpoint_ids.len());
     let query = format!(
-        "
-        SELECT DISTINCT
+        "SELECT DISTINCT
             COALESCE(NULLIF(c.sub_protocol, ''), c.ip_header_protocol) as protocol
         FROM communications c
         WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
-            AND (c.src_endpoint_id IN ({}) OR c.dst_endpoint_id IN ({}))
-        ORDER BY protocol
-        ",
-        placeholders, placeholders
+            AND (c.src_endpoint_id IN ({0}) OR c.dst_endpoint_id IN ({0}))
+        ORDER BY protocol",
+        placeholders
     );
 
     let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
 
     // Build parameters: internal_minutes + endpoint_ids (2 times for src and dst)
-    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    params.push(Box::new(internal_minutes));
-    for _ in 0..2 {
-        for id in &endpoint_ids {
-            params.push(Box::new(*id));
-        }
-    }
-
-    let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(internal_minutes)];
+    params.extend(box_i64_params(&endpoint_ids));
+    params.extend(box_i64_params(&endpoint_ids));
 
     let rows = stmt
-        .query_map(params_ref.as_slice(), |row| row.get::<_, String>(0))
+        .query_map(params_to_refs(&params).as_slice(), |row| {
+            row.get::<_, String>(0)
+        })
         .expect("Failed to execute query");
 
-    rows.filter_map(|row| row.ok()).collect::<Vec<String>>()
+    rows.filter_map(|row| row.ok()).collect()
 }
 
 fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String> {
     let conn = new_connection();
 
-    // Resolve the hostname/IP/MAC to endpoint IDs
     let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, &hostname);
-
     if endpoint_ids.is_empty() {
         return Vec::new();
     }
 
-    // Build IN clause for endpoint IDs
-    let placeholders = endpoint_ids
-        .iter()
-        .map(|_| "?")
-        .collect::<Vec<_>>()
-        .join(",");
-
+    let placeholders = build_in_placeholders(endpoint_ids.len());
     let query = format!(
-        "
-        SELECT DISTINCT
+        "SELECT DISTINCT
             CASE
                 WHEN c.src_endpoint_id IN ({0}) THEN c.destination_port
                 WHEN c.dst_endpoint_id IN ({0}) THEN c.source_port
@@ -182,31 +188,27 @@ fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String
             AND port IS NOT NULL
             AND src_endpoint.name != '' AND dst_endpoint.name != ''
             AND src_endpoint.name IS NOT NULL AND dst_endpoint.name IS NOT NULL
-        ORDER BY CAST(port AS INTEGER)
-        ",
+        ORDER BY CAST(port AS INTEGER)",
         placeholders
     );
 
     let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
 
-    // Build parameters: internal_minutes + endpoint_ids (4 times for the 4 IN clauses: 2 in CASE, 2 in WHERE)
-    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    params.push(Box::new(internal_minutes));
+    // Build parameters: internal_minutes + endpoint_ids (4 times for the 4 IN clauses)
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(internal_minutes)];
     for _ in 0..4 {
-        for id in &endpoint_ids {
-            params.push(Box::new(*id));
-        }
+        params.extend(box_i64_params(&endpoint_ids));
     }
 
-    let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-
     let rows = stmt
-        .query_map(params_ref.as_slice(), |row| row.get::<_, i64>(0))
+        .query_map(params_to_refs(&params).as_slice(), |row| {
+            row.get::<_, i64>(0)
+        })
         .expect("Failed to execute query");
 
     rows.filter_map(|row| row.ok())
         .map(|port| port.to_string())
-        .collect::<Vec<String>>()
+        .collect()
 }
 
 /// Extract ports from communications data (already filtered for graph)
@@ -253,12 +255,7 @@ fn get_endpoint_ips_and_macs(endpoints: &[String]) -> HashMap<String, (Vec<Strin
             continue;
         }
 
-        let placeholders = endpoint_ids
-            .iter()
-            .map(|_| "?")
-            .collect::<Vec<_>>()
-            .join(",");
-
+        let placeholders = build_in_placeholders(endpoint_ids.len());
         let query = format!(
             "SELECT DISTINCT ea.ip, ea.mac
              FROM endpoint_attributes ea
@@ -267,12 +264,8 @@ fn get_endpoint_ips_and_macs(endpoints: &[String]) -> HashMap<String, (Vec<Strin
         );
 
         if let Ok(mut stmt) = conn.prepare(&query) {
-            let params_ref: Vec<&dyn rusqlite::ToSql> = endpoint_ids
-                .iter()
-                .map(|id| id as &dyn rusqlite::ToSql)
-                .collect();
-
-            if let Ok(rows) = stmt.query_map(params_ref.as_slice(), |row| {
+            let params = box_i64_params(&endpoint_ids);
+            if let Ok(rows) = stmt.query_map(params_to_refs(&params).as_slice(), |row| {
                 Ok((
                     row.get::<_, Option<String>>(0)?,
                     row.get::<_, Option<String>>(1)?,
@@ -312,23 +305,14 @@ fn get_all_ips_macs_and_hostnames_from_single_hostname(
 ) -> (Vec<String>, Vec<String>, Vec<String>) {
     let conn = new_connection();
 
-    // Resolve the hostname/IP/MAC to endpoint IDs
     let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, &hostname);
-
     if endpoint_ids.is_empty() {
         return (Vec::new(), Vec::new(), Vec::new());
     }
 
-    // Build IN clause for endpoint IDs
-    let placeholders = endpoint_ids
-        .iter()
-        .map(|_| "?")
-        .collect::<Vec<_>>()
-        .join(",");
-
+    let placeholders = build_in_placeholders(endpoint_ids.len());
     let query = format!(
-        "
-        SELECT DISTINCT ea.ip, ea.mac, ea.hostname
+        "SELECT DISTINCT ea.ip, ea.mac, ea.hostname
         FROM endpoint_attributes ea
         INNER JOIN endpoints e ON ea.endpoint_id = e.id
         WHERE ea.endpoint_id IN (
@@ -338,24 +322,17 @@ fn get_all_ips_macs_and_hostnames_from_single_hostname(
                 ON e2.id = c.src_endpoint_id OR e2.id = c.dst_endpoint_id
             WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
         )
-        AND ea.endpoint_id IN ({})
-        ",
+        AND ea.endpoint_id IN ({})",
         placeholders
     );
 
     let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
 
-    // Build parameters: internal_minutes + endpoint_ids
-    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    params.push(Box::new(internal_minutes));
-    for id in &endpoint_ids {
-        params.push(Box::new(*id));
-    }
-
-    let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(internal_minutes)];
+    params.extend(box_i64_params(&endpoint_ids));
 
     let rows = stmt
-        .query_map(params_ref.as_slice(), |row| {
+        .query_map(params_to_refs(&params).as_slice(), |row| {
             Ok((
                 row.get::<_, Option<String>>(0)?,
                 row.get::<_, Option<String>>(1)?,
@@ -442,14 +419,13 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
             }
             Some(ids)
         }
-        None => None, // None means show all endpoints
+        None => None,
     };
 
     // Build query - either filtered by endpoint or show all
     let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match &endpoint_ids {
         Some(ids) => {
-            // Filter to specific endpoint(s)
-            let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let placeholders = build_in_placeholders(ids.len());
             let query = format!(
                 "SELECT
                 src_endpoint.name AS src_hostname,
@@ -463,25 +439,19 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
                 FROM communications AS c
                 LEFT JOIN endpoints AS src_endpoint ON c.src_endpoint_id = src_endpoint.id
                 LEFT JOIN endpoints AS dst_endpoint ON c.dst_endpoint_id = dst_endpoint.id
-                WHERE (c.src_endpoint_id IN ({}) OR c.dst_endpoint_id IN ({}))
+                WHERE (c.src_endpoint_id IN ({0}) OR c.dst_endpoint_id IN ({0}))
                 AND c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
                 AND src_endpoint.name != '' AND dst_endpoint.name != ''
                 AND src_endpoint.name IS NOT NULL AND dst_endpoint.name IS NOT NULL",
-                placeholders, placeholders
+                placeholders
             );
 
-            let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-            for id in ids {
-                params.push(Box::new(*id));
-            }
-            for id in ids {
-                params.push(Box::new(*id));
-            }
+            let mut params = box_i64_params(ids);
+            params.extend(box_i64_params(ids));
             params.push(Box::new(internal_minutes));
             (query, params)
         }
         None => {
-            // Show all communications (overall network view)
             let query = "SELECT
                 src_endpoint.name AS src_hostname,
                 dst_endpoint.name AS dst_hostname,
@@ -498,17 +468,14 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
                 AND src_endpoint.name != '' AND dst_endpoint.name != ''
                 AND src_endpoint.name IS NOT NULL AND dst_endpoint.name IS NOT NULL".to_string();
 
-            let params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(internal_minutes)];
-            (query, params)
+            (query, vec![Box::new(internal_minutes)])
         }
     };
 
     let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
 
-    let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-
     let rows = stmt
-        .query_map(params_ref.as_slice(), |row| {
+        .query_map(params_to_refs(&params).as_slice(), |row| {
             let header_protocol = row.get::<_, String>("header_protocol")?;
             let sub_protocol = row
                 .get::<_, Option<String>>("sub_protocol")?
@@ -898,6 +865,12 @@ pub fn start(preferred_port: u16) {
                         .service(send_device_command)
                         .service(launch_device_app)
                         .service(pair_device)
+                        .service(start_scan)
+                        .service(stop_scan)
+                        .service(get_scan_status)
+                        .service(get_scan_capabilities)
+                        .service(get_scan_config)
+                        .service(set_scan_config)
                 })
                 .bind(("127.0.0.1", port))
                 {
@@ -1008,6 +981,8 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     for endpoint in &endpoints {
         endpoint_types.entry(endpoint.clone()).or_insert("other");
     }
+    // Always classify local device as "local"
+    endpoint_types.insert(hostname.clone(), "local");
     // Convert manual_overrides to Vec for serialization
     let manual_overrides: Vec<String> = manual_overrides.into_iter().collect();
 
@@ -1206,4 +1181,225 @@ async fn pair_device(body: Json<PairRequest>) -> impl Responder {
         Ok(r) => HttpResponse::BadRequest().json(r),
         Err(_) => HttpResponse::InternalServerError().body("Pairing failed"),
     }
+}
+
+// ============================================================================
+// Network Scanner API Endpoints
+// ============================================================================
+
+/// Global scan manager instance
+static SCAN_MANAGER: OnceLock<std::sync::Arc<ScanManager>> = OnceLock::new();
+
+fn get_scan_manager() -> std::sync::Arc<ScanManager> {
+    SCAN_MANAGER
+        .get_or_init(|| {
+            let (tx, mut rx) = mpsc::channel::<ScanResult>(1000);
+
+            // Spawn a task to process scan results
+            tokio::spawn(async move {
+                while let Some(result) = rx.recv().await {
+                    // Process scan result - create/update endpoint in database
+                    if let Err(e) = process_scan_result(&result) {
+                        eprintln!("Error processing scan result: {}", e);
+                    }
+                }
+            });
+
+            std::sync::Arc::new(ScanManager::new(tx))
+        })
+        .clone()
+}
+
+/// Process a scan result and store in database with retry logic
+fn process_scan_result(result: &ScanResult) -> Result<(), String> {
+    const MAX_RETRIES: u32 = 5;
+
+    for attempt in 1..=MAX_RETRIES {
+        match process_scan_result_inner(result) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.contains("database is locked") && attempt < MAX_RETRIES => {
+                // Exponential backoff: 50ms, 100ms, 200ms, 400ms
+                std::thread::sleep(std::time::Duration::from_millis(50 * (1 << (attempt - 1))));
+                continue;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    Err("Max retries exceeded".to_string())
+}
+
+/// Inner function that does the actual work
+fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
+    let conn = new_connection();
+
+    match result {
+        ScanResult::Arp(arp) => {
+            let ip_str = arp.ip.to_string();
+            let mac_str = arp.mac.to_string();
+            if let Ok(endpoint_id) =
+                EndPoint::get_or_insert_endpoint(&conn, Some(mac_str), Some(ip_str), None, &[])
+            {
+                insert_scan_result(
+                    &conn,
+                    endpoint_id,
+                    "arp",
+                    Some(arp.response_time_ms as i64),
+                    None,
+                )?;
+            }
+        }
+        ScanResult::Icmp(icmp) => {
+            if icmp.alive {
+                let ip_str = icmp.ip.to_string();
+                if let Ok(endpoint_id) =
+                    EndPoint::get_or_insert_endpoint(&conn, None, Some(ip_str), None, &[])
+                {
+                    let details = serde_json::json!({
+                        "ttl": icmp.ttl,
+                        "rtt_ms": icmp.rtt_ms,
+                    });
+                    insert_scan_result(
+                        &conn,
+                        endpoint_id,
+                        "icmp",
+                        icmp.rtt_ms.map(|r| r as i64),
+                        Some(&details.to_string()),
+                    )?;
+                }
+            }
+        }
+        ScanResult::Port(port) => {
+            if port.open {
+                let ip_str = port.ip.to_string();
+                if let Ok(endpoint_id) =
+                    EndPoint::get_or_insert_endpoint(&conn, None, Some(ip_str), None, &[])
+                {
+                    insert_open_port(&conn, endpoint_id, port.port, port.service_name.as_deref())?;
+                }
+            }
+        }
+        ScanResult::Ssdp(ssdp) => {
+            let ip_str = ssdp.ip.to_string();
+            if let Ok(endpoint_id) =
+                EndPoint::get_or_insert_endpoint(&conn, None, Some(ip_str), None, &[])
+            {
+                let details = serde_json::json!({
+                    "location": ssdp.location,
+                    "server": ssdp.server,
+                    "device_type": ssdp.device_type,
+                });
+                insert_scan_result(&conn, endpoint_id, "ssdp", None, Some(&details.to_string()))?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Insert a scan result into the database
+/// Note: Table is created at startup in SQLWriter to avoid schema locks
+fn insert_scan_result(
+    conn: &Connection,
+    endpoint_id: i64,
+    scan_type: &str,
+    response_time_ms: Option<i64>,
+    details: Option<&str>,
+) -> Result<(), String> {
+    let now = chrono::Utc::now().timestamp();
+    conn.execute(
+        "INSERT INTO scan_results (endpoint_id, scan_type, scanned_at, response_time_ms, details) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![endpoint_id, scan_type, now, response_time_ms, details],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Insert an open port into the database
+/// Note: Table is created at startup in SQLWriter to avoid schema locks
+fn insert_open_port(
+    conn: &Connection,
+    endpoint_id: i64,
+    port: u16,
+    service_name: Option<&str>,
+) -> Result<(), String> {
+    let now = chrono::Utc::now().timestamp();
+    conn.execute(
+        "INSERT OR REPLACE INTO open_ports (endpoint_id, port, protocol, service_name, last_seen_at) VALUES (?1, ?2, 'tcp', ?3, ?4)",
+        params![endpoint_id, port as i64, service_name, now],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct StartScanRequest {
+    scan_types: Vec<ScanType>,
+}
+
+#[derive(Serialize)]
+struct StartScanResponse {
+    success: bool,
+    message: String,
+}
+
+#[post("/api/scan/start")]
+async fn start_scan(body: Json<StartScanRequest>) -> impl Responder {
+    let manager = get_scan_manager();
+    let scan_types = body.scan_types.clone();
+
+    match manager.start_scan(scan_types).await {
+        Ok(()) => HttpResponse::Ok().json(StartScanResponse {
+            success: true,
+            message: "Scan started".to_string(),
+        }),
+        Err(e) => HttpResponse::BadRequest().json(StartScanResponse {
+            success: false,
+            message: e,
+        }),
+    }
+}
+
+#[post("/api/scan/stop")]
+async fn stop_scan() -> impl Responder {
+    let manager = get_scan_manager();
+    manager.stop_scan().await;
+
+    HttpResponse::Ok().json(StartScanResponse {
+        success: true,
+        message: "Scan stopped".to_string(),
+    })
+}
+
+#[get("/api/scan/status")]
+async fn get_scan_status() -> impl Responder {
+    let manager = get_scan_manager();
+    let status = manager.get_status().await;
+
+    HttpResponse::Ok().json(status)
+}
+
+#[get("/api/scan/capabilities")]
+async fn get_scan_capabilities() -> impl Responder {
+    let capabilities = check_scan_privileges();
+    HttpResponse::Ok().json(capabilities)
+}
+
+#[get("/api/scan/config")]
+async fn get_scan_config() -> impl Responder {
+    let manager = get_scan_manager();
+    let config = manager.get_config().await;
+
+    HttpResponse::Ok().json(config)
+}
+
+#[post("/api/scan/config")]
+async fn set_scan_config(body: Json<ScanConfig>) -> impl Responder {
+    let manager = get_scan_manager();
+    manager.set_config(body.into_inner()).await;
+
+    HttpResponse::Ok().json(StartScanResponse {
+        success: true,
+        message: "Config updated".to_string(),
+    })
 }

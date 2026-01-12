@@ -903,6 +903,7 @@
       <div class="tabs">
         <button class="tab-btn active" onclick="switchTab('network')">Network</button>
         <button class="tab-btn" onclick="switchTab('dns')">mDNS Entries</button>
+        <button class="tab-btn" onclick="switchTab('scanner')">Scanner</button>
       </div>
     </div>
     <div class="controls">
@@ -1046,6 +1047,7 @@
           {% endfor %}
         </div>
       </div>
+
     </aside>
 
     <main id="graph-container">
@@ -1397,6 +1399,111 @@
     </div>
   </div><!-- End DNS Tab -->
 
+  <!-- Scanner Tab Content -->
+  <div id="scanner-tab" class="tab-content">
+    <div class="dns-table-container" style="display: flex; flex-direction: column; align-items: center; padding-top: 2rem;">
+      <div style="max-width: 600px; width: 100%;">
+        <h2 style="color: var(--text-primary); margin-bottom: 1.5rem; font-size: 1.25rem; text-align: center;">Network Scanner</h2>
+
+        <div class="card" style="padding: 1.5rem;">
+          <div class="card-title" style="margin-bottom: 1rem; font-size: 0.875rem;">Scan Types</div>
+
+          <!-- Scan Type Checkboxes -->
+          <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: rgba(55, 65, 81, 0.5); border-radius: 0.5rem; border: 1px solid #4b5563; flex: 1; min-width: 120px;">
+              <input type="checkbox" id="scan-arp" checked style="cursor: pointer; width: 1rem; height: 1rem;">
+              <div>
+                <div style="font-weight: 500;">ARP</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">Find devices by MAC</div>
+              </div>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: rgba(55, 65, 81, 0.5); border-radius: 0.5rem; border: 1px solid #4b5563; flex: 1; min-width: 120px;">
+              <input type="checkbox" id="scan-icmp" checked style="cursor: pointer; width: 1rem; height: 1rem;">
+              <div>
+                <div style="font-weight: 500;">Ping</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">ICMP echo sweep</div>
+              </div>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: rgba(55, 65, 81, 0.5); border-radius: 0.5rem; border: 1px solid #4b5563; flex: 1; min-width: 120px;">
+              <input type="checkbox" id="scan-port" style="cursor: pointer; width: 1rem; height: 1rem;">
+              <div>
+                <div style="font-weight: 500;">Ports</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">TCP port probe</div>
+              </div>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: rgba(55, 65, 81, 0.5); border-radius: 0.5rem; border: 1px solid #4b5563; flex: 1; min-width: 120px;">
+              <input type="checkbox" id="scan-ssdp" checked style="cursor: pointer; width: 1rem; height: 1rem;">
+              <div>
+                <div style="font-weight: 500;">SSDP</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">UPnP discovery</div>
+              </div>
+            </label>
+          </div>
+
+          <!-- Privilege Warning -->
+          <div id="privilege-warning" style="display: none; margin-bottom: 1rem; padding: 0.75rem; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 0.5rem; font-size: 0.75rem; color: #fbbf24;">
+            ⚠️ ARP and Ping scans require root/admin privileges. Run with <code style="background: rgba(0,0,0,0.3); padding: 0.125rem 0.25rem; border-radius: 0.25rem;">sudo</code> to enable.
+          </div>
+
+          <!-- Scan Buttons -->
+          <div id="scan-buttons" style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+            <button id="start-scan-btn" onclick="startNetworkScan()" style="flex: 1; padding: 0.75rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; font-weight: 600; transition: all 0.2s;">
+              🔍 Scan Network
+            </button>
+            <button id="stop-scan-btn" onclick="stopNetworkScan()" style="display: none; flex: 1; padding: 0.75rem; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; font-weight: 600; transition: all 0.2s;">
+              ⏹ Stop Scan
+            </button>
+          </div>
+
+          <!-- Progress -->
+          <div id="scan-progress" style="display: none; margin-bottom: 1rem;">
+            <div style="background: rgba(51, 65, 85, 0.6); border-radius: 0.375rem; height: 8px; overflow: hidden;">
+              <div id="scan-progress-fill" style="background: linear-gradient(90deg, #3b82f6, #8b5cf6); height: 100%; width: 0%; transition: width 0.3s;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem;">
+              <span id="scan-phase">Scanning...</span>
+              <span id="scan-progress-text">0%</span>
+            </div>
+          </div>
+
+          <!-- Stats -->
+          <div style="display: flex; gap: 1rem; justify-content: center;">
+            <div class="stat-badge" style="font-size: 0.75rem; padding: 0.5rem 1rem;">
+              <span style="color: var(--text-secondary);">Last Scan:</span>
+              <span id="last-scan-time" style="font-weight: 500;">Never</span>
+            </div>
+            <div class="stat-badge" style="font-size: 0.75rem; padding: 0.5rem 1rem;">
+              <span style="color: var(--text-secondary);">Devices Found:</span>
+              <span id="discovered-count" class="stat-number" style="font-weight: 500;">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Scan Results Table -->
+        <div class="card" style="margin-top: 1rem; padding: 1rem;">
+          <div class="card-title" style="margin-bottom: 0.75rem; font-size: 0.875rem;">Recent Scan Results</div>
+          <div id="scan-results-container" style="max-height: 300px; overflow-y: auto;">
+            <table class="dns-table" style="font-size: 0.75rem;">
+              <thead>
+                <tr>
+                  <th>IP Address</th>
+                  <th>MAC Address</th>
+                  <th>Method</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody id="scan-results-body">
+                <tr>
+                  <td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 1rem;">No scan results yet. Click "Scan Network" to discover devices.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div><!-- End Scanner Tab -->
+
   <script>
     // Track active tab
     let activeTab = 'network';
@@ -1422,6 +1529,11 @@
       // If switching to DNS tab, do an immediate refresh of DNS entries
       if (tabName === 'dns') {
         refreshDnsEntries();
+      }
+
+      // If switching to Scanner tab, check capabilities
+      if (tabName === 'scanner') {
+        checkScanCapabilities();
       }
     }
 
@@ -1494,6 +1606,154 @@
     }, 150);
 
     // Navigation functions
+    // ========================================================================
+    // Network Scanner Functions
+    // ========================================================================
+
+    let scanPollInterval = null;
+
+    async function startNetworkScan() {
+      const scanTypes = [];
+      if (document.getElementById('scan-arp').checked) scanTypes.push('arp');
+      if (document.getElementById('scan-icmp').checked) scanTypes.push('icmp');
+      if (document.getElementById('scan-port').checked) scanTypes.push('port');
+      if (document.getElementById('scan-ssdp').checked) scanTypes.push('ssdp');
+
+      if (scanTypes.length === 0) {
+        alert('Please select at least one scan type');
+        return;
+      }
+
+      // Hide start button, show stop button
+      document.getElementById('start-scan-btn').style.display = 'none';
+      document.getElementById('stop-scan-btn').style.display = 'block';
+      document.getElementById('scan-progress').style.display = 'block';
+
+      try {
+        const response = await fetch('/api/scan/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scan_types: scanTypes })
+        });
+
+        if (response.ok) {
+          // Start polling for status
+          scanPollInterval = setInterval(pollScanStatus, 500);
+        } else {
+          const result = await response.json();
+          alert('Scan failed: ' + result.message);
+          resetScanButton();
+        }
+      } catch (e) {
+        alert('Error starting scan: ' + e);
+        resetScanButton();
+      }
+    }
+
+    async function stopNetworkScan() {
+      const stopBtn = document.getElementById('stop-scan-btn');
+      stopBtn.textContent = 'Stopping...';
+      stopBtn.disabled = true;
+      stopBtn.style.opacity = '0.6';
+
+      try {
+        await fetch('/api/scan/stop', { method: 'POST' });
+        // The pollScanStatus will detect the scan has stopped and reset the UI
+      } catch (e) {
+        console.error('Error stopping scan:', e);
+        resetScanButton();
+      }
+    }
+
+    async function pollScanStatus() {
+      try {
+        const response = await fetch('/api/scan/status');
+        const status = await response.json();
+
+        document.getElementById('scan-progress-fill').style.width = status.progress_percent + '%';
+        document.getElementById('scan-progress-text').textContent = status.progress_percent + '%';
+        document.getElementById('scan-phase').textContent = status.current_phase || 'Scanning...';
+        document.getElementById('discovered-count').textContent = status.discovered_count;
+
+        if (status.last_scan_time) {
+          const date = new Date(status.last_scan_time * 1000);
+          document.getElementById('last-scan-time').textContent = date.toLocaleTimeString();
+        }
+
+        if (!status.running) {
+          clearInterval(scanPollInterval);
+          scanPollInterval = null;
+          resetScanButton();
+
+          // Refresh the page to show new endpoints
+          if (status.discovered_count > 0) {
+            setTimeout(() => location.reload(), 500);
+          }
+        }
+      } catch (e) {
+        console.error('Error polling scan status:', e);
+      }
+    }
+
+    function resetScanButton() {
+      // Reset and show start button
+      const startBtn = document.getElementById('start-scan-btn');
+      startBtn.textContent = '🔍 Scan Network';
+      startBtn.disabled = false;
+      startBtn.style.opacity = '1';
+      startBtn.style.display = 'block';
+
+      // Reset and hide stop button
+      const stopBtn = document.getElementById('stop-scan-btn');
+      stopBtn.textContent = '⏹ Stop Scan';
+      stopBtn.disabled = false;
+      stopBtn.style.opacity = '1';
+      stopBtn.style.display = 'none';
+
+      document.getElementById('scan-progress').style.display = 'none';
+    }
+
+    // Check scan capabilities on load
+    async function checkScanCapabilities() {
+      try {
+        const response = await fetch('/api/scan/capabilities');
+        const caps = await response.json();
+
+        let needsPrivileges = false;
+
+        // Disable checkboxes for unavailable scan types
+        if (!caps.can_arp) {
+          document.getElementById('scan-arp').disabled = true;
+          document.getElementById('scan-arp').checked = false;
+          document.getElementById('scan-arp').parentElement.style.opacity = '0.5';
+          document.getElementById('scan-arp').parentElement.title = 'Requires root/admin privileges';
+          needsPrivileges = true;
+        }
+        if (!caps.can_icmp) {
+          document.getElementById('scan-icmp').disabled = true;
+          document.getElementById('scan-icmp').checked = false;
+          document.getElementById('scan-icmp').parentElement.style.opacity = '0.5';
+          document.getElementById('scan-icmp').parentElement.title = 'Requires root/admin privileges';
+          needsPrivileges = true;
+        }
+
+        // Show privilege warning if needed
+        const warning = document.getElementById('privilege-warning');
+        if (warning) {
+          warning.style.display = needsPrivileges ? 'block' : 'none';
+        }
+      } catch (e) {
+        console.error('Error checking scan capabilities:', e);
+      }
+    }
+
+    // Initialize scan capabilities check
+    checkScanCapabilities();
+
+    // ========================================================================
+    // Navigation Functions
+    // ========================================================================
+
     function selectNode(nodeId) {
       // Clear search input
       const searchInput = document.getElementById('endpointSearchInput');
@@ -1854,6 +2114,87 @@
       }
     }
 
+    // Update ports list based on visible edges in the graph
+    function updatePortsFromGraph() {
+      // Get the selected endpoint from URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const selectedEndpoint = urlParams.get('node');
+
+      // Collect ports from visible edges
+      const visiblePorts = new Set();
+      cy.edges().forEach(edge => {
+        if (edge.style('display') === 'element') {
+          const srcPorts = edge.data('src_port');
+          const dstPorts = edge.data('dst_port');
+          const srcNode = edge.source().id();
+          const dstNode = edge.target().id();
+
+          // Get port relevant to selected endpoint (the remote port)
+          if (selectedEndpoint) {
+            if (srcNode === selectedEndpoint && dstPorts) {
+              String(dstPorts).split(',').forEach(p => {
+                const port = parseInt(p.trim());
+                if (!isNaN(port)) visiblePorts.add(port);
+              });
+            }
+            if (dstNode === selectedEndpoint && srcPorts) {
+              String(srcPorts).split(',').forEach(p => {
+                const port = parseInt(p.trim());
+                if (!isNaN(port)) visiblePorts.add(port);
+              });
+            }
+          } else {
+            // No endpoint selected - show all ports from visible edges
+            if (srcPorts) {
+              String(srcPorts).split(',').forEach(p => {
+                const port = parseInt(p.trim());
+                if (!isNaN(port)) visiblePorts.add(port);
+              });
+            }
+            if (dstPorts) {
+              String(dstPorts).split(',').forEach(p => {
+                const port = parseInt(p.trim());
+                if (!isNaN(port)) visiblePorts.add(port);
+              });
+            }
+          }
+        }
+      });
+
+      // Sort ports numerically
+      const sortedPorts = Array.from(visiblePorts).sort((a, b) => a - b);
+
+      // Get the container
+      const container = document.getElementById('ports-container');
+
+      // Clear existing badges
+      container.innerHTML = '';
+
+      // Create badges for all visible ports
+      if (sortedPorts.length === 0) {
+        container.innerHTML = '<div class="empty-state">No ports</div>';
+      } else {
+        sortedPorts.forEach(port => {
+          const badge = document.createElement('div');
+          badge.className = 'protocol-badge';
+          badge.dataset.port = port;
+          badge.textContent = port;
+          badge.onclick = function() { filterByPort(port, this); };
+
+          // Preserve selected/dimmed state if there's an active filter
+          if (selectedPort) {
+            if (port == selectedPort) {
+              badge.classList.add('selected');
+            } else {
+              badge.classList.add('dimmed');
+            }
+          }
+
+          container.appendChild(badge);
+        });
+      }
+    }
+
     // Check if an IP is on the local network (private IP ranges)
     function isLocalIP(ip) {
       if (!ip) return false;
@@ -2077,8 +2418,9 @@
         });
       }
 
-      // Update visible protocols in overlay
+      // Update visible protocols and ports in overlay
       updateVisibleProtocols();
+      updatePortsFromGraph();
 
       // Check if any communications are visible after filtering
       checkForCommunications();
@@ -2185,6 +2527,34 @@
     // Global variable to track selected protocol
     let selectedProtocol = null;
 
+    // Helper function to check if a node type matches current type filters
+    function matchesTypeFilter(type) {
+      const showLocal = document.getElementById('filterLocal').checked;
+      const showGateway = document.getElementById('filterGateway').checked;
+      const showInternet = document.getElementById('filterInternet').checked;
+      const showPrinter = document.getElementById('filterPrinter').checked;
+      const showTv = document.getElementById('filterTv').checked;
+      const showGaming = document.getElementById('filterGaming').checked;
+      const showPhone = document.getElementById('filterPhone').checked;
+      const showVirtualization = document.getElementById('filterVirtualization').checked;
+      const showSoundbar = document.getElementById('filterSoundbar').checked;
+      const showAppliance = document.getElementById('filterAppliance').checked;
+      const showOther = document.getElementById('filterOther').checked;
+
+      if (type === 'local' && showLocal) return true;
+      if (type === 'gateway' && showGateway) return true;
+      if (type === 'internet' && showInternet) return true;
+      if (type === 'printer' && showPrinter) return true;
+      if (type === 'tv' && showTv) return true;
+      if (type === 'gaming' && showGaming) return true;
+      if (type === 'phone' && showPhone) return true;
+      if (type === 'virtualization' && showVirtualization) return true;
+      if (type === 'soundbar' && showSoundbar) return true;
+      if (type === 'appliance' && showAppliance) return true;
+      if (type === 'other' && showOther) return true;
+      return false;
+    }
+
     // Apply combined protocol and port filters
     function applyCombinedFilters() {
       const relevantNodeIds = new Set();
@@ -2210,10 +2580,18 @@
           matchesPort = srcPortList.includes(portStr) || dstPortList.includes(portStr);
         }
 
-        // Edge must match ALL active filters
-        if (matchesProtocol && matchesPort) {
-          relevantNodeIds.add(edge.source().id());
-          relevantNodeIds.add(edge.target().id());
+        // Check if both endpoints pass type filters
+        const srcNode = edge.source();
+        const dstNode = edge.target();
+        const srcType = srcNode.data('type') || 'other';
+        const dstType = dstNode.data('type') || 'other';
+        const srcPassesTypeFilter = matchesTypeFilter(srcType);
+        const dstPassesTypeFilter = matchesTypeFilter(dstType);
+
+        // Edge must match ALL active filters AND both nodes must pass type filters
+        if (matchesProtocol && matchesPort && srcPassesTypeFilter && dstPassesTypeFilter) {
+          relevantNodeIds.add(srcNode.id());
+          relevantNodeIds.add(dstNode.id());
           edge.style('display', 'element');
           edge.style('opacity', 0.8);
           edge.style('width', 2);
@@ -2222,9 +2600,10 @@
         }
       });
 
-      // Show/hide nodes based on relevant edges
+      // Show/hide nodes based on relevant edges AND type filter
       cy.nodes().forEach(node => {
-        if (relevantNodeIds.has(node.id())) {
+        const nodeType = node.data('type') || 'other';
+        if (relevantNodeIds.has(node.id()) && matchesTypeFilter(nodeType)) {
           node.style('display', 'element');
         } else {
           node.style('display', 'none');
@@ -2669,8 +3048,9 @@
       }
     }
 
-    // Initialize visible protocols on page load
+    // Initialize visible protocols and ports on page load
     updateVisibleProtocols();
+    updatePortsFromGraph();
     checkForCommunications();
 
     // Node click handler
@@ -2807,6 +3187,10 @@
           if (activeTab === 'dns') {
             // Refresh DNS entries without page reload
             refreshDnsEntries();
+          } else if (activeTab === 'scanner') {
+            // Don't reload page when on scanner tab - scanner has its own polling
+            // Just refresh the scan status
+            pollScanStatus();
           } else {
             // Reload page for network tab
             window.location.reload();
@@ -2837,6 +3221,8 @@
     function manualRefresh() {
       if (activeTab === 'dns') {
         refreshDnsEntries();
+      } else if (activeTab === 'scanner') {
+        pollScanStatus();
       } else {
         window.location.reload();
       }

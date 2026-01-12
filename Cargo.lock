@@ -959,6 +959,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "genawaiter"
+version = "0.99.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c86bd0361bcbde39b13475e6e36cb24c329964aa2611be285289d1e4b751c1a0"
+dependencies = [
+ "futures-core",
+ "genawaiter-macro",
+]
+
+[[package]]
+name = "genawaiter-macro"
+version = "0.99.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b32dfe1fdfc0bbde1f22a5da25355514b5e450c33a6af6770884c8750aedfbc"
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2174,7 +2190,7 @@ dependencies = [
 
 [[package]]
 name = "rust_network_discovery_tool"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "actix-files",
  "actix-rt",
@@ -2185,6 +2201,7 @@ dependencies = [
  "ctrlc",
  "dns-lookup",
  "futures",
+ "ipnetwork",
  "lazy_static",
  "mdns-sd",
  "mime_guess",
@@ -2198,6 +2215,8 @@ dependencies = [
  "rust-embed",
  "serde",
  "serde_json",
+ "socket2 0.5.10",
+ "ssdp-client",
  "tempfile",
  "tera",
  "tokio",
@@ -2449,6 +2468,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 dependencies = [
  "lock_api",
+]
+
+[[package]]
+name = "ssdp-client"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04f4048b05716cdb270e1e5960d9dd4d428e7ceaa939ee5348a84f6e43d52df1"
+dependencies = [
+ "futures-core",
+ "genawaiter",
+ "log",
+ "tokio",
 ]
 
 [[package]]

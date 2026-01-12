@@ -16,7 +16,8 @@ pub fn new_connection() -> Connection {
         Connection::open(db_path).unwrap_or_else(|_| panic!("Failed to open database: {}", db_url));
 
     // Set busy timeout first (this doesn't require any locks)
-    let _ = conn.execute("PRAGMA busy_timeout = 5000;", []);
+    // 30 seconds to handle heavy contention during scanning
+    let _ = conn.execute("PRAGMA busy_timeout = 30000;", []);
 
     // Try to enable WAL mode (only needs to succeed once per database)
     // This may fail if another connection has an active transaction, which is OK
@@ -82,6 +83,36 @@ impl SQLWriter {
             Communication::create_table_if_not_exists(&conn)
                 .expect("Failed to create table if not exists");
 
+            // Create scanner-related tables at startup to avoid schema locks during scanning
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS scan_results (
+                    id INTEGER PRIMARY KEY,
+                    endpoint_id INTEGER NOT NULL,
+                    scan_type TEXT NOT NULL,
+                    scanned_at INTEGER NOT NULL,
+                    response_time_ms INTEGER,
+                    details TEXT,
+                    FOREIGN KEY (endpoint_id) REFERENCES endpoints(id)
+                )",
+                [],
+            )
+            .expect("Failed to create scan_results table");
+
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS open_ports (
+                    id INTEGER PRIMARY KEY,
+                    endpoint_id INTEGER NOT NULL,
+                    port INTEGER NOT NULL,
+                    protocol TEXT DEFAULT 'tcp',
+                    service_name TEXT,
+                    last_seen_at INTEGER NOT NULL,
+                    FOREIGN KEY (endpoint_id) REFERENCES endpoints(id),
+                    UNIQUE(endpoint_id, port, protocol)
+                )",
+                [],
+            )
+            .expect("Failed to create open_ports table");
+
             const BATCH_SIZE: usize = 500;
             const BATCH_TIMEOUT_MS: u64 = 1000; // Flush every 1 second
             let mut batch = Vec::with_capacity(BATCH_SIZE);
@@ -146,34 +177,92 @@ impl SQLWriter {
             return;
         }
 
-        // Process all communications in a single transaction
-        let tx = match conn.transaction() {
-            Ok(tx) => tx,
-            Err(e) => {
-                eprintln!("Failed to start transaction: {}", e);
-                batch.clear();
-                return;
-            }
-        };
+        const MAX_BATCH_RETRIES: u64 = 5;
 
-        for communication in batch.drain(..) {
-            if let Err(e) = communication.insert_communication(&tx) {
-                match e {
-                    rusqlite::Error::SqliteFailure(err, Some(_msg))
-                        if err.code == rusqlite::ErrorCode::ConstraintViolation =>
-                    {
-                        // Silently ignore constraint violations (duplicates)
+        for attempt in 1..=MAX_BATCH_RETRIES {
+            // Try to process the entire batch in a transaction
+            let tx = match conn.transaction() {
+                Ok(tx) => tx,
+                Err(e) => {
+                    if attempt < MAX_BATCH_RETRIES {
+                        // Exponential backoff: 100ms, 200ms, 400ms, 800ms, 1600ms
+                        std::thread::sleep(std::time::Duration::from_millis(
+                            100 * (1 << (attempt - 1)),
+                        ));
+                        continue;
                     }
-                    _ => {
-                        eprintln!("Failed to insert communication: {}", e);
+                    eprintln!(
+                        "Failed to start transaction after {} attempts: {}",
+                        attempt, e
+                    );
+                    batch.clear();
+                    return;
+                }
+            };
+
+            let mut had_lock_error = false;
+
+            for communication in batch.iter() {
+                if let Err(e) = communication.insert_communication(&tx) {
+                    match &e {
+                        rusqlite::Error::SqliteFailure(err, _)
+                            if err.code == rusqlite::ErrorCode::ConstraintViolation =>
+                        {
+                            // Silently ignore constraint violations (duplicates)
+                        }
+                        rusqlite::Error::SqliteFailure(err, _)
+                            if err.code == rusqlite::ErrorCode::DatabaseBusy =>
+                        {
+                            // Database locked - will retry the whole batch
+                            had_lock_error = true;
+                            break;
+                        }
+                        _ => {
+                            // Check if error message contains "database is locked"
+                            if e.to_string().contains("database is locked") {
+                                had_lock_error = true;
+                                break;
+                            }
+                            eprintln!("Failed to insert communication: {}", e);
+                        }
                     }
                 }
             }
+
+            if had_lock_error {
+                // Rollback happens automatically when tx is dropped
+                drop(tx);
+                if attempt < MAX_BATCH_RETRIES {
+                    // Exponential backoff
+                    std::thread::sleep(std::time::Duration::from_millis(
+                        100 * (1 << (attempt - 1)),
+                    ));
+                    continue;
+                }
+                eprintln!(
+                    "Database locked after {} retry attempts, dropping batch",
+                    attempt
+                );
+                batch.clear();
+                return;
+            }
+
+            // Success - commit and clear batch
+            if let Err(e) = tx.commit() {
+                if e.to_string().contains("database is locked") && attempt < MAX_BATCH_RETRIES {
+                    std::thread::sleep(std::time::Duration::from_millis(
+                        100 * (1 << (attempt - 1)),
+                    ));
+                    continue;
+                }
+                eprintln!("Failed to commit transaction: {}", e);
+            }
+
+            batch.clear();
+            return;
         }
 
-        if let Err(e) = tx.commit() {
-            eprintln!("Failed to commit transaction: {}", e);
-        }
+        batch.clear();
     }
 
     fn cleanup_old_data(conn: &Connection) -> rusqlite::Result<()> {

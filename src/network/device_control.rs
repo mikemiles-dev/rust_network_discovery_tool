@@ -569,7 +569,9 @@ impl SamsungController {
                                         let _ = socket.close(None);
                                         return CommandResult {
                                             success: true,
-                                            message: "Paired successfully! You can now control this TV.".to_string(),
+                                            message:
+                                                "Paired successfully! You can now control this TV."
+                                                    .to_string(),
                                         };
                                     }
 

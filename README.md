@@ -6,9 +6,80 @@ Rust Network Discovery Tool
 
 ![Screenshot](screenshot_control.png)
 
+![Screenshot](screenshot_network_scan.png)
+
 A lightweight network traffic monitoring tool that captures and visualizes network connections on your local network. Shows "what's talking to what" in an easy-to-use web interface.
 
 ## Features
+
+- **Passive Monitoring**: Captures network traffic to see what's communicating
+- **Active Network Scanning**: Discover devices that aren't actively communicating
+  - **ARP Scanning**: Find all devices on your local subnet by MAC address (requires root/admin)
+  - **ICMP Ping Sweep**: Discover responsive hosts via ICMP echo (requires root/admin)
+  - **TCP Port Scanning**: Probe common ports (22, 80, 443, 8080, etc.) to identify services
+  - **SSDP/UPnP Discovery**: Find smart devices, media servers, and IoT devices
+- **Smart Interface Filtering**: Automatically monitors only real network interfaces (skips loopback, Docker, VPN)
+- **Connection Deduplication**: Tracks unique connections instead of individual packets
+- **Automatic Data Retention**: Keeps data for 7 days by default (configurable)
+- **Privacy-Focused**: Doesn't store packet payloads, only connection metadata
+- **Interactive Network Graph**: Click-to-navigate network visualization powered by Cytoscape.js
+- **Protocol Detection**: Identifies HTTP, HTTPS, DNS, SSH, and 20+ other protocols
+- **Hostname Resolution**: Uses DNS, mDNS, and deep packet inspection (SNI, HTTP Host headers)
+- **Device Remote Control**: Control Roku and Samsung Smart TVs directly from the UI
+- **DNS Caching**: Prevents slow lookups with DNS cache
+- **High Performance**: Optimized with database indexes, transaction batching, and connection pooling
+
+## Active Network Scanning
+
+The active scanner discovers devices on your network even if they're not currently communicating.
+
+### Scan Types
+
+| Scan Type | Privileges | Description |
+|-----------|------------|-------------|
+| **ARP** | Root/Admin | Sends ARP requests to discover all devices on local subnet. Returns IP and MAC addresses. |
+| **ICMP (Ping)** | Root/Admin | Sends ICMP echo requests to find responsive hosts. Shows response times. |
+| **Port** | None | Probes TCP ports (22, 80, 443, 8080, etc.) to identify running services. |
+| **SSDP/UPnP** | None | Discovers smart devices, media servers, and IoT devices via multicast. |
+
+### Using the Scanner
+
+1. Open the web UI at http://localhost:8080
+2. Click the **Scanner** tab in the header
+3. Select which scan types to run (checkboxes)
+4. Click **Scan Network** to start
+5. Watch the progress bar and discovered device count
+6. Click **Stop Scan** to cancel a running scan
+7. New devices appear in the network graph
+
+### Scan Capabilities
+
+The UI automatically detects which scans are available:
+- **Root/Admin mode**: All scan types available (ARP, ICMP, Port, SSDP)
+- **User mode**: Only Port and SSDP scans available (ARP/ICMP disabled)
+
+Disabled checkboxes indicate scans that require elevated privileges.
+
+### API Endpoints
+
+For automation or integration:
+
+```bash
+# Start a scan
+curl -X POST http://localhost:8080/api/scan/start \
+  -H "Content-Type: application/json" \
+  -d '{"scan_types": ["arp", "port", "ssdp"]}'
+
+# Check scan status
+curl http://localhost:8080/api/scan/status
+
+# Stop a running scan
+curl -X POST http://localhost:8080/api/scan/stop
+
+# Get scan capabilities
+curl http://localhost:8080/api/scan/capabilities
+```
+
 ## Installation
 
 ### Pre-built Binaries
@@ -19,52 +90,6 @@ Download the latest release for your platform:
 - **macOS (Intel)**: [rust_network_discovery_tool-macos-x86_64.tar.gz](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/rust_network_discovery_tool-macos-x86_64.tar.gz)
 - **Linux**: [rust_network_discovery_tool-linux-x86_64.tar.gz](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/rust_network_discovery_tool-linux-x86_64.tar.gz)
 - **Windows**: [rust_network_discovery_tool-windows-x86_64.zip](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest/download/rust_network_discovery_tool-windows-x86_64.zip)
-
-#### macOS/Linux Installation
-
-```bash
-# Download and extract (adjust filename for your platform)
-tar -xzf rust_network_discovery_tool-macos-aarch64.tar.gz
-
-# Make executable
-chmod +x rust_network_discovery_tool
-
-# Move to PATH (optional)
-sudo mv rust_network_discovery_tool /usr/local/bin/
-
-# Run with sudo (required for packet capture)
-sudo rust_network_discovery_tool
-```
-
-#### Windows Installation
-
-1. Download and extract the ZIP file
-2. Install [Npcap](https://npcap.com/#download) (required for packet capture)
-3. Run as Administrator (required for packet capture)
-
-### Build from Source
-
-
-- **Smart Interface Filtering**: Automatically monitors only real network interfaces (skips loopback, Docker, VPN)
-- **Connection Deduplication**: Tracks unique connections instead of individual packets 
-- **Automatic Data Retention**: Keeps data for 7 days by default (configurable)
-- **Privacy-Focused**: Doesn't store packet payloads, only connection metadata
-- **Interactive Network Graph**: Click-to-navigate network visualization powered by Cytoscape.js
-- **Protocol Detection**: Identifies HTTP, HTTPS, DNS, SSH, and 20+ other protocols
-- **Hostname Resolution**: Uses DNS, mDNS, and deep packet inspection (SNI, HTTP Host headers)
-- **DNS Caching**: Prevents slow lookups with DNS cache
-- **High Performance**: Optimized with database indexes, transaction batching, and connection pooling
-
-## Installation
-
-### Pre-built Binaries
-
-Download the latest release for your platform from the [Releases page](https://github.com/mikemiles-dev/rust_network_discovery_tool/releases/latest):
-
-- **macOS (Apple Silicon)**: `rust_network_discovery_tool-macos-aarch64.tar.gz`
-- **macOS (Intel)**: `rust_network_discovery_tool-macos-x86_64.tar.gz`
-- **Linux**: `rust_network_discovery_tool-linux-x86_64.tar.gz`
-- **Windows**: `rust_network_discovery_tool-windows-x86_64.zip`
 
 #### macOS/Linux Installation
 
@@ -201,9 +226,11 @@ MONITOR_INTERFACES="1" DATA_RETENTION_DAYS=14 DATABASE_URL="network.db" WEB_PORT
 | `--interface` / `-i` | `MONITOR_INTERFACES` | Auto-detect | Interface(s) to monitor (supports index numbers or names, comma-separated) |
 | `--port` / `-p` | `WEB_PORT` | `8080` | Web server port (CLI option takes precedence) |
 | `--list-interfaces` / `-l` | - | - | List all available interfaces and exit |
-| - | `DATABASE_URL` | `test.db` | Path to SQLite database file |
+| - | `DATABASE_URL` | `<interface>.db` | Path to SQLite database file (defaults to interface name, e.g., `en0.db`) |
 | - | `DATA_RETENTION_DAYS` | `7` | Number of days to keep historical data |
 | - | `CHANNEL_BUFFER_SIZE` | `10000000` | Internal packet buffer size |
+
+**Database Naming**: By default, the database is named after the monitored interface (e.g., `en0.db`, `eth0.db`, `Wi-Fi.db`). When monitoring multiple interfaces, it defaults to `network.db`. Set `DATABASE_URL` to override this behavior.
 
 ## How It Works
 

@@ -1,5 +1,6 @@
 mod db;
 mod network;
+mod scanner;
 mod web;
 
 #[cfg(test)]
@@ -215,8 +216,6 @@ async fn main() -> io::Result<()> {
         return Ok(());
     }
 
-    let sql_writer = SQLWriter::new().await;
-
     // Setup Ctrl+C handler for immediate shutdown
     ctrlc::set_handler(move || {
         println!("\nReceived Ctrl+C, shutting down...");
@@ -224,23 +223,8 @@ async fn main() -> io::Result<()> {
     })
     .expect("Error setting Ctrl+C handler");
 
-    MDnsLookup::start_daemon();
-
-    // Check for port from CLI args, then env variable, then default
-    let web_port = if args.port != 8080 {
-        // CLI arg was explicitly set (not default)
-        args.port
-    } else {
-        // Try env variable, fall back to CLI default (8080)
-        env::var("WEB_PORT")
-            .ok()
-            .and_then(|p| p.parse::<u16>().ok())
-            .unwrap_or(args.port)
-    };
-
-    web::start(web_port);
-
     // Check for interface selection from CLI args, then env variable
+    // This needs to happen BEFORE SQLWriter creation so we can name the database
     let selected_interfaces = args
         .interface
         .or_else(|| {
@@ -365,6 +349,54 @@ async fn main() -> io::Result<()> {
     for iface in &filtered_interfaces {
         println!("  - {}", iface.name);
     }
+
+    // Set database name based on interface if DATABASE_URL is not already set
+    if env::var("DATABASE_URL").is_err() {
+        let db_name = if filtered_interfaces.len() == 1 {
+            // Single interface: use its name
+            let iface_name = &filtered_interfaces[0].name;
+            // Sanitize interface name for use as filename (replace special chars)
+            let safe_name: String = iface_name
+                .chars()
+                .map(|c| {
+                    if c.is_alphanumeric() || c == '-' || c == '_' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
+                .collect();
+            format!("{}.db", safe_name)
+        } else {
+            // Multiple interfaces: use "network.db"
+            "network.db".to_string()
+        };
+        println!("Using database: {}", db_name);
+        // SAFETY: This is called during single-threaded startup before any other
+        // threads access DATABASE_URL
+        unsafe { env::set_var("DATABASE_URL", &db_name) };
+    } else {
+        println!("Using database: {}", env::var("DATABASE_URL").unwrap());
+    }
+
+    // Now create SQLWriter with the correct database name
+    let sql_writer = SQLWriter::new().await;
+
+    MDnsLookup::start_daemon();
+
+    // Check for port from CLI args, then env variable, then default
+    let web_port = if args.port != 8080 {
+        // CLI arg was explicitly set (not default)
+        args.port
+    } else {
+        // Try env variable, fall back to CLI default (8080)
+        env::var("WEB_PORT")
+            .ok()
+            .and_then(|p| p.parse::<u16>().ok())
+            .unwrap_or(args.port)
+    };
+
+    web::start(web_port);
 
     // Warn on Windows if monitoring multiple interfaces
     #[cfg(target_os = "windows")]
