@@ -16,6 +16,20 @@
   - Hostname-based vendor detection as fallback (for devices with locally administered MACs like LG ThinQ)
   - Detects LG, eero, HP, Canon, Epson, Brother, Sonos, and more from hostname patterns
   - Vendor badge shown next to device type classification
+  - Vendor also shown in endpoint list (left of bytes count)
+- **Device Model Detection** - Extracts and displays model information from hostnames
+  - Roku: Ultra, Express, Streaming Stick, etc.
+  - PlayStation: PS4 → "PlayStation 4", PS5 → "PlayStation 5"
+  - Xbox: Xbox One, Xbox Series X/S
+  - Apple: iPhone (with version), iPad Pro/Air, MacBook Pro/Air
+  - Samsung/LG TVs: Model numbers like QN65Q80B, OLED55C1
+  - LG Appliances: Dishwasher, Washing Machine, Dryer, Refrigerator
+  - Google/Nest: Chromecast, Nest Hub, Nest Mini, Google Home
+  - Amazon Echo: Echo, Echo Dot, Echo Show, Echo Studio
+  - Sonos: One, Beam, Arc, Move, Roam, Sub, Play:1/3/5
+  - Ring: Doorbell, Camera, Stick Up Cam
+  - HP Printers: LaserJet, OfficeJet, DeskJet, ENVY
+  - Model badge shown in purple next to vendor badge
 - **Smart Device Classification** - Automatically classifies devices based on MAC vendor
   - **Gaming**: Nintendo devices automatically classified as 🎮 Gaming
   - **TV**: Roku devices automatically classified as 📺 TV
@@ -26,11 +40,27 @@
 - **Automatic Scan on Startup** - Runs initial network scan when the application launches
   - Uses default scan types (ARP and SSDP) for immediate device discovery
   - No manual intervention required to discover devices
+- **LG Device Control** - Full control for LG TVs and ThinQ appliances
+  - **LG webOS TV Control**: Volume, playback, channels, power, input switching, and app launching via local WebSocket
+  - **LG ThinQ Cloud Integration**: Uses official LG ThinQ Connect API (opened December 2024)
+    - Supports dishwashers, washing machines, dryers, refrigerators, and air conditioners
+    - Get device status, start/stop cycles, and control appliance modes
+    - Uses Personal Access Token (PAT) from [LG ThinQ Developer Site](https://smartsolution.developer.lge.com/en/apiManage/thinq_connect)
+    - **In-app PAT setup**: Enter your PAT token directly in the Control tab for ThinQ devices
+    - Token stored in database for automatic use on future sessions
+    - Disconnect option to clear stored credentials
+    - API endpoints: `/api/thinq/setup`, `/api/thinq/status`, `/api/thinq/devices`, `/api/thinq/disconnect`
+  - Automatic appliance detection from hostname patterns (lma*, lmw*, wm*, wf*, ref*, ac*)
+- **PlayStation/Xbox Detection** - Gaming consoles now detected by hostname patterns (ps4-*, ps5-*, xbox-*) and classified as gaming devices
+  - Sony added to gaming vendors for MAC-based classification
 
 ### Changed
 - Scanner moved to dedicated "Scanner" tab in the header (previously in sidebar)
 - Scanner tab now stays active during auto-refresh (no longer redirects to network tab)
 - Selected endpoint indicator moved to above the search bar in the sidebar
+- **Cleaner hostnames** - Common local suffixes stripped when saving endpoints
+  - Removes `.local`, `.lan`, `.home`, `.internal`, `.localdomain`, `.localhost`
+  - Example: `Roku-Ultra-1234.local` → `Roku-Ultra-1234`
 
 ### Fixed
 - **Database locking issues during scanning** - Multiple improvements:

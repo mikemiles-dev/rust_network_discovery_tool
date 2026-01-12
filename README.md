@@ -26,7 +26,9 @@ A lightweight network traffic monitoring tool that captures and visualizes netwo
 - **Interactive Network Graph**: Click-to-navigate network visualization powered by Cytoscape.js
 - **Protocol Detection**: Identifies HTTP, HTTPS, DNS, SSH, and 20+ other protocols
 - **Hostname Resolution**: Uses DNS, mDNS, and deep packet inspection (SNI, HTTP Host headers)
-- **Device Remote Control**: Control Roku and Samsung Smart TVs directly from the UI
+- **Device Remote Control**: Control smart devices directly from the UI
+  - **TVs**: Roku, Samsung, LG webOS (volume, playback, power, apps)
+  - **LG ThinQ Appliances**: Dishwashers, washers, dryers, refrigerators, ACs (via cloud API)
 - **DNS Caching**: Prevents slow lookups with DNS cache
 - **High Performance**: Optimized with database indexes, transaction batching, and connection pooling
 
@@ -320,3 +322,90 @@ sudo setcap cap_net_raw,cap_net_admin=eip ./rust_network_discovery_tool
 - **Local-only web UI**: Binds to 127.0.0.1 (not exposed to network)
 - **No authentication**: Intended for personal use on trusted machines
 - **Root/Admin required**: Packet capture requires elevated privileges
+
+## Device Authentication
+
+Some smart devices require authentication to enable remote control. This section explains how to set up authentication for supported device types.
+
+### LG ThinQ (Dishwashers, Washers, Dryers, Refrigerators, ACs)
+
+LG ThinQ appliances use cloud-based authentication via the official LG ThinQ Connect API.
+
+#### Getting Your Personal Access Token (PAT)
+
+1. **Sign up or log in** to the [LG ThinQ Developer Site](https://smartsolution.developer.lge.com/en/apiManage/thinq_connect)
+2. Navigate to **Cloud Developer** → **ThinQ Connect** → **PAT (Personal Access Token)**
+3. Follow the instructions to **generate your Personal Access Token**
+4. Copy the token (keep it secure - treat it like a password)
+
+#### Setting Up ThinQ in the App
+
+**Option 1: Via API**
+```bash
+curl -X POST http://localhost:8080/api/thinq/setup \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pat_token": "your_personal_access_token_here",
+    "country_code": "US"
+  }'
+```
+
+**Option 2: Check Status**
+```bash
+# Check if ThinQ is configured and list devices
+curl http://localhost:8080/api/thinq/status
+
+# List all ThinQ devices
+curl http://localhost:8080/api/thinq/devices
+```
+
+#### Supported Country Codes
+
+| Region | Country Codes |
+|--------|---------------|
+| North America | US, CA, MX |
+| Europe | GB, DE, FR, IT, ES, NL, BE, AT, CH, PL, SE, NO, DK, FI, PT, IE, CZ, HU, RO, BG, SK, HR, SI, EE, LV, LT, GR, CY, MT, LU |
+| Korea | KR |
+| Asia Pacific | AU, NZ, SG, MY, TH, PH, ID, VN, IN, JP, TW, HK |
+
+#### Supported Appliances & Commands
+
+| Appliance | Commands |
+|-----------|----------|
+| Dishwasher | Get Status, Start Cycle, Stop |
+| Washing Machine | Get Status, Start, Pause, Stop |
+| Dryer | Get Status, Start, Pause, Stop |
+| Refrigerator | Get Status, Express Freeze, Eco Mode |
+| Air Conditioner | Get Status, Power On, Power Off |
+
+#### Troubleshooting ThinQ
+
+- **"API error: 401"**: Your PAT token is invalid or expired. Generate a new one from the developer site.
+- **"No devices found"**: Make sure your appliances are registered in the LG ThinQ app on your phone first.
+- **Commands not working**: Ensure the appliance is online (check the LG ThinQ mobile app).
+
+### Samsung Smart TV
+
+Samsung TVs use local WebSocket authentication. No external account required.
+
+1. Select the Samsung TV in the endpoint list
+2. Click **Pair** in the Control tab
+3. **Accept the prompt on your TV screen** within 30 seconds
+4. The pairing token is stored locally for future sessions
+
+### LG webOS TV
+
+LG TVs use local WebSocket authentication similar to Samsung.
+
+1. Select the LG TV in the endpoint list
+2. Click **Pair** in the Control tab
+3. **Accept the prompt on your TV screen** within 30 seconds
+4. The client key is stored locally for future sessions
+
+### Roku
+
+Roku devices don't require authentication - control works automatically via the External Control Protocol (ECP) on port 8060.
+
+---
+
+*More device authentication methods will be added as support expands.*

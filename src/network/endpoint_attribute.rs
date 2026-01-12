@@ -1,5 +1,7 @@
 use rusqlite::{Connection, OptionalExtension, Result, params};
 
+use super::endpoint::strip_local_suffix;
+
 #[derive(Default, Debug)]
 pub struct EndPointAttribute;
 
@@ -154,6 +156,8 @@ impl EndPointAttribute {
         ip: Option<String>,
         hostname: String,
     ) -> Result<()> {
+        // Strip local suffixes like .local, .lan, .home
+        let hostname = strip_local_suffix(&hostname);
         conn.execute(
             "INSERT INTO endpoint_attributes (created_at, endpoint_id, mac, ip, hostname) VALUES (strftime('%s', 'now'), ?1, ?2, ?3, ?4)",
             params![endpoint_id, mac, ip, hostname],

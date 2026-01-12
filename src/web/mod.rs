@@ -12,7 +12,9 @@ use tokio::task;
 
 use crate::db::new_connection;
 use crate::network::device_control::DeviceController;
-use crate::network::endpoint::{EndPoint, get_hostname_vendor, get_mac_vendor};
+use crate::network::endpoint::{
+    EndPoint, get_hostname_vendor, get_mac_vendor, get_model_from_hostname,
+};
 use crate::network::mdns_lookup::MDnsLookup;
 use crate::network::protocol::ProtocolPort;
 use crate::scanner::manager::{ScanConfig, ScanManager};
@@ -895,6 +897,10 @@ pub fn start(preferred_port: u16) {
                         .service(send_device_command)
                         .service(launch_device_app)
                         .service(pair_device)
+                        .service(setup_thinq)
+                        .service(get_thinq_status)
+                        .service(list_thinq_devices)
+                        .service(disconnect_thinq)
                         .service(start_scan)
                         .service(stop_scan)
                         .service(get_scan_status)
@@ -1005,6 +1011,18 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         }
     };
     let endpoint_ips_macs = get_endpoint_ips_and_macs(&dropdown_endpoints);
+    // Build vendor lookup for all endpoints (MAC first, hostname fallback)
+    let endpoint_vendors: HashMap<String, String> = dropdown_endpoints
+        .iter()
+        .filter_map(|endpoint| {
+            let vendor = endpoint_ips_macs
+                .get(endpoint)
+                .and_then(|(_, macs)| macs.iter().find_map(|mac| get_mac_vendor(mac)))
+                .or_else(|| get_hostname_vendor(endpoint))
+                .map(|v| v.to_string());
+            vendor.map(|v| (endpoint.clone(), v))
+        })
+        .collect();
     let endpoint_bytes =
         get_all_endpoints_bytes(&dropdown_endpoints, query.scan_interval.unwrap_or(60));
     let mut endpoint_types = get_endpoint_types(&communications);
@@ -1048,6 +1066,8 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         .or_else(|| get_hostname_vendor(&selected_endpoint))
         .unwrap_or("")
         .to_string();
+    // Get model from hostname
+    let device_model: String = get_model_from_hostname(&selected_endpoint).unwrap_or_default();
     let protocols =
         get_protocols_for_endpoint(selected_endpoint.clone(), query.scan_interval.unwrap_or(60));
     // Use ports from communications data when a node is selected (matches graph)
@@ -1071,12 +1091,14 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     context.insert("selected_node", &query.node);
     context.insert("dropdown_endpoints", &dropdown_endpoints);
     context.insert("endpoint_ips_macs", &endpoint_ips_macs);
+    context.insert("endpoint_vendors", &endpoint_vendors);
     context.insert("endpoint_bytes", &endpoint_bytes);
     context.insert("scan_interval", &query.scan_interval.unwrap_or(60));
     context.insert("ips", &ips);
     context.insert("macs", &macs);
     context.insert("mac_vendors", &mac_vendors);
     context.insert("device_vendor", &device_vendor);
+    context.insert("device_model", &device_model);
     context.insert("hostnames", &hostnames);
     context.insert("ports", &ports);
     context.insert("protocols", &protocols);
@@ -1240,6 +1262,127 @@ async fn pair_device(body: Json<PairRequest>) -> impl Responder {
         Ok(r) if r.success => HttpResponse::Ok().json(r),
         Ok(r) => HttpResponse::BadRequest().json(r),
         Err(_) => HttpResponse::InternalServerError().body("Pairing failed"),
+    }
+}
+
+// ============================================================================
+// LG ThinQ API Endpoints
+// ============================================================================
+
+#[derive(Deserialize)]
+struct ThinQSetupRequest {
+    pat_token: String,
+    country_code: String,
+}
+
+#[derive(Serialize)]
+struct ThinQStatusResponse {
+    configured: bool,
+    devices: Vec<ThinQDeviceInfo>,
+}
+
+#[derive(Serialize)]
+struct ThinQDeviceInfo {
+    device_id: String,
+    device_type: String,
+    name: String,
+    model: Option<String>,
+    online: bool,
+}
+
+#[post("/api/thinq/setup")]
+async fn setup_thinq(body: Json<ThinQSetupRequest>) -> impl Responder {
+    let pat_token = body.pat_token.clone();
+    let country_code = body.country_code.clone();
+
+    let result =
+        actix_web::web::block(move || DeviceController::setup_thinq(&pat_token, &country_code))
+            .await;
+
+    match result {
+        Ok(r) if r.success => HttpResponse::Ok().json(r),
+        Ok(r) => HttpResponse::BadRequest().json(r),
+        Err(_) => HttpResponse::InternalServerError().body("ThinQ setup failed"),
+    }
+}
+
+#[get("/api/thinq/status")]
+async fn get_thinq_status() -> impl Responder {
+    let result = actix_web::web::block(move || {
+        let configured = DeviceController::is_thinq_configured();
+        let devices = if configured {
+            DeviceController::list_thinq_devices()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|d| ThinQDeviceInfo {
+                    device_id: d.device_id,
+                    device_type: d.device_type,
+                    name: d.device_alias,
+                    model: d.model_name,
+                    online: d.online,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        ThinQStatusResponse {
+            configured,
+            devices,
+        }
+    })
+    .await;
+
+    match result {
+        Ok(status) => HttpResponse::Ok().json(status),
+        Err(_) => HttpResponse::InternalServerError().body("Failed to get ThinQ status"),
+    }
+}
+
+#[get("/api/thinq/devices")]
+async fn list_thinq_devices() -> impl Responder {
+    let result = actix_web::web::block(move || {
+        DeviceController::list_thinq_devices().map(|devices| {
+            devices
+                .into_iter()
+                .map(|d| ThinQDeviceInfo {
+                    device_id: d.device_id,
+                    device_type: d.device_type,
+                    name: d.device_alias,
+                    model: d.model_name,
+                    online: d.online,
+                })
+                .collect::<Vec<_>>()
+        })
+    })
+    .await;
+
+    match result {
+        Ok(Ok(devices)) => HttpResponse::Ok().json(devices),
+        Ok(Err(e)) => HttpResponse::BadRequest().body(e),
+        Err(_) => HttpResponse::InternalServerError().body("Failed to list ThinQ devices"),
+    }
+}
+
+#[post("/api/thinq/disconnect")]
+async fn disconnect_thinq() -> impl Responder {
+    let result = actix_web::web::block(DeviceController::disconnect_thinq).await;
+
+    match result {
+        Ok(success) => {
+            if success {
+                HttpResponse::Ok().json(serde_json::json!({
+                    "success": true,
+                    "message": "Disconnected from LG ThinQ"
+                }))
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "success": false,
+                    "message": "Failed to disconnect"
+                }))
+            }
+        }
+        Err(_) => HttpResponse::InternalServerError().body("Failed to disconnect ThinQ"),
     }
 }
 

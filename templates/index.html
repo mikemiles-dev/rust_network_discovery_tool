@@ -216,8 +216,24 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      max-width: calc(100% - 3rem);
+      max-width: calc(100% - 5rem);
       display: inline-block;
+    }
+
+    .endpoint-vendor {
+      position: absolute;
+      right: 5rem;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 0.625rem;
+      color: #60a5fa;
+      background: rgba(59, 130, 246, 0.15);
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      white-space: nowrap;
+      max-width: 5rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .endpoint-bytes {
@@ -951,6 +967,7 @@
         <!-- Filter Controls -->
         <div style="display: flex; justify-content: flex-start; gap: 0.5rem; margin-top: 0.75rem; margin-bottom: 0.375rem;">
           <button onclick="selectAllFilters()" style="font-size: 0.7rem; padding: 0.125rem 0.375rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; border-radius: 0.25rem; cursor: pointer; font-weight: 500;">All</button>
+          <button onclick="selectLocalFilters()" style="font-size: 0.7rem; padding: 0.125rem 0.375rem; background: rgba(34, 197, 94, 0.2); border: 1px solid rgba(34, 197, 94, 0.4); color: #4ade80; border-radius: 0.25rem; cursor: pointer; font-weight: 500;">Local</button>
           <button onclick="selectNoneFilters()" style="font-size: 0.7rem; padding: 0.125rem 0.375rem; background: rgba(100, 116, 139, 0.2); border: 1px solid rgba(100, 116, 139, 0.4); color: #94a3b8; border-radius: 0.25rem; cursor: pointer; font-weight: 500;">None</button>
         </div>
 
@@ -966,7 +983,7 @@
               <span>🌐 Gateway</span>
             </label>
             <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(8, 51, 68, 0.5); border-radius: 0.375rem; border: 1px solid #06b6d4; white-space: nowrap;">
-              <input type="checkbox" id="filterInternet" checked onchange="applyFilters()" style="cursor: pointer;">
+              <input type="checkbox" id="filterInternet" onchange="applyFilters()" style="cursor: pointer;">
               <span>🌍 Internet</span>
             </label>
           </div>
@@ -1042,6 +1059,7 @@
                data-endpoint-macs="{% if endpoint_ips_macs[node] %}{{ endpoint_ips_macs[node].1 | join(sep=",") }}{% endif %}"
                data-endpoint-bytes="{{ endpoint_bytes[node] | default(value=0) }}">
             <span class="endpoint-name">{% if node == hostname %}🖥️{% elif endpoint_types[node] == "gateway" %}🌐{% elif endpoint_types[node] == "internet" %}🌍{% elif endpoint_types[node] == "printer" %}🖨️{% elif endpoint_types[node] == "tv" %}📺{% elif endpoint_types[node] == "gaming" %}🎮{% elif endpoint_types[node] == "phone" %}📱{% elif endpoint_types[node] == "virtualization" %}🖥{% elif endpoint_types[node] == "soundbar" %}🔊{% elif endpoint_types[node] == "appliance" %}🏠{% elif endpoint_types[node] %}💻{% else %}❓{% endif %} {{ node | safe }}</span>
+            {% if endpoint_vendors[node] %}<span class="endpoint-vendor">{{ endpoint_vendors[node] }}</span>{% endif %}
             {% if endpoint_bytes[node] and endpoint_bytes[node] > 0 %}<span class="endpoint-bytes">{{ endpoint_bytes[node] }}</span>{% endif %}
           </div>
           {% endfor %}
@@ -1122,6 +1140,7 @@
             </div>
             {% if endpoint in manual_overrides %}<span style="font-size: 0.625rem; color: var(--accent-secondary); margin-left: 0.5rem;">(manually set)</span>{% endif %}
             {% if device_vendor %}<span style="font-size: 0.875rem; font-weight: bold; color: #60a5fa; background: rgba(59, 130, 246, 0.15); padding: 0.25rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem;">{{ device_vendor }}</span>{% endif %}
+            {% if device_model %}<span style="font-size: 0.875rem; font-weight: bold; color: #a78bfa; background: rgba(139, 92, 246, 0.15); padding: 0.25rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem;">{{ device_model }}</span>{% endif %}
           </div>
           <div class="stats">
             <div class="stat-badge stat-link" onclick="scrollToSection('ips-section')">IPs: <span class="stat-number">{{ ips|length }}</span></div>
@@ -1238,7 +1257,7 @@
                 <div style="font-size: 0.75rem; margin-top: 0.5rem;">Currently supports: Roku and Samsung TVs</div>
               </div>
 
-              <!-- Pairing Required Message -->
+              <!-- Pairing Required Message (for TVs) -->
               <div id="pairing-required" style="display: none; text-align: center; padding: 1.5rem;">
                 <div style="font-size: 2rem; margin-bottom: 0.75rem;">📺</div>
                 <div style="font-weight: 600; margin-bottom: 0.5rem;">Pairing Required</div>
@@ -1249,6 +1268,42 @@
                   🔗 Pair with TV
                 </button>
                 <div id="pairing-status" style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-secondary);"></div>
+              </div>
+
+              <!-- ThinQ Setup Required Message -->
+              <div id="thinq-setup-required" style="display: none; padding: 1.5rem;">
+                <div style="text-align: center; margin-bottom: 1rem;">
+                  <div style="font-size: 2rem; margin-bottom: 0.75rem;">🏠</div>
+                  <div style="font-weight: 600; margin-bottom: 0.5rem;">LG ThinQ Setup Required</div>
+                  <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                    Enter your Personal Access Token from the <a href="https://smartsolution.developer.lge.com/en/apiManage/thinq_connect" target="_blank" style="color: var(--accent-primary);">LG ThinQ Developer Site</a>
+                  </div>
+                </div>
+                <div style="margin-bottom: 1rem;">
+                  <label style="display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Personal Access Token (PAT)</label>
+                  <input type="password" id="thinq-pat-token" placeholder="Paste your PAT token here" style="width: 100%; padding: 0.5rem; background: rgba(30, 41, 59, 0.8); border: 1px solid #4b5563; border-radius: 0.375rem; color: var(--text-primary); font-size: 0.875rem;">
+                </div>
+                <div style="margin-bottom: 1rem;">
+                  <label style="display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Country Code</label>
+                  <select id="thinq-country-code" style="width: 100%; padding: 0.5rem; background: rgba(30, 41, 59, 0.8); border: 1px solid #4b5563; border-radius: 0.375rem; color: var(--text-primary); font-size: 0.875rem;">
+                    <option value="US">United States (US)</option>
+                    <option value="CA">Canada (CA)</option>
+                    <option value="MX">Mexico (MX)</option>
+                    <option value="GB">United Kingdom (GB)</option>
+                    <option value="DE">Germany (DE)</option>
+                    <option value="FR">France (FR)</option>
+                    <option value="IT">Italy (IT)</option>
+                    <option value="ES">Spain (ES)</option>
+                    <option value="KR">South Korea (KR)</option>
+                    <option value="JP">Japan (JP)</option>
+                    <option value="AU">Australia (AU)</option>
+                    <option value="NZ">New Zealand (NZ)</option>
+                  </select>
+                </div>
+                <button class="remote-btn" onclick="setupThinQ()" style="width: 100%; padding: 0.75rem; font-size: 0.9rem; background: var(--accent-secondary);">
+                  🔗 Connect to LG ThinQ
+                </button>
+                <div id="thinq-setup-status" style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-secondary);"></div>
               </div>
 
               <!-- Roku Remote Control -->
@@ -1358,6 +1413,33 @@
                   <div class="remote-row" style="margin-top: 0.5rem;">
                     <button class="remote-btn power-btn" onclick="sendCommand('KEY_POWER')" title="Power">⏻ Power</button>
                   </div>
+                </div>
+              </div>
+
+              <!-- LG ThinQ Remote Control -->
+              <div id="thinq-remote" style="display: none;">
+                <!-- Device Status Section -->
+                <div class="remote-section">
+                  <div class="remote-label">Device Status</div>
+                  <div id="thinq-device-status" style="font-size: 0.8rem; color: var(--text-secondary); padding: 0.5rem; background: rgba(30, 41, 59, 0.5); border-radius: 0.375rem; margin-bottom: 0.5rem;">
+                    Loading status...
+                  </div>
+                  <button class="remote-btn" onclick="refreshThinQStatus()" style="width: 100%;">🔄 Refresh Status</button>
+                </div>
+
+                <!-- Appliance Controls -->
+                <div class="remote-section">
+                  <div class="remote-label">Controls</div>
+                  <div id="thinq-controls" class="remote-row" style="flex-wrap: wrap; gap: 0.5rem;">
+                    <!-- Controls will be populated based on device type -->
+                  </div>
+                </div>
+
+                <!-- Disconnect -->
+                <div class="remote-section">
+                  <button class="remote-btn" onclick="disconnectThinQ()" style="width: 100%; background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.5);">
+                    🔌 Disconnect ThinQ
+                  </button>
                 </div>
               </div>
             </div>
@@ -2260,6 +2342,22 @@
       document.getElementById('filterSoundbar').checked = false;
       document.getElementById('filterAppliance').checked = false;
       document.getElementById('filterOther').checked = false;
+      applyFilters();
+    }
+
+    // Select all local device type filters (everything except internet)
+    function selectLocalFilters() {
+      document.getElementById('filterLocal').checked = true;
+      document.getElementById('filterGateway').checked = true;
+      document.getElementById('filterInternet').checked = false;
+      document.getElementById('filterPrinter').checked = true;
+      document.getElementById('filterTv').checked = true;
+      document.getElementById('filterGaming').checked = true;
+      document.getElementById('filterPhone').checked = true;
+      document.getElementById('filterVirtualization').checked = true;
+      document.getElementById('filterSoundbar').checked = true;
+      document.getElementById('filterAppliance').checked = true;
+      document.getElementById('filterOther').checked = true;
       applyFilters();
     }
 
@@ -3267,6 +3365,8 @@
       const pairingRequiredEl = document.getElementById('pairing-required');
       const rokuRemoteEl = document.getElementById('roku-remote');
       const samsungRemoteEl = document.getElementById('samsung-remote');
+      const thinqSetupEl = document.getElementById('thinq-setup-required');
+      const thinqRemoteEl = document.getElementById('thinq-remote');
       const deviceInfoEl = document.getElementById('device-info-section');
       const appsSectionEl = document.getElementById('apps-section');
 
@@ -3276,6 +3376,8 @@
         pairingRequiredEl.style.display = 'none';
         rokuRemoteEl.style.display = 'none';
         samsungRemoteEl.style.display = 'none';
+        thinqSetupEl.style.display = 'none';
+        thinqRemoteEl.style.display = 'none';
         deviceInfoEl.style.display = 'none';
         appsSectionEl.style.display = 'none';
       };
@@ -3370,9 +3472,18 @@
             }
           } else if (capabilities.device_type === 'samsung') {
             samsungRemoteEl.style.display = 'block';
+          } else if (capabilities.device_type && capabilities.device_type.startsWith('lg_thinq')) {
+            // Check if ThinQ is configured
+            await handleThinQDevice(capabilities, thinqSetupEl, thinqRemoteEl, deviceInfoEl);
           }
         } else {
-          noControlEl.style.display = 'block';
+          // Check if this might be a ThinQ-compatible device (LG appliance by hostname)
+          const endpointName = '{{ endpoint | default(value="") }}';
+          if (endpointName.toLowerCase().includes('lma') || endpointName.toLowerCase().includes('lg')) {
+            await handleThinQDevice(null, thinqSetupEl, thinqRemoteEl, deviceInfoEl);
+          } else {
+            noControlEl.style.display = 'block';
+          }
         }
 
         deviceCapabilitiesLoaded = true;
@@ -3476,6 +3587,279 @@
         console.error('Pairing failed:', error);
         statusEl.textContent = 'Pairing failed. Please try again.';
         statusEl.style.color = '#ef4444';
+      }
+    }
+
+    // =========================================================================
+    // LG ThinQ Functions
+    // =========================================================================
+
+    let currentThinQDeviceId = null;
+    let currentThinQDeviceType = null;
+
+    // Handle ThinQ device - check if configured and show appropriate UI
+    async function handleThinQDevice(capabilities, setupEl, remoteEl, deviceInfoEl) {
+      try {
+        const statusResponse = await fetch('/api/thinq/status');
+        const status = await statusResponse.json();
+
+        if (!status.configured) {
+          // Show setup form
+          setupEl.style.display = 'block';
+          return;
+        }
+
+        // ThinQ is configured - find matching device
+        const endpointName = '{{ endpoint | default(value="") }}';
+
+        // Try to match by hostname or find a device
+        let matchedDevice = null;
+        if (capabilities && capabilities.device_type && capabilities.device_type.includes(':')) {
+          // Device ID is embedded in device_type (lg_thinq:device_id)
+          const deviceId = capabilities.device_type.split(':')[1];
+          matchedDevice = status.devices.find(d => d.device_id === deviceId);
+        }
+
+        if (!matchedDevice && status.devices.length > 0) {
+          // Try to match by model/name similarity or just use first device
+          matchedDevice = status.devices[0];
+        }
+
+        if (matchedDevice) {
+          currentThinQDeviceId = matchedDevice.device_id;
+          currentThinQDeviceType = matchedDevice.device_type;
+          currentDeviceType = `lg_thinq:${matchedDevice.device_id}`;
+
+          // Show device info
+          deviceInfoEl.style.display = 'block';
+          const modelEl = document.getElementById('device-model');
+          let infoText = matchedDevice.name || matchedDevice.device_type;
+          if (matchedDevice.model) {
+            infoText += ` (${matchedDevice.model})`;
+          }
+          infoText += matchedDevice.online ? ' - Online' : ' - Offline';
+          modelEl.textContent = infoText;
+
+          // Show remote and populate controls
+          remoteEl.style.display = 'block';
+          populateThinQControls(matchedDevice);
+          refreshThinQStatus();
+        } else {
+          // No devices found
+          const statusEl = document.getElementById('thinq-device-status');
+          statusEl.textContent = 'No ThinQ devices found. Make sure your appliances are registered in the LG ThinQ app.';
+          remoteEl.style.display = 'block';
+        }
+      } catch (error) {
+        console.error('Failed to check ThinQ status:', error);
+        setupEl.style.display = 'block';
+      }
+    }
+
+    // Populate ThinQ controls based on device type
+    function populateThinQControls(device) {
+      const controlsEl = document.getElementById('thinq-controls');
+      controlsEl.innerHTML = '';
+
+      const deviceType = device.device_type.toLowerCase();
+
+      // Common controls
+      const addButton = (label, command) => {
+        const btn = document.createElement('button');
+        btn.className = 'remote-btn';
+        btn.onclick = () => sendThinQCommand(command);
+        btn.textContent = label;
+        btn.style.flex = '1';
+        btn.style.minWidth = '100px';
+        controlsEl.appendChild(btn);
+      };
+
+      if (deviceType.includes('dishwasher')) {
+        addButton('📊 Get Status', 'status');
+        addButton('▶️ Start', 'start');
+        addButton('⏹️ Stop', 'stop');
+      } else if (deviceType.includes('washer') || deviceType.includes('washing')) {
+        addButton('📊 Get Status', 'status');
+        addButton('▶️ Start', 'start');
+        addButton('⏸️ Pause', 'pause');
+        addButton('⏹️ Stop', 'stop');
+      } else if (deviceType.includes('dryer')) {
+        addButton('📊 Get Status', 'status');
+        addButton('▶️ Start', 'start');
+        addButton('⏸️ Pause', 'pause');
+        addButton('⏹️ Stop', 'stop');
+      } else if (deviceType.includes('refrigerator') || deviceType.includes('fridge')) {
+        addButton('📊 Get Status', 'status');
+        addButton('❄️ Express Freeze', 'express_freeze');
+        addButton('🌿 Eco Mode', 'eco_mode');
+      } else if (deviceType.includes('air') || deviceType.includes('ac')) {
+        addButton('📊 Get Status', 'status');
+        addButton('🔛 Power On', 'power_on');
+        addButton('⏻ Power Off', 'power_off');
+      } else {
+        // Generic controls
+        addButton('📊 Get Status', 'status');
+      }
+    }
+
+    // Setup ThinQ with PAT token
+    async function setupThinQ() {
+      const patToken = document.getElementById('thinq-pat-token').value.trim();
+      const countryCode = document.getElementById('thinq-country-code').value;
+      const statusEl = document.getElementById('thinq-setup-status');
+
+      if (!patToken) {
+        statusEl.textContent = 'Please enter your Personal Access Token.';
+        statusEl.style.color = '#ef4444';
+        return;
+      }
+
+      statusEl.textContent = 'Connecting to LG ThinQ...';
+      statusEl.style.color = 'var(--accent-primary)';
+
+      try {
+        const response = await fetch('/api/thinq/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pat_token: patToken,
+            country_code: countryCode
+          })
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          statusEl.textContent = result.message;
+          statusEl.style.color = 'var(--accent-success)';
+          // Reload capabilities to show controls
+          deviceCapabilitiesLoaded = false;
+          setTimeout(() => loadDeviceCapabilities(), 1000);
+        } else {
+          statusEl.textContent = result.message;
+          statusEl.style.color = '#ef4444';
+        }
+      } catch (error) {
+        console.error('ThinQ setup failed:', error);
+        statusEl.textContent = 'Setup failed. Please check your token and try again.';
+        statusEl.style.color = '#ef4444';
+      }
+    }
+
+    // Refresh ThinQ device status
+    async function refreshThinQStatus() {
+      if (!currentThinQDeviceId) {
+        return;
+      }
+
+      const statusEl = document.getElementById('thinq-device-status');
+      statusEl.textContent = 'Refreshing status...';
+
+      try {
+        const response = await fetch('/api/device/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ip: currentDeviceIp || '0.0.0.0',
+            command: 'status',
+            device_type: `lg_thinq:${currentThinQDeviceId}`
+          })
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          // Format the status message
+          let statusText = result.message;
+          if (result.data) {
+            statusText = formatThinQStatus(result.data);
+          }
+          statusEl.innerHTML = statusText;
+          statusEl.style.color = 'var(--text-secondary)';
+        } else {
+          statusEl.textContent = result.message;
+          statusEl.style.color = '#ef4444';
+        }
+      } catch (error) {
+        console.error('Failed to refresh ThinQ status:', error);
+        statusEl.textContent = 'Failed to get device status.';
+        statusEl.style.color = '#ef4444';
+      }
+    }
+
+    // Format ThinQ status data for display
+    function formatThinQStatus(data) {
+      if (typeof data === 'string') {
+        return data;
+      }
+
+      let html = '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem;">';
+      for (const [key, value] of Object.entries(data)) {
+        const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        html += `<div style="color: var(--text-secondary);">${label}:</div>`;
+        html += `<div style="color: var(--text-primary);">${value}</div>`;
+      }
+      html += '</div>';
+      return html;
+    }
+
+    // Send ThinQ command
+    async function sendThinQCommand(command) {
+      if (!currentThinQDeviceId) {
+        console.error('No ThinQ device selected');
+        return;
+      }
+
+      const statusEl = document.getElementById('thinq-device-status');
+      statusEl.textContent = `Sending ${command}...`;
+
+      try {
+        const response = await fetch('/api/device/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ip: currentDeviceIp || '0.0.0.0',
+            command: command,
+            device_type: `lg_thinq:${currentThinQDeviceId}`
+          })
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          if (command === 'status' && result.data) {
+            statusEl.innerHTML = formatThinQStatus(result.data);
+          } else {
+            statusEl.textContent = result.message;
+            statusEl.style.color = 'var(--accent-success)';
+            // Refresh status after a command
+            setTimeout(() => refreshThinQStatus(), 2000);
+          }
+        } else {
+          statusEl.textContent = result.message;
+          statusEl.style.color = '#ef4444';
+        }
+      } catch (error) {
+        console.error('ThinQ command failed:', error);
+        statusEl.textContent = 'Command failed. Please try again.';
+        statusEl.style.color = '#ef4444';
+      }
+    }
+
+    // Disconnect ThinQ
+    async function disconnectThinQ() {
+      if (!confirm('Are you sure you want to disconnect from LG ThinQ? You will need to re-enter your PAT token.')) {
+        return;
+      }
+
+      try {
+        // Call a disconnect endpoint (we'll add this)
+        const response = await fetch('/api/thinq/disconnect', {
+          method: 'POST'
+        });
+
+        // Reload to show setup form
+        deviceCapabilitiesLoaded = false;
+        loadDeviceCapabilities();
+      } catch (error) {
+        console.error('Failed to disconnect ThinQ:', error);
       }
     }
   </script>

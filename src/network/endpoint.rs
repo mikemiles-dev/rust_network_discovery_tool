@@ -19,6 +19,20 @@ lazy_static::lazy_static! {
 // Cache for local network CIDR blocks (computed once at startup)
 static LOCAL_NETWORKS: OnceLock<Vec<IpNetwork>> = OnceLock::new();
 
+/// Common local network hostname suffixes to strip
+const LOCAL_SUFFIXES: &[&str] = &[".local", ".lan", ".home", ".internal", ".localdomain", ".localhost"];
+
+/// Strip common local network suffixes from a hostname
+pub fn strip_local_suffix(hostname: &str) -> String {
+    let lower = hostname.to_lowercase();
+    for suffix in LOCAL_SUFFIXES {
+        if lower.ends_with(suffix) {
+            return hostname[..hostname.len() - suffix.len()].to_string();
+        }
+    }
+    hostname.to_string()
+}
+
 fn get_local_networks() -> &'static Vec<IpNetwork> {
     LOCAL_NETWORKS.get_or_init(|| {
         interfaces()
@@ -1209,6 +1223,256 @@ pub fn get_hostname_vendor(hostname: &str) -> Option<&'static str> {
     None
 }
 
+/// Extract model name from hostname patterns
+pub fn get_model_from_hostname(hostname: &str) -> Option<String> {
+    let lower = hostname.to_lowercase();
+
+    // Roku devices: Roku-Ultra-XXXXX, Roku-Express-XXXXX, etc.
+    if lower.starts_with("roku-") || lower.starts_with("roku_") {
+        let parts: Vec<&str> = hostname.split(['-', '_']).collect();
+        if parts.len() >= 2 {
+            // Model is typically the second part
+            let model = parts[1];
+            if !model.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Some(model.to_string());
+            }
+        }
+    }
+
+    // PlayStation: PS4-XXXXX, PS5-XXXXX
+    if lower.starts_with("ps4") {
+        return Some("PlayStation 4".to_string());
+    }
+    if lower.starts_with("ps5") {
+        return Some("PlayStation 5".to_string());
+    }
+
+    // Xbox: Xbox-One-XXXXX, Xbox-Series-X-XXXXX
+    if lower.starts_with("xbox") {
+        let parts: Vec<&str> = hostname.split(['-', '_']).collect();
+        if parts.len() >= 2 {
+            // Combine model parts (e.g., "Series-X" -> "Series X")
+            let model_parts: Vec<&str> = parts[1..]
+                .iter()
+                .take_while(|p| !p.chars().all(|c| c.is_ascii_hexdigit()))
+                .copied()
+                .collect();
+            if !model_parts.is_empty() {
+                return Some(format!("Xbox {}", model_parts.join(" ")));
+            }
+        }
+        return Some("Xbox".to_string());
+    }
+
+    // iPhone: iPhone-14-Pro, iPhone15Pro, etc.
+    if lower.contains("iphone") {
+        // Try to extract version number
+        let after_iphone = lower.split("iphone").nth(1).unwrap_or("");
+        let model_str: String = after_iphone
+            .chars()
+            .skip_while(|c| *c == '-' || *c == '_')
+            .take_while(|c| c.is_ascii_digit() || *c == '-' || *c == '_' || c.is_ascii_alphabetic())
+            .collect();
+        if !model_str.is_empty() {
+            let cleaned: String = model_str
+                .replace(['-', '_'], " ")
+                .split_whitespace()
+                .take_while(|p| !p.chars().all(|c| c.is_ascii_hexdigit() || c == 's'))
+                .collect::<Vec<_>>()
+                .join(" ");
+            if !cleaned.is_empty() {
+                return Some(format!("iPhone {}", cleaned));
+            }
+        }
+        return Some("iPhone".to_string());
+    }
+
+    // iPad: iPad-Pro, iPad-Air, etc.
+    if lower.contains("ipad") {
+        let after_ipad = lower.split("ipad").nth(1).unwrap_or("");
+        let model_str: String = after_ipad
+            .chars()
+            .skip_while(|c| *c == '-' || *c == '_')
+            .take_while(|c| c.is_ascii_alphabetic() || *c == '-' || *c == '_')
+            .collect();
+        if !model_str.is_empty() && !model_str.chars().all(|c| c.is_ascii_hexdigit()) {
+            let cleaned = model_str.replace(['-', '_'], " ");
+            return Some(format!("iPad {}", cleaned.trim()));
+        }
+        return Some("iPad".to_string());
+    }
+
+    // MacBook: MacBook-Pro, MacBook-Air, etc.
+    if lower.contains("macbook") {
+        if lower.contains("pro") {
+            return Some("MacBook Pro".to_string());
+        }
+        if lower.contains("air") {
+            return Some("MacBook Air".to_string());
+        }
+        return Some("MacBook".to_string());
+    }
+
+    // Samsung TVs: often have model numbers like QN65Q80B, UN55NU8000
+    if lower.contains("samsung") {
+        let parts: Vec<&str> = hostname.split(['-', '_', ' ']).collect();
+        for part in parts {
+            // Samsung TV model numbers start with QN, UN, or similar
+            let upper = part.to_uppercase();
+            if (upper.starts_with("QN") || upper.starts_with("UN") || upper.starts_with("UA"))
+                && upper.len() >= 6
+            {
+                return Some(upper);
+            }
+        }
+    }
+
+    // LG TVs: often have model numbers like OLED55C1, 65UP8000
+    if lower.starts_with("lg") || lower.contains("[lg]") {
+        let parts: Vec<&str> = hostname.split(['-', '_', ' ']).collect();
+        for part in parts {
+            let upper = part.to_uppercase();
+            if upper.starts_with("OLED") || upper.starts_with("NANO") {
+                return Some(upper);
+            }
+            // Model like 65UP8000
+            if upper.len() >= 6
+                && upper.chars().take(2).all(|c| c.is_ascii_digit())
+                && upper
+                    .chars()
+                    .skip(2)
+                    .take(2)
+                    .all(|c| c.is_ascii_uppercase())
+            {
+                return Some(upper);
+            }
+        }
+    }
+
+    // LG ThinQ appliances: LMA749755 (dishwasher), WM3600HWA (washer), etc.
+    if lower.starts_with("lma") || lower.starts_with("ldp") || lower.starts_with("ldf") {
+        return Some("Dishwasher".to_string());
+    }
+    if lower.starts_with("wm")
+        && lower
+            .chars()
+            .nth(2)
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
+    {
+        return Some("Washing Machine".to_string());
+    }
+    if lower.starts_with("dlex") || lower.starts_with("dle") || lower.starts_with("dlg") {
+        return Some("Dryer".to_string());
+    }
+    if lower.starts_with("lrm") || lower.starts_with("lrf") || lower.starts_with("lrs") {
+        return Some("Refrigerator".to_string());
+    }
+
+    // Google/Nest devices
+    if lower.contains("chromecast") {
+        if lower.contains("ultra") {
+            return Some("Chromecast Ultra".to_string());
+        }
+        if lower.contains("4k") || lower.contains("google-tv") {
+            return Some("Chromecast with Google TV".to_string());
+        }
+        return Some("Chromecast".to_string());
+    }
+    if lower.contains("nest-hub") || lower.contains("nesthub") {
+        if lower.contains("max") {
+            return Some("Nest Hub Max".to_string());
+        }
+        return Some("Nest Hub".to_string());
+    }
+    if lower.contains("nest-mini") || lower.contains("google-home-mini") {
+        return Some("Nest Mini".to_string());
+    }
+    if lower.contains("google-home") {
+        return Some("Google Home".to_string());
+    }
+
+    // Amazon Echo devices
+    if lower.contains("echo") {
+        if lower.contains("dot") {
+            return Some("Echo Dot".to_string());
+        }
+        if lower.contains("show") {
+            return Some("Echo Show".to_string());
+        }
+        if lower.contains("studio") {
+            return Some("Echo Studio".to_string());
+        }
+        if lower.contains("plus") {
+            return Some("Echo Plus".to_string());
+        }
+        return Some("Echo".to_string());
+    }
+
+    // Sonos speakers
+    if lower.contains("sonos") {
+        if lower.contains("one") {
+            return Some("Sonos One".to_string());
+        }
+        if lower.contains("beam") {
+            return Some("Sonos Beam".to_string());
+        }
+        if lower.contains("arc") {
+            return Some("Sonos Arc".to_string());
+        }
+        if lower.contains("move") {
+            return Some("Sonos Move".to_string());
+        }
+        if lower.contains("roam") {
+            return Some("Sonos Roam".to_string());
+        }
+        if lower.contains("sub") {
+            return Some("Sonos Sub".to_string());
+        }
+        if lower.contains("play:1") || lower.contains("play1") {
+            return Some("Sonos Play:1".to_string());
+        }
+        if lower.contains("play:3") || lower.contains("play3") {
+            return Some("Sonos Play:3".to_string());
+        }
+        if lower.contains("play:5") || lower.contains("play5") {
+            return Some("Sonos Play:5".to_string());
+        }
+    }
+
+    // Ring doorbells/cameras
+    if lower.contains("ring") {
+        if lower.contains("doorbell") {
+            return Some("Ring Doorbell".to_string());
+        }
+        if lower.contains("cam") || lower.contains("camera") {
+            return Some("Ring Camera".to_string());
+        }
+        if lower.contains("stick") {
+            return Some("Ring Stick Up Cam".to_string());
+        }
+    }
+
+    // HP Printers - try to extract model
+    if lower.starts_with("hp") || lower.starts_with("npi") {
+        let parts: Vec<&str> = hostname.split(['-', '_']).collect();
+        for part in parts {
+            // HP model patterns like LaserJet, OfficeJet, DeskJet, ENVY
+            let upper = part.to_uppercase();
+            if upper.contains("LASERJET")
+                || upper.contains("OFFICEJET")
+                || upper.contains("DESKJET")
+                || upper.contains("ENVY")
+                || upper.contains("PHOTOSMART")
+            {
+                return Some(upper);
+            }
+        }
+    }
+
+    None
+}
+
 /// Check if any MAC address matches known IoT/appliance vendor OUIs
 fn is_appliance_mac(macs: &[String]) -> bool {
     macs.iter()
@@ -1595,6 +1859,9 @@ impl EndPoint {
         if hostname.is_empty() {
             return Ok(());
         }
+        // Strip local suffixes like .local, .lan, .home
+        let hostname = strip_local_suffix(&hostname);
+
         // Check if endpoint exists with null hostname
         if conn.query_row(
             "SELECT COUNT(*) FROM endpoints WHERE id = ? AND (name IS NULL OR name = '')",
