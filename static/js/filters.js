@@ -95,6 +95,62 @@
         },
 
         /**
+         * Select home device type filters (local devices you'd find in a home)
+         */
+        selectHome: function() {
+            document.getElementById('filterLocal').checked = true;
+            document.getElementById('filterGateway').checked = false;
+            document.getElementById('filterInternet').checked = false;
+            document.getElementById('filterPrinter').checked = true;
+            document.getElementById('filterTv').checked = true;
+            document.getElementById('filterGaming').checked = true;
+            document.getElementById('filterPhone').checked = true;
+            document.getElementById('filterVirtualization').checked = false;
+            document.getElementById('filterSoundbar').checked = true;
+            document.getElementById('filterAppliance').checked = true;
+            document.getElementById('filterOther').checked = false;
+            App.Filters.apply();
+        },
+
+        /**
+         * Select only the specified filter (uncheck all others)
+         */
+        selectOnly: function(filterId) {
+            // Uncheck all filters first
+            document.getElementById('filterLocal').checked = false;
+            document.getElementById('filterGateway').checked = false;
+            document.getElementById('filterInternet').checked = false;
+            document.getElementById('filterPrinter').checked = false;
+            document.getElementById('filterTv').checked = false;
+            document.getElementById('filterGaming').checked = false;
+            document.getElementById('filterPhone').checked = false;
+            document.getElementById('filterVirtualization').checked = false;
+            document.getElementById('filterSoundbar').checked = false;
+            document.getElementById('filterAppliance').checked = false;
+            document.getElementById('filterOther').checked = false;
+
+            // Check only the specified filter
+            var checkbox = document.getElementById(filterId);
+            if (checkbox) {
+                checkbox.checked = true;
+            }
+
+            App.Filters.apply();
+        },
+
+        /**
+         * Handle filter checkbox click - supports Alt+click to select only
+         */
+        handleClick: function(event, filterId) {
+            if (event.altKey) {
+                event.preventDefault();
+                event.stopPropagation();
+                App.Filters.selectOnly(filterId);
+            }
+            // Normal click is handled by the checkbox's onchange
+        },
+
+        /**
          * Apply filters to table rows
          */
         apply: function(skipUrlUpdate) {
@@ -415,6 +471,9 @@
     window.selectAllFilters = App.Filters.selectAll;
     window.selectNoneFilters = App.Filters.selectNone;
     window.selectLocalFilters = App.Filters.selectLocal;
+    window.selectHomeFilters = App.Filters.selectHome;
+    window.selectOnlyFilter = App.Filters.selectOnly;
+    window.handleFilterClick = App.Filters.handleClick;
     window.filterHostnamesList = App.Filters.filterHostnamesList;
     window.filterPortsList = App.Filters.filterPortsList;
     window.filterIpsList = App.Filters.filterIpsList;

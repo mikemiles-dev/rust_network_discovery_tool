@@ -159,15 +159,17 @@ impl MDnsLookup {
                                     // Strip .local suffix before saving
                                     let clean_hostname =
                                         crate::network::endpoint::strip_local_suffix(&host);
-                                    if let Ok(conn) = crate::db::new_connection_result() {
+                                    let _ = crate::db::execute_with_retry(|| {
+                                        let conn = crate::db::new_connection_result()?;
                                         // Update endpoint name if currently empty, null, or set to the IP address
-                                        let _ = conn.execute(
+                                        conn.execute(
                                             "UPDATE endpoints SET name = ?1
                                              WHERE (name IS NULL OR name = '' OR name = ?2)
                                              AND id IN (SELECT endpoint_id FROM endpoint_attributes WHERE ip = ?2)",
-                                            rusqlite::params![clean_hostname, addr],
-                                        );
-                                    }
+                                            rusqlite::params![&clean_hostname, &addr],
+                                        )?;
+                                        Ok(())
+                                    });
 
                                     // Store service type (always store for device classification)
                                     if let Ok(mut services) = MDNS_SERVICES
@@ -278,23 +280,25 @@ impl MDnsLookup {
                 // Strip .local and other local suffixes before saving
                 let hostname = crate::network::endpoint::strip_local_suffix(&hostname);
 
-                // Update the endpoint with the discovered hostname
-                if let Ok(conn) = crate::db::new_connection_result() {
+                // Update the endpoint with the discovered hostname using retry logic
+                let _ = crate::db::execute_with_retry(|| {
+                    let conn = crate::db::new_connection_result()?;
                     // Update if name is NULL, empty, or currently set to any IP address
                     // (checks if current name matches any IP in endpoint_attributes for this endpoint)
-                    let _ = conn.execute(
+                    conn.execute(
                         "UPDATE endpoints SET name = ?1
                          WHERE id = ?2
                          AND (name IS NULL OR name = ''
                               OR name IN (SELECT ip FROM endpoint_attributes WHERE endpoint_id = ?2))",
-                        rusqlite::params![hostname, endpoint_id],
-                    );
+                        rusqlite::params![&hostname, endpoint_id],
+                    )?;
                     // Also add to endpoint_attributes if not already there
-                    let _ = conn.execute(
+                    conn.execute(
                         "INSERT OR IGNORE INTO endpoint_attributes (created_at, endpoint_id, ip, hostname) VALUES (strftime('%s', 'now'), ?1, ?2, ?3)",
-                        rusqlite::params![endpoint_id, ip, hostname],
-                    );
-                }
+                        rusqlite::params![endpoint_id, &ip, &hostname],
+                    )?;
+                    Ok(())
+                });
             }
         });
     }

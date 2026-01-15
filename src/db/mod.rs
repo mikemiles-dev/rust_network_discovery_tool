@@ -32,6 +32,59 @@ pub fn new_connection_result() -> Result<Connection, rusqlite::Error> {
     Ok(conn)
 }
 
+/// Execute a database operation with retry logic for handling lock contention.
+/// Returns the result of the operation or the last error after all retries.
+pub fn execute_with_retry<F, T>(mut operation: F) -> Result<T, rusqlite::Error>
+where
+    F: FnMut() -> Result<T, rusqlite::Error>,
+{
+    const MAX_RETRIES: u32 = 5;
+    const BASE_DELAY_MS: u64 = 50;
+    const MAX_DELAY_MS: u64 = 2000;
+
+    let mut last_error = None;
+
+    for attempt in 0..MAX_RETRIES {
+        match operation() {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                let is_lock_error = match &e {
+                    rusqlite::Error::SqliteFailure(err, _)
+                        if err.code == rusqlite::ErrorCode::DatabaseBusy
+                            || err.code == rusqlite::ErrorCode::DatabaseLocked =>
+                    {
+                        true
+                    }
+                    _ => e.to_string().contains("database is locked"),
+                };
+
+                if is_lock_error && attempt < MAX_RETRIES - 1 {
+                    // Exponential backoff with jitter
+                    let base_delay = BASE_DELAY_MS * (1 << attempt.min(5));
+                    let delay = base_delay.min(MAX_DELAY_MS);
+                    let nanos = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.subsec_nanos())
+                        .unwrap_or(0) as u64;
+                    let jitter = (nanos % (delay / 2 + 1)).min(delay / 2);
+                    std::thread::sleep(std::time::Duration::from_millis(delay + jitter));
+                    last_error = Some(e);
+                    continue;
+                }
+
+                return Err(e);
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
+            Some("Database busy after retries".to_string()),
+        )
+    }))
+}
+
 #[cfg(test)]
 pub fn new_test_connection() -> Connection {
     let conn = Connection::open_in_memory().expect("Failed to create in-memory database");
@@ -180,7 +233,9 @@ impl SQLWriter {
             return;
         }
 
-        const MAX_BATCH_RETRIES: u64 = 5;
+        const MAX_BATCH_RETRIES: u64 = 10;
+        const BASE_DELAY_MS: u64 = 50;
+        const MAX_DELAY_MS: u64 = 5000;
 
         for attempt in 1..=MAX_BATCH_RETRIES {
             // Try to process the entire batch in a transaction
@@ -188,10 +243,16 @@ impl SQLWriter {
                 Ok(tx) => tx,
                 Err(e) => {
                     if attempt < MAX_BATCH_RETRIES {
-                        // Exponential backoff: 100ms, 200ms, 400ms, 800ms, 1600ms
-                        std::thread::sleep(std::time::Duration::from_millis(
-                            100 * (1 << (attempt - 1)),
-                        ));
+                        // Exponential backoff with jitter and cap
+                        let base_delay = BASE_DELAY_MS * (1 << (attempt - 1).min(6));
+                        let delay = base_delay.min(MAX_DELAY_MS);
+                        // Add 0-50% jitter to reduce thundering herd (using nanos as pseudo-random source)
+                        let nanos = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.subsec_nanos())
+                            .unwrap_or(0) as u64;
+                        let jitter = (nanos % (delay / 2 + 1)).min(delay / 2);
+                        std::thread::sleep(std::time::Duration::from_millis(delay + jitter));
                         continue;
                     }
                     eprintln!(
@@ -236,15 +297,21 @@ impl SQLWriter {
                 // Rollback happens automatically when tx is dropped
                 drop(tx);
                 if attempt < MAX_BATCH_RETRIES {
-                    // Exponential backoff
-                    std::thread::sleep(std::time::Duration::from_millis(
-                        100 * (1 << (attempt - 1)),
-                    ));
+                    // Exponential backoff with jitter and cap
+                    let base_delay = BASE_DELAY_MS * (1 << (attempt - 1).min(6));
+                    let delay = base_delay.min(MAX_DELAY_MS);
+                    let nanos = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.subsec_nanos())
+                        .unwrap_or(0) as u64;
+                    let jitter = (nanos % (delay / 2 + 1)).min(delay / 2);
+                    std::thread::sleep(std::time::Duration::from_millis(delay + jitter));
                     continue;
                 }
                 eprintln!(
-                    "Database locked after {} retry attempts, dropping batch",
-                    attempt
+                    "Database locked after {} retry attempts, dropping batch of {} items",
+                    attempt,
+                    batch.len()
                 );
                 batch.clear();
                 return;
@@ -253,9 +320,14 @@ impl SQLWriter {
             // Success - commit and clear batch
             if let Err(e) = tx.commit() {
                 if e.to_string().contains("database is locked") && attempt < MAX_BATCH_RETRIES {
-                    std::thread::sleep(std::time::Duration::from_millis(
-                        100 * (1 << (attempt - 1)),
-                    ));
+                    let base_delay = BASE_DELAY_MS * (1 << (attempt - 1).min(6));
+                    let delay = base_delay.min(MAX_DELAY_MS);
+                    let nanos = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.subsec_nanos())
+                        .unwrap_or(0) as u64;
+                    let jitter = (nanos % (delay / 2 + 1)).min(delay / 2);
+                    std::thread::sleep(std::time::Duration::from_millis(delay + jitter));
                     continue;
                 }
                 eprintln!("Failed to commit transaction: {}", e);

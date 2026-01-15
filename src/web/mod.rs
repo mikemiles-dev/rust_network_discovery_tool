@@ -15,7 +15,7 @@ use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::device_control::DeviceController;
 use crate::network::endpoint::{
     EndPoint, get_hostname_vendor, get_mac_vendor, get_model_from_hostname, get_model_from_mac,
-    get_model_from_vendor_and_type,
+    get_model_from_vendor_and_type, strip_local_suffix,
 };
 use crate::network::mdns_lookup::MDnsLookup;
 use crate::network::protocol::ProtocolPort;
@@ -123,8 +123,8 @@ fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
         })
         .collect();
 
-    // Get the local hostname
-    let local_hostname = get_hostname().unwrap_or_else(|_| "Unknown".to_string());
+    // Get the local hostname (strip .local suffix to match stored endpoint names)
+    let local_hostname = strip_local_suffix(&get_hostname().unwrap_or_else(|_| "Unknown".to_string()));
 
     // Sort endpoints with local hostname first
     endpoints.sort_by(|a, b| {
@@ -955,18 +955,41 @@ async fn get_endpoint_details(
         .find(|(k, _)| k.eq_ignore_ascii_case(&endpoint_name))
         .map(|(_, v)| v.clone());
 
+    // Get local hostname for comparison
+    let local_hostname = strip_local_suffix(&get_hostname().unwrap_or_else(|_| "Unknown".to_string()));
+
     let (device_type, is_manual_override) = if let Some(mt) = manual_type {
         (mt, true)
+    } else if endpoint_name.eq_ignore_ascii_case(&local_hostname) {
+        // This is the local machine
+        ("local".to_string(), false)
     } else {
-        // Use EndPoint::classify_device_type for automatic detection
-        let auto_type = EndPoint::classify_device_type(
-            Some(&endpoint_name),
-            &ips,
-            &[],
-            &macs,
-        )
-        .unwrap_or("Unknown");
-        (auto_type.to_string(), false)
+        // First check network-level classification (gateway, internet)
+        let first_ip = ips.first().cloned();
+        if let Some(network_type) = EndPoint::classify_endpoint(first_ip.clone(), Some(endpoint_name.clone())) {
+            (network_type.to_string(), false)
+        } else {
+            // Use EndPoint::classify_device_type for device-specific detection
+            let auto_type = EndPoint::classify_device_type(
+                Some(&endpoint_name),
+                &ips,
+                &[],
+                &macs,
+            )
+            .unwrap_or_else(|| {
+                // Fallback: if on local network, classify as "local", otherwise "other"
+                if let Some(ref ip_str) = first_ip {
+                    if EndPoint::is_on_local_network(ip_str) {
+                        "local"
+                    } else {
+                        "other"
+                    }
+                } else {
+                    "other"
+                }
+            });
+            (auto_type.to_string(), false)
+        }
     };
 
     // Get device vendor from MAC or hostname
@@ -1318,7 +1341,7 @@ async fn static_files(path: actix_web::web::Path<String>) -> impl Responder {
 // Define a handler function for the web request
 #[get("/")]
 async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
-    let hostname = get_hostname().unwrap_or_else(|_| "Unknown".to_string());
+    let hostname = strip_local_suffix(&get_hostname().unwrap_or_else(|_| "Unknown".to_string()));
     let selected_endpoint = query.node.clone().unwrap_or_else(|| hostname.clone());
 
     let communications = get_nodes(query.node.clone(), query.scan_interval.unwrap_or(60));
