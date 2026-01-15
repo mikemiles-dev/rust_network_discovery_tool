@@ -861,33 +861,11 @@ impl LgThinQController {
     /// PAT tokens use the connect-pat endpoint regardless of region
     /// Get the API URL based on country code
     /// The actual API uses regional endpoints, not the PAT portal
-    fn get_api_url(country_code: &str) -> String {
-        // Map country codes to regional API endpoints
-        // Based on LG ThinQ Connect SDK: https://api-{region}.lgthinq.com/
-        let region = match country_code.to_uppercase().as_str() {
-            // North America
-            "US" | "CA" | "MX" => "us",
-            // Korea
-            "KR" => "kr",
-            // Europe
-            "GB" | "UK" | "DE" | "FR" | "IT" | "ES" | "NL" | "BE" | "AT" | "CH" | "PL" | "SE"
-            | "NO" | "DK" | "FI" | "IE" | "PT" | "GR" | "CZ" | "HU" | "RO" | "BG" | "SK" | "SI"
-            | "HR" | "EE" | "LV" | "LT" | "LU" | "MT" | "CY" => "eu",
-            // Asia Pacific (excluding Korea)
-            "JP" => "jp",
-            "AU" | "NZ" => "au",
-            "CN" => "cn",
-            "TW" | "HK" | "SG" | "MY" | "TH" | "VN" | "PH" | "ID" | "IN" => "ap",
-            // Russia
-            "RU" => "ru",
-            // Middle East / Africa
-            "AE" | "SA" | "IL" | "TR" | "ZA" | "EG" => "mea",
-            // Brazil / South America
-            "BR" | "AR" | "CL" | "CO" | "PE" | "VE" => "br",
-            // Default to US region for unknown countries
-            _ => "us",
-        };
-        format!("https://api-{}.lgthinq.com", region)
+    fn get_api_url(_country_code: &str) -> String {
+        // LG ThinQ Connect uses a single global API endpoint
+        // Country-specific routing is handled via headers, not URL
+        // Reference: Home Assistant LG ThinQ integration
+        "https://api-aic.lgthinq.com".to_string()
     }
 
     /// Check if a device is an LG ThinQ appliance based on hostname
@@ -1067,8 +1045,13 @@ impl LgThinQController {
             return Err("API returned empty response".to_string());
         }
 
-        let json: serde_json::Value = serde_json::from_str(&response_text)
-            .map_err(|e| format!("Failed to parse JSON: {}. Response: {}", e, &response_text[..response_text.len().min(200)]))?;
+        let json: serde_json::Value = serde_json::from_str(&response_text).map_err(|e| {
+            format!(
+                "Failed to parse JSON: {}. Response: {}",
+                e,
+                &response_text[..response_text.len().min(200)]
+            )
+        })?;
 
         // Extract the response field
         if let Some(resp) = json.get("response") {

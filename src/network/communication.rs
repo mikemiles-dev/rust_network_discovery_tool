@@ -7,6 +7,160 @@ use crate::network::{
     packet_wrapper::PacketWrapper,
 };
 
+/// Parse DHCP options from payload
+/// Returns (Option 61: Client ID, Option 60: Vendor Class, Option 12: Hostname)
+fn parse_dhcp_options(payload: &[u8]) -> (Option<String>, Option<String>, Option<String>) {
+    // DHCP packet structure:
+    // - Bytes 0-235: Fixed header
+    // - Bytes 236-239: Magic cookie (0x63825363)
+    // - Bytes 240+: Options (TLV format)
+
+    if payload.len() < 244 {
+        return (None, None, None); // Too short for DHCP with options
+    }
+
+    // Verify magic cookie
+    if payload[236..240] != [0x63, 0x82, 0x53, 0x63] {
+        return (None, None, None);
+    }
+
+    let mut client_id = None;
+    let mut vendor_class = None;
+    let mut hostname = None;
+
+    // Parse options starting at byte 240
+    let mut offset = 240;
+    while offset < payload.len() {
+        let option_type = payload[offset];
+
+        // End option
+        if option_type == 255 {
+            break;
+        }
+
+        // Pad option (no length byte)
+        if option_type == 0 {
+            offset += 1;
+            continue;
+        }
+
+        // Make sure we can read the length
+        if offset + 1 >= payload.len() {
+            break;
+        }
+
+        let option_len = payload[offset + 1] as usize;
+
+        // Make sure we can read the value
+        if offset + 2 + option_len > payload.len() {
+            break;
+        }
+
+        let option_data = &payload[offset + 2..offset + 2 + option_len];
+
+        match option_type {
+            // Option 12: Hostname
+            12 if option_len > 0 => {
+                if let Ok(s) = std::str::from_utf8(option_data) {
+                    hostname = Some(s.trim_end_matches('\0').to_string());
+                }
+            }
+            // Option 60: Vendor Class Identifier
+            // Examples: "samsung:SM-G998B", "HP LaserJet Pro M404", "android-dhcp-13"
+            60 if option_len > 0 => {
+                if let Ok(s) = std::str::from_utf8(option_data) {
+                    vendor_class = Some(s.trim_end_matches('\0').to_string());
+                }
+            }
+            // Option 61: Client Identifier
+            61 if option_len > 0 => {
+                // Convert to hex string for storage
+                let hex_string: String = option_data
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<Vec<_>>()
+                    .join(":");
+                client_id = Some(hex_string);
+            }
+            _ => {}
+        }
+
+        offset += 2 + option_len;
+    }
+
+    (client_id, vendor_class, hostname)
+}
+
+/// Extract model from DHCP Vendor Class Identifier (Option 60)
+/// Examples:
+/// - "samsung:SM-G998B" -> "SM-G998B" (Galaxy S21 Ultra)
+/// - "HP LaserJet Pro M404" -> "LaserJet Pro M404"
+/// - "android-dhcp-13" -> None (just Android version)
+pub fn extract_model_from_vendor_class(vendor_class: &str) -> Option<String> {
+    let vc = vendor_class.trim();
+
+    // Samsung format: "samsung:MODEL" or "SAMSUNG:MODEL"
+    if let Some(model) = vc
+        .strip_prefix("samsung:")
+        .or_else(|| vc.strip_prefix("SAMSUNG:"))
+    {
+        let model = model.trim();
+        if !model.is_empty() && model.starts_with("SM-") || model.starts_with("GT-") {
+            return Some(model.to_string());
+        }
+    }
+
+    // HP format: "HP MODEL" or "Hewlett-Packard MODEL"
+    if vc.starts_with("HP ") {
+        let model = vc.strip_prefix("HP ").unwrap().trim();
+        if !model.is_empty() {
+            return Some(model.to_string());
+        }
+    }
+    if vc.starts_with("Hewlett-Packard ") {
+        let model = vc.strip_prefix("Hewlett-Packard ").unwrap().trim();
+        if !model.is_empty() {
+            return Some(model.to_string());
+        }
+    }
+
+    // LG format: "LG-MODEL" or "LGE-MODEL"
+    if let Some(model) = vc.strip_prefix("LG-").or_else(|| vc.strip_prefix("LGE-")) {
+        let model = model.trim();
+        if !model.is_empty() {
+            return Some(format!("LG {}", model));
+        }
+    }
+
+    // Sony/PlayStation format
+    if vc.starts_with("PlayStation") || vc.starts_with("PS") {
+        return Some(vc.to_string());
+    }
+
+    // Xbox format
+    if vc.contains("Xbox") {
+        return Some(vc.to_string());
+    }
+
+    // Generic formats that contain model info (not just OS/DHCP client)
+    // Skip things like "android-dhcp-13", "MSFT 5.0", "dhcpcd-8.1.2"
+    if vc.starts_with("android-dhcp")
+        || vc.starts_with("MSFT ")
+        || vc.starts_with("dhcpcd")
+        || vc.starts_with("udhcp")
+    {
+        return None;
+    }
+
+    // If it looks like a meaningful vendor class with a model, return it
+    // But filter out very short or generic ones
+    if vc.len() > 5 && !vc.contains("dhcp") && !vc.contains("DHCP") {
+        return Some(vc.to_string());
+    }
+
+    None
+}
+
 #[derive(Default, Debug)]
 pub struct Communication {
     pub source_mac: Option<String>,
@@ -20,6 +174,10 @@ pub struct Communication {
     pub sub_protocol: Option<String>,
     pub source: Option<String>, // Source of the capture (e.g., "live", "capture.pcap", or custom label)
     pub packet_size: u32,       // Size of the packet in bytes
+    // DHCP Client ID (Option 61) for tracking devices with randomized MACs
+    pub dhcp_client_id: Option<String>,
+    // DHCP Vendor Class (Option 60) for model identification (e.g., "samsung:SM-G998B")
+    pub dhcp_vendor_class: Option<String>,
     // Note: payload is used only for parsing hostnames (SNI/HTTP), not stored in DB
     payload: Vec<u8>,
 }
@@ -33,6 +191,8 @@ impl Communication {
         let packet_wrapper = PacketWrapper::new(&ethernet_packet);
         let packet_size = ethernet_packet.packet().len() as u32;
 
+        let payload = packet_wrapper.get_payload().unwrap_or_default().to_vec();
+
         let mut communication = Communication {
             source_mac: Some(ethernet_packet.get_source().to_string()),
             destination_mac: Some(ethernet_packet.get_destination().to_string()),
@@ -45,7 +205,9 @@ impl Communication {
             sub_protocol: None,
             source,
             packet_size,
-            payload: packet_wrapper.get_payload().unwrap_or_default().to_vec(),
+            dhcp_client_id: None,
+            dhcp_vendor_class: None,
+            payload,
         };
         if let Some(ip_header_protocol) = &communication.ip_header_protocol
             && (ip_header_protocol == "Tcp" || ip_header_protocol == "Udp")
@@ -70,6 +232,17 @@ impl Communication {
                         None
                     }
                 });
+        }
+
+        // Parse DHCP options for device tracking and identification (ports 67/68 are DHCP)
+        let is_dhcp = communication.source_port == Some(67)
+            || communication.source_port == Some(68)
+            || communication.destination_port == Some(67)
+            || communication.destination_port == Some(68);
+        if is_dhcp {
+            let (client_id, vendor_class, _hostname) = parse_dhcp_options(&communication.payload);
+            communication.dhcp_client_id = client_id;
+            communication.dhcp_vendor_class = vendor_class;
         }
 
         // Clear MAC addresses for internet traffic to prevent grouping remote endpoints under gateway MAC
@@ -154,16 +327,22 @@ impl Communication {
     }
 
     pub fn insert_communication(&self, conn: &Connection) -> Result<()> {
-        let src_endpoint_id = match EndPoint::get_or_insert_endpoint(
+        // For DHCP packets, the source is the client - pass DHCP Client ID and Vendor Class for tracking
+        let src_endpoint_id = match EndPoint::get_or_insert_endpoint_with_dhcp(
             conn,
             self.source_mac.clone(),
             self.source_ip.clone(),
             self.sub_protocol.clone(),
             &[],
+            self.dhcp_client_id.clone(), // Pass DHCP Client ID for source (client)
+            self.dhcp_vendor_class.clone(), // Pass DHCP Vendor Class for model identification
         ) {
             Ok(id) => id,
             Err(InsertEndpointError::BothMacAndIpNone) => {
                 return Ok(()); // Skip insertion if both MAC and IP are None
+            }
+            Err(InsertEndpointError::LocallyAdministeredMac) => {
+                return Ok(()); // Skip insertion for randomized/private MACs without DHCP Client ID
             }
             Err(InsertEndpointError::ConstraintViolation) => {
                 return Ok(()); // Skip insertion on constraint violation
@@ -172,16 +351,21 @@ impl Communication {
                 return Err(e);
             }
         };
-        let dst_endpoint_id = match EndPoint::get_or_insert_endpoint(
+        let dst_endpoint_id = match EndPoint::get_or_insert_endpoint_with_dhcp(
             conn,
             self.destination_mac.clone(),
             self.destination_ip.clone(),
             self.sub_protocol.clone(),
             self.get_payload(),
+            None, // Destination doesn't need DHCP Client ID (usually the server)
+            None, // Destination doesn't need DHCP Vendor Class
         ) {
             Ok(id) => id,
             Err(InsertEndpointError::BothMacAndIpNone) => {
                 return Ok(()); // Skip insertion if both MAC and IP are None
+            }
+            Err(InsertEndpointError::LocallyAdministeredMac) => {
+                return Ok(()); // Skip insertion for randomized/private MACs without DHCP Client ID
             }
             Err(InsertEndpointError::ConstraintViolation) => {
                 return Ok(()); // Skip insertion on constraint violation

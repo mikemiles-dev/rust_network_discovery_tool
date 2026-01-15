@@ -15,11 +15,23 @@ impl EndPointAttribute {
                 mac TEXT,
                 ip TEXT NOT NULL,
                 hostname TEXT,
+                dhcp_client_id TEXT,
+                dhcp_vendor_class TEXT,
                 FOREIGN KEY (endpoint_id) REFERENCES endpoints(id),
                 UNIQUE(mac, ip, hostname)
             )",
             [],
         )?;
+        // Add dhcp_client_id column if it doesn't exist (migration for existing DBs)
+        let _ = conn.execute(
+            "ALTER TABLE endpoint_attributes ADD COLUMN dhcp_client_id TEXT",
+            [],
+        );
+        // Add dhcp_vendor_class column if it doesn't exist (migration for existing DBs)
+        let _ = conn.execute(
+            "ALTER TABLE endpoint_attributes ADD COLUMN dhcp_vendor_class TEXT",
+            [],
+        );
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_endpoint_attributes_endpoint_id ON endpoint_attributes (endpoint_id);",
             [],
@@ -36,16 +48,35 @@ impl EndPointAttribute {
             "CREATE INDEX IF NOT EXISTS idx_endpoint_attributes_ip ON endpoint_attributes (ip);",
             [],
         )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_endpoint_attributes_dhcp_client_id ON endpoint_attributes (dhcp_client_id);",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_endpoint_attributes_dhcp_vendor_class ON endpoint_attributes (dhcp_vendor_class);",
+            [],
+        )?;
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn find_existing_endpoint_id(
         conn: &Connection,
         mac: Option<String>,
         ip: Option<String>,
         _hostname: Option<String>,
     ) -> Option<i64> {
-        // Strategy: Match by MAC first (most reliable), then IP if no MAC
+        Self::find_existing_endpoint_id_with_dhcp(conn, mac, ip, _hostname, None)
+    }
+
+    pub fn find_existing_endpoint_id_with_dhcp(
+        conn: &Connection,
+        mac: Option<String>,
+        ip: Option<String>,
+        _hostname: Option<String>,
+        dhcp_client_id: Option<String>,
+    ) -> Option<i64> {
+        // Strategy: Match by MAC first (most reliable), then DHCP Client ID, then IP if no MAC
         // Never match by hostname alone (too unreliable - collisions common)
         // CRITICAL: Prevent DHCP IP reuse from merging different physical devices
 
@@ -69,10 +100,28 @@ impl EndPointAttribute {
             return Some(id);
         }
 
-        // Try 2: Match by IP ONLY if we don't have a MAC
+        // Try 2: Match by DHCP Client ID (for devices with randomized MACs)
+        if let Some(ref dhcp_id) = dhcp_client_id
+            && let Ok(mut stmt) = conn.prepare(
+                "SELECT ea.endpoint_id
+                 FROM endpoint_attributes ea
+                 JOIN endpoints e ON ea.endpoint_id = e.id
+                 WHERE LOWER(ea.dhcp_client_id) = LOWER(?1)
+                 ORDER BY
+                   CASE WHEN e.name IS NOT NULL AND e.name != '' THEN 0 ELSE 1 END,
+                   ea.endpoint_id ASC
+                 LIMIT 1",
+            )
+            && let Ok(Some(id)) = stmt.query_row([dhcp_id], |row| row.get(0)).optional()
+        {
+            return Some(id);
+        }
+
+        // Try 3: Match by IP ONLY if we don't have a MAC or DHCP Client ID
         // This prevents DHCP IP reuse from incorrectly merging different devices
         // If we have a MAC but didn't match above, this is a new device
         if mac.is_none()
+            && dhcp_client_id.is_none()
             && let Some(ref ip_addr) = ip
             && let Ok(mut stmt) = conn.prepare(
                 "SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(ip) = LOWER(?1) LIMIT 1",
@@ -149,6 +198,7 @@ impl EndPointAttribute {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn insert_endpoint_attribute(
         conn: &Connection,
         endpoint_id: i64,
@@ -156,12 +206,60 @@ impl EndPointAttribute {
         ip: Option<String>,
         hostname: String,
     ) -> Result<()> {
+        Self::insert_endpoint_attribute_with_dhcp(conn, endpoint_id, mac, ip, hostname, None, None)
+    }
+
+    pub fn insert_endpoint_attribute_with_dhcp(
+        conn: &Connection,
+        endpoint_id: i64,
+        mac: Option<String>,
+        ip: Option<String>,
+        hostname: String,
+        dhcp_client_id: Option<String>,
+        dhcp_vendor_class: Option<String>,
+    ) -> Result<()> {
         // Strip local suffixes like .local, .lan, .home
         let hostname = strip_local_suffix(&hostname);
         conn.execute(
-            "INSERT INTO endpoint_attributes (created_at, endpoint_id, mac, ip, hostname) VALUES (strftime('%s', 'now'), ?1, ?2, ?3, ?4)",
-            params![endpoint_id, mac, ip, hostname],
+            "INSERT INTO endpoint_attributes (created_at, endpoint_id, mac, ip, hostname, dhcp_client_id, dhcp_vendor_class) VALUES (strftime('%s', 'now'), ?1, ?2, ?3, ?4, ?5, ?6)",
+            params![endpoint_id, mac, ip, hostname, dhcp_client_id, dhcp_vendor_class],
         )?;
         Ok(())
+    }
+
+    /// Update DHCP Client ID for an endpoint
+    pub fn update_dhcp_client_id(
+        conn: &Connection,
+        endpoint_id: i64,
+        dhcp_client_id: &str,
+    ) -> Result<()> {
+        conn.execute(
+            "UPDATE endpoint_attributes SET dhcp_client_id = ?1 WHERE endpoint_id = ?2 AND dhcp_client_id IS NULL",
+            params![dhcp_client_id, endpoint_id],
+        )?;
+        Ok(())
+    }
+
+    /// Update DHCP Vendor Class for an endpoint
+    pub fn update_dhcp_vendor_class(
+        conn: &Connection,
+        endpoint_id: i64,
+        dhcp_vendor_class: &str,
+    ) -> Result<()> {
+        conn.execute(
+            "UPDATE endpoint_attributes SET dhcp_vendor_class = ?1 WHERE endpoint_id = ?2 AND dhcp_vendor_class IS NULL",
+            params![dhcp_vendor_class, endpoint_id],
+        )?;
+        Ok(())
+    }
+
+    /// Get DHCP Vendor Class for an endpoint
+    #[allow(dead_code)]
+    pub fn get_dhcp_vendor_class(conn: &Connection, endpoint_id: i64) -> Option<String> {
+        conn.query_row(
+            "SELECT dhcp_vendor_class FROM endpoint_attributes WHERE endpoint_id = ?1 AND dhcp_vendor_class IS NOT NULL LIMIT 1",
+            params![endpoint_id],
+            |row| row.get(0),
+        ).ok()
     }
 }
