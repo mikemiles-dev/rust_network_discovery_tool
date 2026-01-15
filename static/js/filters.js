@@ -98,7 +98,7 @@
          * Select home device type filters (local devices you'd find in a home)
          */
         selectHome: function() {
-            document.getElementById('filterLocal').checked = true;
+            document.getElementById('filterLocal').checked = false;
             document.getElementById('filterGateway').checked = false;
             document.getElementById('filterInternet').checked = false;
             document.getElementById('filterPrinter').checked = true;
