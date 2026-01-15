@@ -570,6 +570,8 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("fc:48:ef", "Huawei"),
     // AzureWave Technology (WiFi/Bluetooth modules in laptops, tablets, etc.)
     ("2c:dc:d7", "AzureWave"),
+    // Intel (WiFi/Ethernet adapters in laptops, desktops, etc.)
+    ("4c:03:4f", "Intel"),
     // Google/Nest (Nest thermostat, Home, Chromecast, etc.)
     ("18:d6:c7", "Google"),
     ("1c:f2:9a", "Google"),
@@ -1371,16 +1373,16 @@ const TV_SERVICES: &[&str] = &[
     "_googlecast._tcp",
     "_roku._tcp",
     "_webos._tcp", // LG WebOS TVs
-    // Note: _raop._tcp removed - too generic (MacBooks, iPhones, HomePods advertise it)
-    // Note: _spotify-connect._tcp removed - too generic (phones, speakers, consoles all use it)
-    // Note: _airplay._tcp removed - too generic (iPhones, MacBooks also advertise it)
+                   // Note: _raop._tcp removed - too generic (MacBooks, iPhones, HomePods advertise it)
+                   // Note: _spotify-connect._tcp removed - too generic (phones, speakers, consoles all use it)
+                   // Note: _airplay._tcp removed - too generic (iPhones, MacBooks also advertise it)
 ];
 const PRINTER_SERVICES: &[&str] = &["_ipp._tcp", "_printer._tcp", "_pdl-datastream._tcp"];
 
 const PHONE_SERVICES: &[&str] = &[
-    "_apple-mobdev2._tcp", // Apple mobile device service (iPhones/iPads)
+    "_apple-mobdev2._tcp",  // Apple mobile device service (iPhones/iPads)
     "_companion-link._tcp", // iOS companion link (AirDrop, Handoff)
-    "_rdlink._tcp",        // Remote desktop link (iOS)
+    "_rdlink._tcp",         // Remote desktop link (iOS)
 ];
 
 const APPLIANCE_SERVICES: &[&str] = &[
@@ -2630,7 +2632,7 @@ fn classify_by_port(port: u16) -> Option<&'static str> {
         // Gaming console ports (check BEFORE TV ports)
         9295..=9297 => Some(CLASSIFICATION_GAMING), // PlayStation Remote Play
         3478..=3480 => Some(CLASSIFICATION_GAMING), // PlayStation Network
-        3074 => Some(CLASSIFICATION_GAMING),               // Xbox Live
+        3074 => Some(CLASSIFICATION_GAMING),        // Xbox Live
         // TV/Streaming ports
         8008 | 8009 => Some(CLASSIFICATION_TV), // Chromecast
         7000 | 7001 | 8001 | 8002 => Some(CLASSIFICATION_TV), // Samsung TV

@@ -215,7 +215,8 @@ impl SQLWriter {
         for attempt in 1..=MAX_BATCH_RETRIES {
             // Try to process the entire batch in a transaction
             // Use IMMEDIATE to acquire write lock upfront and fail fast if busy
-            let tx = match conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) {
+            let tx = match conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            {
                 Ok(tx) => tx,
                 Err(e) => {
                     if attempt < MAX_BATCH_RETRIES {

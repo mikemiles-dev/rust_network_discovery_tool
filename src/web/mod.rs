@@ -239,10 +239,8 @@ fn get_endpoints_for_protocol(
 
             let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
 
-            let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![
-                Box::new(internal_minutes),
-                Box::new(protocol.to_string()),
-            ];
+            let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> =
+                vec![Box::new(internal_minutes), Box::new(protocol.to_string())];
             params_vec.extend(box_i64_params(&endpoint_ids));
             params_vec.extend(box_i64_params(&endpoint_ids));
 
@@ -281,7 +279,8 @@ fn get_endpoints_for_protocol(
 fn get_all_protocols(internal_minutes: u64) -> Vec<String> {
     let conn = new_connection();
 
-    let query = "SELECT DISTINCT COALESCE(NULLIF(c.sub_protocol, ''), c.ip_header_protocol) as protocol
+    let query =
+        "SELECT DISTINCT COALESCE(NULLIF(c.sub_protocol, ''), c.ip_header_protocol) as protocol
         FROM communications c
         WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
         ORDER BY protocol";
@@ -351,10 +350,10 @@ fn get_ports_from_communications(communications: &[Node], selected_endpoint: &st
             && let Some(ref port_str) = node.dst_port
         {
             for p in port_str.split(',') {
-                if let Ok(port) = p.trim().parse::<i64>() {
-                    if port < 49152 {
-                        ports.insert(port);
-                    }
+                if let Ok(port) = p.trim().parse::<i64>()
+                    && port < 49152
+                {
+                    ports.insert(port);
                 }
             }
         }
@@ -1229,11 +1228,8 @@ async fn get_protocol_endpoints(
     let protocol = path.into_inner();
     let internal_minutes = query.scan_interval.unwrap_or(60);
 
-    let endpoints = get_endpoints_for_protocol(
-        &protocol,
-        internal_minutes,
-        query.from_endpoint.as_deref(),
-    );
+    let endpoints =
+        get_endpoints_for_protocol(&protocol, internal_minutes, query.from_endpoint.as_deref());
 
     HttpResponse::Ok().json(ProtocolEndpointsResponse {
         protocol,
@@ -1247,9 +1243,7 @@ struct AllProtocolsResponse {
 }
 
 #[get("/api/protocols")]
-async fn get_all_protocols_api(
-    query: actix_web::web::Query<NodeQuery>,
-) -> impl Responder {
+async fn get_all_protocols_api(query: actix_web::web::Query<NodeQuery>) -> impl Responder {
     let internal_minutes = query.scan_interval.unwrap_or(60);
     let protocols = get_all_protocols(internal_minutes);
     HttpResponse::Ok().json(AllProtocolsResponse { protocols })
@@ -1563,7 +1557,6 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         "Wisol",
         "Murata",
         "AzureWave",
-        "Intel",
     ];
     let endpoint_vendors: HashMap<String, String> = dropdown_endpoints
         .iter()
