@@ -2,6 +2,7 @@ use rusqlite::Connection;
 use tokio::{sync::mpsc, task};
 
 use std::env;
+use std::sync::OnceLock;
 
 use crate::network::communication::Communication;
 use crate::network::endpoint::EndPoint;
@@ -10,10 +11,21 @@ use crate::network::endpoint_attribute::EndPointAttribute;
 const MAX_CHANNEL_BUFFER_SIZE: usize = 50_000; // ~25MB at 500 bytes per Communication
 
 pub fn new_connection() -> Connection {
+    new_connection_result().expect("Failed to open database")
+}
+
+pub fn new_connection_result() -> Result<Connection, rusqlite::Error> {
     let db_url = get_database_url();
     let db_path = db_url.strip_prefix("sqlite://").unwrap_or(&db_url);
-    let conn =
-        Connection::open(db_path).unwrap_or_else(|_| panic!("Failed to open database: {}", db_url));
+    let conn = Connection::open(db_path).map_err(|e| {
+        eprintln!(
+            "Failed to open database at '{}': {} (cwd: {:?})",
+            db_path,
+            e,
+            std::env::current_dir()
+        );
+        e
+    })?;
 
     // Set busy timeout first (this doesn't require any locks)
     // 30 seconds to handle heavy contention during scanning
@@ -26,7 +38,7 @@ pub fn new_connection() -> Connection {
     // NORMAL sync is safe with WAL mode
     let _ = conn.execute("PRAGMA synchronous = NORMAL;", []);
 
-    conn
+    Ok(conn)
 }
 
 #[cfg(test)]
@@ -53,8 +65,27 @@ fn get_channel_buffer_size() -> usize {
         .unwrap_or(MAX_CHANNEL_BUFFER_SIZE) // Default value if env var is not set or invalid
 }
 
+static RESOLVED_DB_PATH: OnceLock<String> = OnceLock::new();
+
 fn get_database_url() -> String {
-    env::var("DATABASE_URL").unwrap_or_else(|_| "test.db".to_string())
+    RESOLVED_DB_PATH
+        .get_or_init(|| {
+            let db_path = env::var("DATABASE_URL").unwrap_or_else(|_| "test.db".to_string());
+
+            // Convert relative paths to absolute to avoid issues with working directory changes
+            if !db_path.starts_with('/')
+                && !db_path.starts_with("sqlite://")
+                && db_path != ":memory:"
+                && let Ok(cwd) = env::current_dir()
+            {
+                let abs_path = cwd.join(&db_path).to_string_lossy().to_string();
+                eprintln!("Database path resolved to: {}", abs_path);
+                return abs_path;
+            }
+
+            db_path
+        })
+        .clone()
 }
 
 pub struct SQLWriter {
@@ -113,8 +144,8 @@ impl SQLWriter {
             )
             .expect("Failed to create open_ports table");
 
-            const BATCH_SIZE: usize = 500;
-            const BATCH_TIMEOUT_MS: u64 = 1000; // Flush every 1 second
+            const BATCH_SIZE: usize = 100; // Smaller batches to reduce lock time
+            const BATCH_TIMEOUT_MS: u64 = 500; // Flush every 0.5 seconds
             let mut batch = Vec::with_capacity(BATCH_SIZE);
             let mut last_flush = std::time::Instant::now();
 
@@ -177,18 +208,27 @@ impl SQLWriter {
             return;
         }
 
-        const MAX_BATCH_RETRIES: u64 = 5;
+        const MAX_BATCH_RETRIES: u64 = 10;
+        const BASE_DELAY_MS: u64 = 50;
+        const MAX_DELAY_MS: u64 = 5000;
 
         for attempt in 1..=MAX_BATCH_RETRIES {
             // Try to process the entire batch in a transaction
-            let tx = match conn.transaction() {
+            // Use IMMEDIATE to acquire write lock upfront and fail fast if busy
+            let tx = match conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) {
                 Ok(tx) => tx,
                 Err(e) => {
                     if attempt < MAX_BATCH_RETRIES {
-                        // Exponential backoff: 100ms, 200ms, 400ms, 800ms, 1600ms
-                        std::thread::sleep(std::time::Duration::from_millis(
-                            100 * (1 << (attempt - 1)),
-                        ));
+                        // Exponential backoff with jitter and cap
+                        let base_delay = BASE_DELAY_MS * (1 << (attempt - 1).min(6));
+                        let delay = base_delay.min(MAX_DELAY_MS);
+                        // Add 0-50% jitter to reduce thundering herd (using nanos as pseudo-random source)
+                        let nanos = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.subsec_nanos())
+                            .unwrap_or(0) as u64;
+                        let jitter = (nanos % (delay / 2 + 1)).min(delay / 2);
+                        std::thread::sleep(std::time::Duration::from_millis(delay + jitter));
                         continue;
                     }
                     eprintln!(
@@ -233,15 +273,21 @@ impl SQLWriter {
                 // Rollback happens automatically when tx is dropped
                 drop(tx);
                 if attempt < MAX_BATCH_RETRIES {
-                    // Exponential backoff
-                    std::thread::sleep(std::time::Duration::from_millis(
-                        100 * (1 << (attempt - 1)),
-                    ));
+                    // Exponential backoff with jitter and cap
+                    let base_delay = BASE_DELAY_MS * (1 << (attempt - 1).min(6));
+                    let delay = base_delay.min(MAX_DELAY_MS);
+                    let nanos = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.subsec_nanos())
+                        .unwrap_or(0) as u64;
+                    let jitter = (nanos % (delay / 2 + 1)).min(delay / 2);
+                    std::thread::sleep(std::time::Duration::from_millis(delay + jitter));
                     continue;
                 }
                 eprintln!(
-                    "Database locked after {} retry attempts, dropping batch",
-                    attempt
+                    "Database locked after {} retry attempts, dropping batch of {} items",
+                    attempt,
+                    batch.len()
                 );
                 batch.clear();
                 return;
@@ -250,9 +296,14 @@ impl SQLWriter {
             // Success - commit and clear batch
             if let Err(e) = tx.commit() {
                 if e.to_string().contains("database is locked") && attempt < MAX_BATCH_RETRIES {
-                    std::thread::sleep(std::time::Duration::from_millis(
-                        100 * (1 << (attempt - 1)),
-                    ));
+                    let base_delay = BASE_DELAY_MS * (1 << (attempt - 1).min(6));
+                    let delay = base_delay.min(MAX_DELAY_MS);
+                    let nanos = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.subsec_nanos())
+                        .unwrap_or(0) as u64;
+                    let jitter = (nanos % (delay / 2 + 1)).min(delay / 2);
+                    std::thread::sleep(std::time::Duration::from_millis(delay + jitter));
                     continue;
                 }
                 eprintln!("Failed to commit transaction: {}", e);

@@ -1,7 +1,8 @@
-use dns_lookup::get_hostname;
+use dns_lookup::{get_hostname, lookup_addr};
 use mdns_sd::{ServiceDaemon, ServiceEvent};
 use pnet::datalink;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::net::IpAddr;
 use std::sync::{OnceLock, RwLock};
 use std::time::SystemTime;
 use tokio::task;
@@ -102,6 +103,22 @@ impl MDnsLookup {
             // Printers
             "_printer._tcp.local.",
             "_pdl-datastream._tcp.local.", // Print Data Language
+            // iOS/iPadOS devices (iPhones, iPads)
+            "_companion-link._tcp.local.", // iOS companion link (AirDrop, Handoff)
+            "_apple-mobdev2._tcp.local.",  // Apple mobile device service
+            "_sleep-proxy._udp.local.",    // Sleep proxy (iOS devices)
+            "_rdlink._tcp.local.",         // Remote desktop link
+            // LG ThinQ appliances (dishwashers, washers, dryers, etc.)
+            "_lge._tcp.local.",   // LG ThinQ general
+            "_lge._udp.local.",   // LG ThinQ UDP
+            "_xbcs._tcp.local.",  // LG ThinQ appliances
+            "_webos._tcp.local.", // LG WebOS TVs
+            // Additional smart home and IoT services
+            "_matter._tcp.local.",      // Matter smart home protocol
+            "_amzn-alexa._tcp.local.",  // Amazon Alexa devices
+            "_device-info._tcp.local.", // Device info (many Apple/smart devices)
+            "_dyson_mqtt._tcp.local.",  // Dyson devices (fans, purifiers)
+            "_eero._tcp.local.",        // Eero routers/mesh
         ];
 
         for service in services_to_browse.iter() {
@@ -137,6 +154,9 @@ impl MDnsLookup {
                                     {
                                         lookups.insert(addr.to_string(), host.to_string());
                                     }
+
+                                    // Note: Database updates removed to avoid lock contention with SQLWriter
+                                    // Hostname resolution now uses in-memory MDNS_LOOKUPS cache via resolve_from_mdns_cache()
 
                                     // Store service type (always store for device classification)
                                     if let Ok(mut services) = MDNS_SERVICES
@@ -209,5 +229,43 @@ impl MDnsLookup {
         } else {
             Vec::new()
         }
+    }
+
+    /// Actively probe for a device's hostname using reverse DNS lookup
+    /// This works for devices that register with local DNS or respond to PTR queries
+    pub fn probe_hostname(ip: &str) -> Option<String> {
+        // First check our mDNS cache
+        if let Some(hostname) = Self::lookup(ip) {
+            return Some(hostname);
+        }
+
+        // Try reverse DNS lookup (works for mDNS .local addresses too)
+        if let Ok(addr) = ip.parse::<IpAddr>()
+            && let Ok(hostname) = lookup_addr(&addr)
+        {
+            // Cache the result
+            if let Ok(mut lookups) = MDNS_LOOKUPS
+                .get_or_init(|| RwLock::new(HashMap::new()))
+                .write()
+            {
+                lookups.insert(ip.to_string(), hostname.clone());
+            }
+            return Some(hostname);
+        }
+
+        None
+    }
+
+    /// Spawn a background task to probe for hostname and cache it
+    /// This is non-blocking and runs in the background
+    pub fn probe_hostname_async(ip: String, _endpoint_id: i64) {
+        task::spawn_blocking(move || {
+            // Small delay to avoid hammering the network
+            std::thread::sleep(std::time::Duration::from_millis(100));
+
+            // Just probe and cache - the result is stored in MDNS_LOOKUPS by probe_hostname()
+            // Database updates removed to avoid lock contention with SQLWriter
+            let _ = Self::probe_hostname(&ip);
+        });
     }
 }

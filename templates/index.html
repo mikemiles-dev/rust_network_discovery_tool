@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Rust Network Discovery Tool</title>
-  <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
   <style>
     * {
       margin: 0;
@@ -98,22 +97,123 @@
 
     /* Main Layout */
     .container {
-      display: flex;
       height: calc(100vh - 73px);
-    }
-
-    /* Sidebar */
-    .sidebar {
-      width: 360px;
-      background: rgba(30, 41, 59, 0.85);
-      backdrop-filter: blur(12px);
-      border-right: 1px solid rgba(51, 65, 85, 0.6);
       padding: 1rem;
       overflow-y: auto;
+    }
+
+    /* Filter Bar */
+    .filter-bar {
+      background: rgba(30, 41, 59, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      border-radius: 0.75rem;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1rem;
       display: flex;
-      flex-direction: column;
+      align-items: center;
       gap: 1rem;
-      box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
+      flex-wrap: wrap;
+    }
+
+    .filter-bar .filter-label {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .filter-bar .filter-checkboxes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .filter-bar .quick-buttons {
+      display: flex;
+      gap: 0.5rem;
+      margin-left: auto;
+    }
+
+    .filter-bar .filter-label {
+      position: relative;
+    }
+
+    .filter-bar .filter-only-btn {
+      display: none;
+      padding: 0 0.2rem;
+      margin-left: 0.15rem;
+      font-size: 0.55rem;
+      background: rgba(255, 255, 255, 0.15);
+      border: none;
+      border-radius: 0.2rem;
+      color: rgba(255, 255, 255, 0.7);
+      cursor: pointer;
+      line-height: 1;
+      vertical-align: middle;
+    }
+
+    .filter-bar .filter-label:hover .filter-only-btn {
+      display: inline-block;
+    }
+
+    .filter-bar .filter-only-btn:hover {
+      background: rgba(255, 255, 255, 0.25);
+      color: #fff;
+    }
+
+    .search-bar {
+      background: rgba(30, 41, 59, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      border-radius: 0.75rem;
+      padding: 0.5rem 1rem;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .search-bar .search-input-wrapper {
+      flex: 1;
+      position: relative;
+    }
+
+    .search-bar .search-input {
+      width: 100%;
+      padding: 0.5rem 0.75rem 0.5rem 2rem;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(71, 85, 105, 0.5);
+      border-radius: 0.5rem;
+      color: var(--text-primary);
+      font-size: 0.85rem;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .search-bar .search-input:focus {
+      border-color: #8b5cf6;
+      box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+    }
+
+    .search-bar .search-input::placeholder {
+      color: var(--text-secondary);
+    }
+
+    .search-bar .search-icon {
+      position: absolute;
+      left: 0.65rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      pointer-events: none;
+    }
+
+    .search-bar .refresh-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
     }
 
     .card {
@@ -279,17 +379,184 @@
     /* Graph Container */
     #graph-container {
       flex: 1;
-      position: relative;
+      display: flex;
       background: var(--bg-primary);
     }
 
-    #cy {
-      width: 100%;
+    /* Endpoints Table View */
+    .endpoints-table-container {
+      flex: 1;
       height: 100%;
-      padding-right: 320px;
+      padding: 1.5rem;
+      overflow-y: auto;
+      box-sizing: border-box;
     }
 
-    /* Zoom Controls */
+    .endpoints-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    .endpoints-table th {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      padding: 0.75rem 1rem;
+      text-align: left;
+      font-weight: 600;
+      border-bottom: 2px solid var(--border-color);
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+
+    .endpoints-table th:hover {
+      background: rgba(59, 130, 246, 0.15);
+    }
+
+    .endpoints-table th .sort-icon {
+      margin-left: 0.5rem;
+      opacity: 0.5;
+      font-size: 0.75rem;
+    }
+
+    .endpoints-table th.sorted-asc .sort-icon::after {
+      content: '▲';
+      opacity: 1;
+    }
+
+    .endpoints-table th.sorted-desc .sort-icon::after {
+      content: '▼';
+      opacity: 1;
+    }
+
+    .endpoints-table th:not(.sorted-asc):not(.sorted-desc) .sort-icon::after {
+      content: '⇅';
+    }
+
+    .endpoints-table td {
+      padding: 0.625rem 1rem;
+      border-bottom: 1px solid var(--border-color);
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+
+    .endpoints-table tbody tr {
+      transition: background 0.15s;
+      cursor: pointer;
+    }
+
+    .endpoints-table tbody tr:hover {
+      background: rgba(59, 130, 246, 0.1);
+    }
+
+    .endpoints-table tbody tr.selected {
+      background: rgba(59, 130, 246, 0.2);
+    }
+
+    /* Endpoint type color coding */
+    .endpoint-row[data-endpoint-type="gaming"] {
+      border-left: 3px solid #ef4444;
+      background: rgba(239, 68, 68, 0.08);
+    }
+    .endpoint-row[data-endpoint-type="tv"] {
+      border-left: 3px solid #a855f7;
+      background: rgba(168, 85, 247, 0.08);
+    }
+    .endpoint-row[data-endpoint-type="phone"] {
+      border-left: 3px solid #22c55e;
+      background: rgba(34, 197, 94, 0.08);
+    }
+    .endpoint-row[data-endpoint-type="printer"] {
+      border-left: 3px solid #f59e0b;
+      background: rgba(245, 158, 11, 0.08);
+    }
+    .endpoint-row[data-endpoint-type="gateway"] {
+      border-left: 3px solid #3b82f6;
+      background: rgba(59, 130, 246, 0.08);
+    }
+    .endpoint-row[data-endpoint-type="internet"] {
+      border-left: 3px solid #6b7280;
+      background: rgba(107, 114, 128, 0.05);
+    }
+    .endpoint-row[data-endpoint-type="local"] {
+      border-left: 3px solid #06b6d4;
+      background: rgba(6, 182, 212, 0.08);
+    }
+    .endpoint-row[data-endpoint-type="virtualization"] {
+      border-left: 3px solid #8b5cf6;
+      background: rgba(139, 92, 246, 0.08);
+    }
+    .endpoint-row[data-endpoint-type="soundbar"] {
+      border-left: 3px solid #ec4899;
+      background: rgba(236, 72, 153, 0.08);
+    }
+    .endpoint-row[data-endpoint-type="appliance"] {
+      border-left: 3px solid #d97706;
+      background: rgba(217, 119, 6, 0.08);
+    }
+    .endpoint-row[data-endpoint-type="other"] {
+      border-left: 3px solid #64748b;
+      background: rgba(100, 116, 139, 0.05);
+    }
+
+    /* Keep selected state visible over type colors */
+    .endpoint-row.selected {
+      background: rgba(59, 130, 246, 0.25) !important;
+    }
+
+    .endpoint-type-cell {
+      font-size: 1.25rem;
+      text-align: center;
+      width: 3rem;
+    }
+
+    .endpoint-name-cell {
+      font-weight: 500;
+      font-family: 'Monaco', 'Courier New', monospace;
+    }
+
+    .ip-list, .mac-list {
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 0.75rem;
+    }
+
+    .ip-list span, .mac-list span {
+      display: inline-block;
+      background: rgba(51, 65, 85, 0.5);
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      margin: 0.125rem;
+    }
+
+    .bandwidth-cell {
+      font-family: 'Monaco', 'Courier New', monospace;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .vendor-cell {
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      max-width: 150px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .model-cell {
+      color: var(--accent-secondary);
+      font-size: 0.75rem;
+      max-width: 150px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Zoom Controls - Hidden for table view */
     .zoom-controls {
       position: absolute;
       bottom: 2.5rem;
@@ -616,21 +883,16 @@
       background: #10b981;
     }
 
-    /* Protocols Overlay */
+    /* Endpoint Details Panel */
     .protocols-overlay {
-      position: absolute;
-      top: 1rem;
-      right: 1rem;
       width: 340px;
-      height: calc(100vh - 120px);
-      background: rgba(30, 41, 59, 0.85);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(51, 65, 85, 0.6);
-      border-radius: 0.75rem;
+      flex-shrink: 0;
+      height: 100%;
+      background: rgba(30, 41, 59, 0.95);
+      border-left: 1px solid rgba(51, 65, 85, 0.6);
       padding: 1rem;
-      z-index: 10;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
       overflow-y: auto;
+      box-sizing: border-box;
     }
 
     .overlay-header {
@@ -713,11 +975,129 @@
       opacity: 0.4;
     }
 
+    .protocol-dropdown {
+      position: fixed;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 0.5rem;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+      min-width: 200px;
+      max-width: 300px;
+      max-height: 300px;
+      overflow-y: auto;
+      z-index: 1000;
+      display: none;
+    }
+
+    .protocol-dropdown.show {
+      display: block;
+    }
+
+    .protocol-dropdown-header {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border-color);
+      background: var(--bg-primary);
+      position: sticky;
+      top: 0;
+    }
+
+    .protocol-dropdown-item {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.8125rem;
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: background 0.15s;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.3);
+    }
+
+    .protocol-dropdown-item:last-child {
+      border-bottom: none;
+    }
+
+    .protocol-dropdown-item:hover {
+      background: var(--accent-primary);
+      color: white;
+    }
+
+    .protocol-dropdown-empty {
+      padding: 0.75rem;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      text-align: center;
+      font-style: italic;
+    }
+
+    .protocol-dropdown-loading {
+      padding: 0.75rem;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      text-align: center;
+    }
+
     .overlay-hostnames {
       display: flex;
       flex-direction: column;
       gap: 0.375rem;
       margin-bottom: 0.75rem;
+    }
+
+    .listbox {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      border-radius: 0.5rem;
+      max-height: 150px;
+      overflow-y: auto;
+      margin-bottom: 0.75rem;
+    }
+
+    .listbox::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .listbox::-webkit-scrollbar-track {
+      background: rgba(30, 41, 59, 0.3);
+      border-radius: 3px;
+    }
+
+    .listbox::-webkit-scrollbar-thumb {
+      background: rgba(100, 116, 139, 0.5);
+      border-radius: 3px;
+    }
+
+    .listbox::-webkit-scrollbar-thumb:hover {
+      background: rgba(100, 116, 139, 0.7);
+    }
+
+    .listbox-item {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.75rem;
+      color: var(--text-primary);
+      border-bottom: 1px solid rgba(51, 65, 85, 0.3);
+      cursor: pointer;
+      transition: background 0.15s;
+      font-family: 'Monaco', 'Courier New', monospace;
+    }
+
+    .listbox-item:last-child {
+      border-bottom: none;
+    }
+
+    .listbox-item:hover {
+      background: rgba(59, 130, 246, 0.15);
+    }
+
+    .listbox-item.selected {
+      background: rgba(59, 130, 246, 0.25);
+    }
+
+    .listbox .empty-state {
+      padding: 1rem;
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 0.75rem;
     }
 
     .hostname-item {
@@ -733,6 +1113,27 @@
       -moz-user-select: text;
       -ms-user-select: text;
       line-height: 1.4;
+    }
+
+    .probe-btn {
+      margin-left: 0.5rem;
+      padding: 0.1rem 0.4rem;
+      font-size: 0.65rem;
+      background: var(--accent-color);
+      color: white;
+      border: none;
+      border-radius: 0.2rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .probe-btn:hover {
+      background: var(--accent-hover);
+    }
+
+    .probe-btn:disabled {
+      background: var(--text-secondary);
+      cursor: not-allowed;
     }
 
     /* Detail Tabs (inside right panel) */
@@ -910,9 +1311,17 @@
       height: 32px;
       border-radius: 0.25rem;
     }
+
+    /* Hide endpoint rows until filters are applied to prevent flash of unfiltered content */
+    .filters-pending .endpoint-row {
+      visibility: hidden;
+    }
+    .filters-pending .endpoint-row.selected {
+      visibility: visible;
+    }
   </style>
 </head>
-<body>
+<body class="filters-pending">
   <header>
     <div style="display: flex; flex-direction: column; justify-content: space-between; height: 100%;">
       <div class="logo">⚡ Rust Network Discovery Tool</div>
@@ -934,145 +1343,147 @@
           <option value="1440" {% if scan_interval == 1440 %}selected{% endif %}>1 Day</option>
         </select>
       </div>
-      <div class="control-group" id="auto-refresh-controls">
-        <label class="control-label">Auto-Refresh</label>
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <select id="refreshInterval" onchange="updateRefreshInterval(this.value)">
-            <option value="0">Off</option>
-            <option value="3">3 seconds</option>
-            <option value="5" selected>5 seconds</option>
-            <option value="10">10 seconds</option>
-            <option value="30">30 seconds</option>
-            <option value="60">1 minute</option>
-          </select>
-          <button onclick="manualRefresh()" class="stop-refresh-btn" title="Refresh now">
-            🔄
-          </button>
-          <button id="refreshToggleBtn" onclick="toggleRefresh()" class="stop-refresh-btn" style="margin-right: 0.5rem;" title="Stop auto-refresh">
-            ⏹️
-          </button>
-          <div class="pulse"></div>
-        </div>
-      </div>
     </div>
   </header>
 
   <!-- Network Tab Content -->
   <div id="network-tab" class="tab-content active">
   <div class="container">
-    <aside class="sidebar">
-      <div class="card">
-        <div class="card-title" style="margin-bottom: 0; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(51, 65, 85, 0.6);">Endpoints</div>
-
-        <!-- Filter Controls -->
-        <div style="display: flex; justify-content: flex-start; gap: 0.5rem; margin-top: 0.75rem; margin-bottom: 0.375rem;">
-          <button onclick="selectAllFilters()" style="font-size: 0.7rem; padding: 0.125rem 0.375rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; border-radius: 0.25rem; cursor: pointer; font-weight: 500;">All</button>
-          <button onclick="selectLocalFilters()" style="font-size: 0.7rem; padding: 0.125rem 0.375rem; background: rgba(34, 197, 94, 0.2); border: 1px solid rgba(34, 197, 94, 0.4); color: #4ade80; border-radius: 0.25rem; cursor: pointer; font-weight: 500;">Local</button>
-          <button onclick="selectNoneFilters()" style="font-size: 0.7rem; padding: 0.125rem 0.375rem; background: rgba(100, 116, 139, 0.2); border: 1px solid rgba(100, 116, 139, 0.4); color: #94a3b8; border-radius: 0.25rem; cursor: pointer; font-weight: 500;">None</button>
-        </div>
-
-        <!-- Filters -->
-        <div style="display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 0.5rem;">
-          <div style="display: flex; gap: 0.375rem; flex-wrap: nowrap;">
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(45, 27, 78, 0.5); border-radius: 0.375rem; border: 1px solid #8b5cf6; white-space: nowrap;">
-              <input type="checkbox" id="filterLocal" checked onchange="applyFilters()" style="cursor: pointer;">
-              <span>💻 Local</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(66, 32, 6, 0.5); border-radius: 0.375rem; border: 1px solid #f59e0b; white-space: nowrap;">
-              <input type="checkbox" id="filterGateway" checked onchange="applyFilters()" style="cursor: pointer;">
-              <span>🌐 Gateway</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(8, 51, 68, 0.5); border-radius: 0.375rem; border: 1px solid #06b6d4; white-space: nowrap;">
-              <input type="checkbox" id="filterInternet" onchange="applyFilters()" style="cursor: pointer;">
-              <span>🌍 Internet</span>
-            </label>
-          </div>
-          <div style="display: flex; gap: 0.375rem; flex-wrap: wrap;">
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 58, 40, 0.5); border-radius: 0.375rem; border: 1px solid #10b981; white-space: nowrap;">
-              <input type="checkbox" id="filterPrinter" checked onchange="applyFilters()" style="cursor: pointer;">
-              <span>🖨️ Printer</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(60, 31, 95, 0.5); border-radius: 0.375rem; border: 1px solid #c084fc; white-space: nowrap;">
-              <input type="checkbox" id="filterTv" checked onchange="applyFilters()" style="cursor: pointer;">
-              <span>📺 TV</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(92, 28, 46, 0.5); border-radius: 0.375rem; border: 1px solid #f43f5e; white-space: nowrap;">
-              <input type="checkbox" id="filterGaming" checked onchange="applyFilters()" style="cursor: pointer;">
-              <span>🎮 Gaming</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(8, 51, 51, 0.5); border-radius: 0.375rem; border: 1px solid #14b8a6; white-space: nowrap;">
-              <input type="checkbox" id="filterPhone" checked onchange="applyFilters()" style="cursor: pointer;">
-              <span>📱 Phone</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.5); border-radius: 0.375rem; border: 1px solid #94a3b8; white-space: nowrap;">
-              <input type="checkbox" id="filterVirtualization" checked onchange="applyFilters()" style="cursor: pointer;">
-              <span>🖥 VM</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(49, 46, 129, 0.5); border-radius: 0.375rem; border: 1px solid #818cf8; white-space: nowrap;">
-              <input type="checkbox" id="filterSoundbar" checked onchange="applyFilters()" style="cursor: pointer;">
-              <span>🔊 Soundbar</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(66, 32, 6, 0.5); border-radius: 0.375rem; border: 1px solid #fb923c; white-space: nowrap;">
-              <input type="checkbox" id="filterAppliance" checked onchange="applyFilters()" style="cursor: pointer;">
-              <span>🏠 Appliance</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(55, 65, 81, 0.5); border-radius: 0.375rem; border: 1px solid #9ca3af; white-space: nowrap;">
-              <input type="checkbox" id="filterOther" checked onchange="applyFilters()" style="cursor: pointer;">
-              <span>❓ Other</span>
-            </label>
-          </div>
-        </div>
-
-        <!-- Endpoint Limit Slider -->
-        <div style="margin-bottom: 0.75rem;">
-          <label style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.375rem;">
-            <span>Show endpoints:</span>
-            <span id="endpointLimitValue" style="color: var(--text-primary); font-weight: 500;">20</span>
-          </label>
-          <input type="range" id="endpointLimitSlider" min="10" max="100" value="20" step="10"
-                 oninput="updateEndpointLimit(this.value)"
-                 style="width: 100%; cursor: pointer; height: 4px; background: rgba(51, 65, 85, 0.6); border-radius: 2px; appearance: none; outline: none;">
-        </div>
-
-        <!-- Selected Node Indicator -->
-        {% if selected_node %}
-        <div id="selected-node-indicator" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; padding: 0.5rem 0.75rem; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 0.5rem;">
-          <div style="display: flex; align-items: center; gap: 0.5rem; overflow: hidden;">
-            <span style="font-size: 0.7rem; color: var(--text-secondary); white-space: nowrap;">Selected:</span>
-            <span style="font-size: 0.75rem; font-weight: 500; color: #60a5fa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ selected_node }}</span>
-          </div>
-          <button onclick="unselectNode()" title="Clear selection" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; width: 1.25rem; height: 1.25rem; border-radius: 0.25rem; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; flex-shrink: 0;">&times;</button>
-        </div>
-        {% endif %}
-
-        <input type="text" id="endpointSearchInput" placeholder="Search endpoints..."
-               oninput="debouncedEndpointSearch(this.value)"
-               autofocus
-               style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem; margin-bottom: 0.75rem;">
-        <div class="list-box" id="endpoints-container">
-          {% for node in dropdown_endpoints %}
-          <div class="list-item {% if node == selected_node %}selected{% endif %}"
-               onclick="selectNode('{{ node | safe }}')"
-               data-endpoint="{{ node | safe }}"
-               data-endpoint-type="{% if node == hostname %}local{% elif endpoint_types[node] == "gateway" %}gateway{% elif endpoint_types[node] == "internet" %}internet{% elif endpoint_types[node] == "printer" %}printer{% elif endpoint_types[node] == "tv" %}tv{% elif endpoint_types[node] == "gaming" %}gaming{% elif endpoint_types[node] == "phone" %}phone{% elif endpoint_types[node] == "virtualization" %}virtualization{% elif endpoint_types[node] == "soundbar" %}soundbar{% elif endpoint_types[node] == "appliance" %}appliance{% elif endpoint_types[node] %}local{% else %}other{% endif %}"
-               data-endpoint-ips="{% if endpoint_ips_macs[node] %}{{ endpoint_ips_macs[node].0 | join(sep=",") }}{% endif %}"
-               data-endpoint-macs="{% if endpoint_ips_macs[node] %}{{ endpoint_ips_macs[node].1 | join(sep=",") }}{% endif %}"
-               data-endpoint-bytes="{{ endpoint_bytes[node] | default(value=0) }}">
-            <span class="endpoint-name">{% if node == hostname %}🖥️{% elif endpoint_types[node] == "gateway" %}🌐{% elif endpoint_types[node] == "internet" %}🌍{% elif endpoint_types[node] == "printer" %}🖨️{% elif endpoint_types[node] == "tv" %}📺{% elif endpoint_types[node] == "gaming" %}🎮{% elif endpoint_types[node] == "phone" %}📱{% elif endpoint_types[node] == "virtualization" %}🖥{% elif endpoint_types[node] == "soundbar" %}🔊{% elif endpoint_types[node] == "appliance" %}🏠{% elif endpoint_types[node] %}💻{% else %}❓{% endif %} {{ node | safe }}</span>
-            {% if endpoint_vendors[node] %}<span class="endpoint-vendor">{{ endpoint_vendors[node] }}</span>{% endif %}
-            {% if endpoint_bytes[node] and endpoint_bytes[node] > 0 %}<span class="endpoint-bytes">{{ endpoint_bytes[node] }}</span>{% endif %}
-          </div>
-          {% endfor %}
-        </div>
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <div class="filter-checkboxes">
+        <label class="filter-label" style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(45, 27, 78, 0.5); border-radius: 0.375rem; border: 1px solid #8b5cf6; white-space: nowrap;">
+          <input type="checkbox" id="filterLocal" checked onchange="applyFilters()" onclick="handleFilterClick(event, 'filterLocal')" style="cursor: pointer;">
+          <span>💻 Local</span>
+          <button class="filter-only-btn" onclick="event.preventDefault(); event.stopPropagation(); selectOnlyFilter('filterLocal')" title="Show only this type">only</button>
+        </label>
+        <label class="filter-label" style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(66, 32, 6, 0.5); border-radius: 0.375rem; border: 1px solid #f59e0b; white-space: nowrap;">
+          <input type="checkbox" id="filterGateway" checked onchange="applyFilters()" onclick="handleFilterClick(event, 'filterGateway')" style="cursor: pointer;">
+          <span>🌐 Gateway</span>
+          <button class="filter-only-btn" onclick="event.preventDefault(); event.stopPropagation(); selectOnlyFilter('filterGateway')" title="Show only this type">only</button>
+        </label>
+        <label class="filter-label" style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(8, 51, 68, 0.5); border-radius: 0.375rem; border: 1px solid #06b6d4; white-space: nowrap;">
+          <input type="checkbox" id="filterInternet" onchange="applyFilters()" onclick="handleFilterClick(event, 'filterInternet')" style="cursor: pointer;">
+          <span>🌍 Internet</span>
+          <button class="filter-only-btn" onclick="event.preventDefault(); event.stopPropagation(); selectOnlyFilter('filterInternet')" title="Show only this type">only</button>
+        </label>
+        <label class="filter-label" style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 58, 40, 0.5); border-radius: 0.375rem; border: 1px solid #10b981; white-space: nowrap;">
+          <input type="checkbox" id="filterPrinter" checked onchange="applyFilters()" onclick="handleFilterClick(event, 'filterPrinter')" style="cursor: pointer;">
+          <span>🖨️ Printer</span>
+          <button class="filter-only-btn" onclick="event.preventDefault(); event.stopPropagation(); selectOnlyFilter('filterPrinter')" title="Show only this type">only</button>
+        </label>
+        <label class="filter-label" style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(60, 31, 95, 0.5); border-radius: 0.375rem; border: 1px solid #c084fc; white-space: nowrap;">
+          <input type="checkbox" id="filterTv" checked onchange="applyFilters()" onclick="handleFilterClick(event, 'filterTv')" style="cursor: pointer;">
+          <span>📺 TV</span>
+          <button class="filter-only-btn" onclick="event.preventDefault(); event.stopPropagation(); selectOnlyFilter('filterTv')" title="Show only this type">only</button>
+        </label>
+        <label class="filter-label" style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(92, 28, 46, 0.5); border-radius: 0.375rem; border: 1px solid #f43f5e; white-space: nowrap;">
+          <input type="checkbox" id="filterGaming" checked onchange="applyFilters()" onclick="handleFilterClick(event, 'filterGaming')" style="cursor: pointer;">
+          <span>🎮 Gaming</span>
+          <button class="filter-only-btn" onclick="event.preventDefault(); event.stopPropagation(); selectOnlyFilter('filterGaming')" title="Show only this type">only</button>
+        </label>
+        <label class="filter-label" style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(8, 51, 51, 0.5); border-radius: 0.375rem; border: 1px solid #14b8a6; white-space: nowrap;">
+          <input type="checkbox" id="filterPhone" checked onchange="applyFilters()" onclick="handleFilterClick(event, 'filterPhone')" style="cursor: pointer;">
+          <span>📱 Phone</span>
+          <button class="filter-only-btn" onclick="event.preventDefault(); event.stopPropagation(); selectOnlyFilter('filterPhone')" title="Show only this type">only</button>
+        </label>
+        <label class="filter-label" style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(30, 41, 59, 0.5); border-radius: 0.375rem; border: 1px solid #94a3b8; white-space: nowrap;">
+          <input type="checkbox" id="filterVirtualization" checked onchange="applyFilters()" onclick="handleFilterClick(event, 'filterVirtualization')" style="cursor: pointer;">
+          <span>🖥 VM</span>
+          <button class="filter-only-btn" onclick="event.preventDefault(); event.stopPropagation(); selectOnlyFilter('filterVirtualization')" title="Show only this type">only</button>
+        </label>
+        <label class="filter-label" style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(49, 46, 129, 0.5); border-radius: 0.375rem; border: 1px solid #818cf8; white-space: nowrap;">
+          <input type="checkbox" id="filterSoundbar" checked onchange="applyFilters()" onclick="handleFilterClick(event, 'filterSoundbar')" style="cursor: pointer;">
+          <span>🔊 Soundbar</span>
+          <button class="filter-only-btn" onclick="event.preventDefault(); event.stopPropagation(); selectOnlyFilter('filterSoundbar')" title="Show only this type">only</button>
+        </label>
+        <label class="filter-label" style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(66, 32, 6, 0.5); border-radius: 0.375rem; border: 1px solid #fb923c; white-space: nowrap;">
+          <input type="checkbox" id="filterAppliance" checked onchange="applyFilters()" onclick="handleFilterClick(event, 'filterAppliance')" style="cursor: pointer;">
+          <span>🏠 Appliance</span>
+          <button class="filter-only-btn" onclick="event.preventDefault(); event.stopPropagation(); selectOnlyFilter('filterAppliance')" title="Show only this type">only</button>
+        </label>
+        <label class="filter-label" style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; cursor: pointer; padding: 0.25rem 0.375rem; background: rgba(55, 65, 81, 0.5); border-radius: 0.375rem; border: 1px solid #9ca3af; white-space: nowrap;">
+          <input type="checkbox" id="filterOther" checked onchange="applyFilters()" onclick="handleFilterClick(event, 'filterOther')" style="cursor: pointer;">
+          <span>❓ Other</span>
+          <button class="filter-only-btn" onclick="event.preventDefault(); event.stopPropagation(); selectOnlyFilter('filterOther')" title="Show only this type">only</button>
+        </label>
       </div>
+      <select id="globalProtocolSelect" onchange="filterByGlobalProtocol(this.value)" style="padding: 0.35rem 0.5rem; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(71, 85, 105, 0.5); border-radius: 0.375rem; color: var(--text-primary); font-size: 0.75rem; cursor: pointer; min-width: 120px;">
+        <option value="">All Protocols</option>
+      </select>
+      <div class="quick-buttons">
+        <button onclick="selectAllFilters()" style="font-size: 0.7rem; padding: 0.25rem 0.5rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; border-radius: 0.25rem; cursor: pointer; font-weight: 500;">All</button>
+        <button onclick="selectLocalFilters()" style="font-size: 0.7rem; padding: 0.25rem 0.5rem; background: rgba(34, 197, 94, 0.2); border: 1px solid rgba(34, 197, 94, 0.4); color: #4ade80; border-radius: 0.25rem; cursor: pointer; font-weight: 500;">Local</button>
+        <button onclick="selectHomeFilters()" style="font-size: 0.7rem; padding: 0.25rem 0.5rem; background: rgba(251, 146, 60, 0.2); border: 1px solid rgba(251, 146, 60, 0.4); color: #fb923c; border-radius: 0.25rem; cursor: pointer; font-weight: 500;">Home</button>
+        <button onclick="selectNoneFilters()" style="font-size: 0.7rem; padding: 0.25rem 0.5rem; background: rgba(100, 116, 139, 0.2); border: 1px solid rgba(100, 116, 139, 0.4); color: #94a3b8; border-radius: 0.25rem; cursor: pointer; font-weight: 500;">None</button>
+      </div>
+    </div>
 
-    </aside>
+    <!-- Search Bar -->
+    <div class="search-bar">
+      <div class="search-input-wrapper">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="endpointSearch" class="search-input" placeholder="Search by name, vendor, or model..." oninput="applyFilters()">
+      </div>
+      <div class="refresh-controls">
+        <select id="refreshInterval" onchange="updateRefreshInterval(this.value)" style="padding: 0.35rem 0.5rem; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(71, 85, 105, 0.5); border-radius: 0.375rem; color: var(--text-primary); font-size: 0.75rem; cursor: pointer;">
+          <option value="0">Auto-Refresh: Off</option>
+          <option value="3">3 seconds</option>
+          <option value="5" selected>5 seconds</option>
+          <option value="10">10 seconds</option>
+          <option value="30">30 seconds</option>
+          <option value="60">1 minute</option>
+        </select>
+        <button onclick="manualRefresh()" class="stop-refresh-btn" title="Refresh now">🔄</button>
+        <button id="refreshToggleBtn" onclick="toggleRefresh()" class="stop-refresh-btn" title="Stop auto-refresh">⏹️</button>
+        <div class="pulse"></div>
+      </div>
+    </div>
 
     <main id="graph-container">
-      <div id="cy"></div>
+      <!-- Endpoints Table View -->
+      <div class="endpoints-table-container">
+        <table class="endpoints-table" id="endpoints-table">
+          <thead>
+            <tr>
+              <th data-sort="type" class="sortable">Type<span class="sort-icon"></span></th>
+              <th data-sort="name" class="sortable sorted-asc">Name<span class="sort-icon"></span></th>
+              <th data-sort="vendor" class="sortable">Vendor<span class="sort-icon"></span></th>
+              <th data-sort="model" class="sortable">Model<span class="sort-icon"></span></th>
+              <th data-sort="bandwidth" class="sortable">Bandwidth<span class="sort-icon"></span></th>
+              <th data-sort="last_seen" class="sortable">Last Seen<span class="sort-icon"></span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for node in dropdown_endpoints %}
+            <tr class="endpoint-row {% if node == selected_node %}selected{% endif %}"
+                onclick="selectNode('{{ node | safe }}')"
+                data-endpoint="{{ node | safe }}"
+                data-endpoint-name="{{ node | safe }}"
+                data-endpoint-vendor="{{ endpoint_vendors[node] | default(value='') }}"
+                data-endpoint-model="{{ endpoint_models[node] | default(value='') }}"
+                data-endpoint-type="{% if node == hostname %}local{% elif endpoint_types[node] == "gateway" %}gateway{% elif endpoint_types[node] == "internet" %}internet{% elif endpoint_types[node] == "printer" %}printer{% elif endpoint_types[node] == "tv" %}tv{% elif endpoint_types[node] == "gaming" %}gaming{% elif endpoint_types[node] == "phone" %}phone{% elif endpoint_types[node] == "virtualization" %}virtualization{% elif endpoint_types[node] == "soundbar" %}soundbar{% elif endpoint_types[node] == "appliance" %}appliance{% elif endpoint_types[node] %}local{% else %}other{% endif %}"
+                data-endpoint-bytes="{{ endpoint_bytes[node] | default(value=0) }}">
+              <td class="endpoint-type-cell">{% if node == hostname %}🖥️{% elif endpoint_types[node] == "gateway" %}🌐{% elif endpoint_types[node] == "internet" %}🌍{% elif endpoint_types[node] == "printer" %}🖨️{% elif endpoint_types[node] == "tv" %}📺{% elif endpoint_types[node] == "gaming" %}🎮{% elif endpoint_types[node] == "phone" %}📱{% elif endpoint_types[node] == "virtualization" %}🖥{% elif endpoint_types[node] == "soundbar" %}🔊{% elif endpoint_types[node] == "appliance" %}🏠{% elif endpoint_types[node] %}💻{% else %}❓{% endif %}</td>
+              <td class="endpoint-name-cell">{{ node | safe }}</td>
+              <td class="vendor-cell" title="{{ endpoint_vendors[node] | default(value='Unknown') }}">{{ endpoint_vendors[node] | default(value='-') }}</td>
+              <td class="model-cell" title="{{ endpoint_models[node] | default(value='') }}">{{ endpoint_models[node] | default(value='-') }}</td>
+              <td class="bandwidth-cell" data-bytes="{{ endpoint_bytes[node] | default(value=0) }}">
+                {% if endpoint_bytes[node] and endpoint_bytes[node] > 0 %}
+                  <span class="bandwidth-value">{{ endpoint_bytes[node] }}</span>
+                {% else %}
+                  <span class="no-data">-</span>
+                {% endif %}
+              </td>
+              <td class="last-seen-cell">{{ endpoint_last_seen[node] | default(value='-') }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
 
-      <!-- Zoom Controls -->
-      <div class="zoom-controls">
+      <!-- Zoom Controls - Hidden for table view -->
+      <div class="zoom-controls" style="display: none;">
         <button class="zoom-btn" onclick="zoomIn()" title="Zoom in">+</button>
         <button class="zoom-btn" onclick="zoomOut()" title="Zoom out">−</button>
         <button class="zoom-btn" onclick="fitGraph()" title="Fit to view">⊡</button>
@@ -1099,13 +1510,22 @@
         <!-- Details Tab Content -->
         <div id="details-tab-content" class="detail-tab-content active">
         <div style="margin-bottom: 0.75rem;">
-          <!-- Endpoint Name -->
-          <div style="font-size: 0.875rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; word-break: break-all;">
-            {{ endpoint }}
+          <!-- Endpoint Name with Rename -->
+          <div id="endpoint-name-display" style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <span style="font-size: 0.875rem; font-weight: 600; color: var(--text-primary); word-break: break-all;">{% if endpoint %}{{ endpoint }}{% else %}No endpoint selected{% endif %}</span>
+            {% if endpoint %}<button onclick="showRenameInput()" style="background: none; border: none; cursor: pointer; padding: 0.125rem; color: var(--text-secondary); font-size: 0.75rem;" title="Rename endpoint">✏️</button>{% endif %}
+          </div>
+          <div id="endpoint-rename-input" style="display: none; margin-bottom: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <input type="text" id="custom-name-input" placeholder="Enter custom name" style="flex: 1; padding: 0.375rem 0.5rem; font-size: 0.875rem; border: 1px solid var(--border-color); border-radius: 0.25rem; background: var(--card-bg); color: var(--text-primary);">
+              <button onclick="saveCustomName()" style="padding: 0.375rem 0.75rem; font-size: 0.75rem; background: var(--accent-primary); color: white; border: none; border-radius: 0.25rem; cursor: pointer;">Save</button>
+              <button onclick="cancelRename()" style="padding: 0.375rem 0.75rem; font-size: 0.75rem; background: var(--card-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 0.25rem; cursor: pointer;">Cancel</button>
+              <button onclick="clearCustomName()" style="padding: 0.375rem 0.75rem; font-size: 0.75rem; background: #dc2626; color: white; border: none; border-radius: 0.25rem; cursor: pointer;" title="Reset to original name">Reset</button>
+            </div>
           </div>
           <!-- Device Type Dropdown -->
           <div style="margin-bottom: 0.75rem;">
-            <div class="device-type-selector">
+            <div class="device-type-selector" {% if not endpoint %}style="display: none;"{% endif %}>
               <button class="device-type-btn {% if endpoint in manual_overrides %}manual-override{% endif %}" onclick="toggleDeviceTypeDropdown(event)" id="device-type-btn">
                 <span>Type:</span>
                 <span id="current-device-type">
@@ -1138,9 +1558,9 @@
                 <div class="device-type-option {% if endpoint_types[endpoint] == 'other' %}selected{% endif %}" onclick="reclassifyEndpoint('other')">❓ Other</div>
               </div>
             </div>
-            {% if endpoint in manual_overrides %}<span style="font-size: 0.625rem; color: var(--accent-secondary); margin-left: 0.5rem;">(manually set)</span>{% endif %}
-            {% if device_vendor %}<span style="font-size: 0.875rem; font-weight: bold; color: #60a5fa; background: rgba(59, 130, 246, 0.15); padding: 0.25rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem;">{{ device_vendor }}</span>{% endif %}
-            {% if device_model %}<span style="font-size: 0.875rem; font-weight: bold; color: #a78bfa; background: rgba(139, 92, 246, 0.15); padding: 0.25rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem;">{{ device_model }}</span>{% endif %}
+            <span id="manual-override-indicator" style="font-size: 0.625rem; color: var(--accent-secondary); margin-left: 0.5rem; {% if not endpoint in manual_overrides %}display: none;{% endif %}">(manually set)</span>
+            <span id="device-vendor-badge" style="font-size: 0.875rem; font-weight: bold; color: #60a5fa; background: rgba(59, 130, 246, 0.15); padding: 0.25rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem; {% if not device_vendor %}display: none;{% endif %}">{{ device_vendor }}</span>
+            <span id="device-model-badge" style="font-size: 0.875rem; font-weight: bold; color: #a78bfa; background: rgba(139, 92, 246, 0.15); padding: 0.25rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem; {% if not device_model %}display: none;{% endif %}">{{ device_model }}</span>
           </div>
           <div class="stats">
             <div class="stat-badge stat-link" onclick="scrollToSection('ips-section')">IPs: <span class="stat-number">{{ ips|length }}</span></div>
@@ -1157,10 +1577,17 @@
 
         <div class="overlay-header" id="protocols-section">
           Protocols
-          <button class="clear-filter-btn" onclick="clearProtocolFilter()" style="display: none;">Clear Filter</button>
         </div>
         <div class="overlay-content" id="protocols-container">
-          <!-- Protocols will be dynamically generated from graph data -->
+          {% if not endpoint %}
+            <div class="empty-state">No endpoint selected</div>
+          {% elif protocols %}
+            {% for protocol in protocols %}
+            <div class="protocol-badge" data-protocol="{{ protocol | safe }}" onclick="filterByProtocol('{{ protocol | safe }}', this)">{{ protocol | safe }}</div>
+            {% endfor %}
+          {% else %}
+            <div class="empty-state">No protocols</div>
+          {% endif %}
         </div>
 
         <!-- Ports -->
@@ -1168,10 +1595,17 @@
           Ports
           <button class="clear-port-filter-btn" onclick="clearPortFilter()" style="display: none;">Clear</button>
         </div>
-        <div class="overlay-content" id="ports-container">
-          {% if ports %}
+        <div style="margin-bottom: 0.75rem;">
+          <input type="text" id="portsListSearch" placeholder="Filter ports..."
+                 oninput="filterPortsList(this.value)"
+                 style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
+        </div>
+        <div class="listbox" id="ports-container">
+          {% if not endpoint %}
+            <div class="empty-state">No endpoint selected</div>
+          {% elif ports %}
             {% for port in ports %}
-            <div class="protocol-badge" data-port="{{ port | safe }}" onclick="filterByPort('{{ port | safe }}', this)">{{ port | safe }}</div>
+            <div class="listbox-item" data-port="{{ port | safe }}" onclick="filterByPort('{{ port | safe }}', this)">{{ port | safe }}</div>
             {% endfor %}
           {% else %}
             <div class="empty-state">No ports</div>
@@ -1186,10 +1620,12 @@
                  oninput="filterHostnamesList(this.value)"
                  style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
         </div>
-        <div class="overlay-hostnames" id="hostnames-container">
-          {% if hostnames %}
+        <div class="listbox" id="hostnames-container">
+          {% if not endpoint %}
+            <div class="empty-state">No endpoint selected</div>
+          {% elif hostnames %}
             {% for hostname in hostnames %}
-            <div class="hostname-item">{{ hostname | safe }}</div>
+            <div class="listbox-item">{{ hostname | safe }}</div>
             {% endfor %}
           {% else %}
             <div class="empty-state">No hostnames</div>
@@ -1206,7 +1642,9 @@
                  style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
         </div>
         <div class="overlay-hostnames" id="ips-container">
-          {% if ips %}
+          {% if not endpoint %}
+            <div class="empty-state">No endpoint selected</div>
+          {% elif ips %}
             {% for ip in ips %}
             <div class="hostname-item">{{ ip | safe }}</div>
             {% endfor %}
@@ -1225,7 +1663,9 @@
                  style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
         </div>
         <div class="overlay-hostnames" id="macs-container">
-          {% if macs %}
+          {% if not endpoint %}
+            <div class="empty-state">No endpoint selected</div>
+          {% elif macs %}
             {% for mac in macs %}
             <div class="hostname-item">{{ mac | safe }}</div>
             {% endfor %}
@@ -1587,2281 +2027,44 @@
     </div>
   </div><!-- End Scanner Tab -->
 
+  <!-- External JavaScript modules -->
+  <script src="/static/js/utils.js"></script>
+  <script src="/static/js/formatting.js"></script>
+  <script src="/static/js/tabs.js"></script>
+  <script src="/static/js/scanner.js"></script>
+  <script src="/static/js/endpoints.js"></script>
+  <script src="/static/js/filters.js"></script>
+  <script src="/static/js/classification.js"></script>
+  <script src="/static/js/refresh.js"></script>
+  <script src="/static/js/device-control.js"></script>
+  <script src="/static/js/lg-thinq.js"></script>
+  <script src="/static/js/app.js"></script>
+
+  <!-- Inline script for template data initialization -->
   <script>
-    // Track active tab
-    let activeTab = 'network';
+    // Set endpoint name for classification (template-dependent)
+    {% if endpoint %}
+    App.Classification.setEndpointName('{{ endpoint | safe }}');
+    {% endif %}
 
-    // Tab switching function
-    function switchTab(tabName) {
-      // Hide all tab contents
-      document.querySelectorAll('.tab-content').forEach(tab => {
-        tab.classList.remove('active');
-      });
-      // Deactivate all tab buttons
-      document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('active');
-      });
-      // Show selected tab content
-      document.getElementById(tabName + '-tab').classList.add('active');
-      // Activate clicked button
-      event.target.classList.add('active');
-
-      // Update active tab
-      activeTab = tabName;
-
-      // If switching to DNS tab, do an immediate refresh of DNS entries
-      if (tabName === 'dns') {
-        refreshDnsEntries();
-      }
-
-      // If switching to Scanner tab, check capabilities
-      if (tabName === 'scanner') {
-        checkScanCapabilities();
-      }
-    }
-
-    // Fetch and update DNS entries table
-    async function refreshDnsEntries() {
-      try {
-        const response = await fetch('/api/dns-entries');
-        const entries = await response.json();
-
-        const tbody = document.querySelector('.dns-table tbody');
-        if (!tbody) return;
-
-        // Use DocumentFragment for batched DOM updates (avoids multiple reflows)
-        const fragment = document.createDocumentFragment();
-
-        // Build all rows in the fragment first
-        if (entries.length === 0) {
-          const row = document.createElement('tr');
-          row.innerHTML = '<td colspan="4" style="text-align: center; color: var(--text-secondary);">No mDNS entries discovered yet</td>';
-          fragment.appendChild(row);
-        } else {
-          entries.forEach(entry => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-              <td>${escapeHtml(entry.timestamp)}</td>
-              <td>${escapeHtml(entry.ip)}</td>
-              <td>${escapeHtml(entry.hostname)}</td>
-              <td>${escapeHtml(entry.services)}</td>
-            `;
-            fragment.appendChild(row);
-          });
-        }
-
-        // Single DOM operation: clear and append all at once
-        tbody.innerHTML = '';
-        tbody.appendChild(fragment);
-      } catch (error) {
-        // Silently fail - DNS refresh is non-critical
-      }
-    }
-
-    // Helper to escape HTML
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
-
-    // Debounce utility for performance optimization
-    function debounce(func, wait) {
-      let timeout;
-      return function executedFunction(...args) {
-        const later = () => {
-          clearTimeout(timeout);
-          func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-      };
-    }
-
-    // Debounced endpoint search (waits 150ms after user stops typing)
-    const debouncedEndpointSearch = debounce((value) => {
-      filterEndpointsList(value, false, true); // Fast version that updates graph
-    }, 150);
-
-    // Debounced graph update (called after search completes)
-    const debouncedGraphUpdate = debounce(() => {
-      applyFilters(true);
-    }, 150);
-
-    // Navigation functions
-    // ========================================================================
-    // Network Scanner Functions
-    // ========================================================================
-
-    let scanPollInterval = null;
-
-    async function startNetworkScan() {
-      const scanTypes = [];
-      if (document.getElementById('scan-arp').checked) scanTypes.push('arp');
-      if (document.getElementById('scan-icmp').checked) scanTypes.push('icmp');
-      if (document.getElementById('scan-port').checked) scanTypes.push('port');
-      if (document.getElementById('scan-ssdp').checked) scanTypes.push('ssdp');
-
-      if (scanTypes.length === 0) {
-        alert('Please select at least one scan type');
-        return;
-      }
-
-      // Hide start button, show stop button
-      document.getElementById('start-scan-btn').style.display = 'none';
-      document.getElementById('stop-scan-btn').style.display = 'block';
-      document.getElementById('scan-progress').style.display = 'block';
-
-      try {
-        const response = await fetch('/api/scan/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scan_types: scanTypes })
-        });
-
-        if (response.ok) {
-          // Start polling for status
-          scanPollInterval = setInterval(pollScanStatus, 500);
-        } else {
-          const result = await response.json();
-          alert('Scan failed: ' + result.message);
-          resetScanButton();
-        }
-      } catch (e) {
-        alert('Error starting scan: ' + e);
-        resetScanButton();
-      }
-    }
-
-    async function stopNetworkScan() {
-      const stopBtn = document.getElementById('stop-scan-btn');
-      stopBtn.textContent = 'Stopping...';
-      stopBtn.disabled = true;
-      stopBtn.style.opacity = '0.6';
-
-      try {
-        await fetch('/api/scan/stop', { method: 'POST' });
-        // The pollScanStatus will detect the scan has stopped and reset the UI
-      } catch (e) {
-        console.error('Error stopping scan:', e);
-        resetScanButton();
-      }
-    }
-
-    async function pollScanStatus() {
-      try {
-        const response = await fetch('/api/scan/status');
-        const status = await response.json();
-
-        document.getElementById('scan-progress-fill').style.width = status.progress_percent + '%';
-        document.getElementById('scan-progress-text').textContent = status.progress_percent + '%';
-        document.getElementById('scan-phase').textContent = status.current_phase || 'Scanning...';
-        document.getElementById('discovered-count').textContent = status.discovered_count;
-
-        if (status.last_scan_time) {
-          const date = new Date(status.last_scan_time * 1000);
-          document.getElementById('last-scan-time').textContent = date.toLocaleTimeString();
-        }
-
-        if (!status.running) {
-          clearInterval(scanPollInterval);
-          scanPollInterval = null;
-          resetScanButton();
-
-          // Refresh the page to show new endpoints
-          if (status.discovered_count > 0) {
-            setTimeout(() => location.reload(), 500);
-          }
-        }
-      } catch (e) {
-        console.error('Error polling scan status:', e);
-      }
-    }
-
-    function resetScanButton() {
-      // Reset and show start button
-      const startBtn = document.getElementById('start-scan-btn');
-      startBtn.textContent = '🔍 Scan Network';
-      startBtn.disabled = false;
-      startBtn.style.opacity = '1';
-      startBtn.style.display = 'block';
-
-      // Reset and hide stop button
-      const stopBtn = document.getElementById('stop-scan-btn');
-      stopBtn.textContent = '⏹ Stop Scan';
-      stopBtn.disabled = false;
-      stopBtn.style.opacity = '1';
-      stopBtn.style.display = 'none';
-
-      document.getElementById('scan-progress').style.display = 'none';
-    }
-
-    // Check scan capabilities on load
-    async function checkScanCapabilities() {
-      try {
-        const response = await fetch('/api/scan/capabilities');
-        const caps = await response.json();
-
-        let needsPrivileges = false;
-
-        // Disable checkboxes for unavailable scan types
-        if (!caps.can_arp) {
-          document.getElementById('scan-arp').disabled = true;
-          document.getElementById('scan-arp').checked = false;
-          document.getElementById('scan-arp').parentElement.style.opacity = '0.5';
-          document.getElementById('scan-arp').parentElement.title = 'Requires root/admin privileges';
-          needsPrivileges = true;
-        }
-        if (!caps.can_icmp) {
-          document.getElementById('scan-icmp').disabled = true;
-          document.getElementById('scan-icmp').checked = false;
-          document.getElementById('scan-icmp').parentElement.style.opacity = '0.5';
-          document.getElementById('scan-icmp').parentElement.title = 'Requires root/admin privileges';
-          needsPrivileges = true;
-        }
-
-        // Show privilege warning if needed
-        const warning = document.getElementById('privilege-warning');
-        if (warning) {
-          warning.style.display = needsPrivileges ? 'block' : 'none';
-        }
-      } catch (e) {
-        console.error('Error checking scan capabilities:', e);
-      }
-    }
-
-    // Initialize scan capabilities check
-    checkScanCapabilities();
-
-    // ========================================================================
-    // Navigation Functions
-    // ========================================================================
-
-    function selectNode(nodeId) {
-      // Clear search input
-      const searchInput = document.getElementById('endpointSearchInput');
-      if (searchInput) {
-        searchInput.value = '';
-      }
-
-      const url = new URL(window.location.href);
-      url.searchParams.set('node', nodeId);
-      url.searchParams.delete('filter_endpoints'); // Clear search from URL
-      window.location.href = url.toString();
-    }
-
-    function unselectNode() {
-      const url = new URL(window.location.href);
-      url.searchParams.delete('node');
-      window.location.href = url.toString();
-    }
-
-    // Filter endpoints list in sidebar
-    function filterEndpointsList(searchTerm, skipUrlUpdate = false, updateGraph = false) {
-      const normalizedSearch = searchTerm.trim().toLowerCase();
-      const endpointItems = document.querySelectorAll('#endpoints-container .list-item');
-
-      // Save to URL parameters
-      if (!skipUrlUpdate) {
-        const url = new URL(window.location.href);
-        if (normalizedSearch) {
-          url.searchParams.set('filter_endpoints', searchTerm);
-        } else {
-          url.searchParams.delete('filter_endpoints');
-        }
-        window.history.replaceState({}, '', url);
-      }
-
-      // Get current filter states
-      const showLocal = document.getElementById('filterLocal').checked;
-      const showGateway = document.getElementById('filterGateway').checked;
-      const showInternet = document.getElementById('filterInternet').checked;
-      const showPrinter = document.getElementById('filterPrinter').checked;
-      const showTv = document.getElementById('filterTv').checked;
-      const showGaming = document.getElementById('filterGaming').checked;
-      const showPhone = document.getElementById('filterPhone').checked;
-      const showVirtualization = document.getElementById('filterVirtualization').checked;
-      const showSoundbar = document.getElementById('filterSoundbar').checked;
-      const showAppliance = document.getElementById('filterAppliance').checked;
-      const showOther = document.getElementById('filterOther').checked;
-
-      endpointItems.forEach(item => {
-        const endpoint = item.textContent.toLowerCase();
-        let type = item.getAttribute('data-endpoint-type');
-        const ips = (item.getAttribute('data-endpoint-ips') || '').toLowerCase();
-        const macs = (item.getAttribute('data-endpoint-macs') || '').toLowerCase();
-
-        // Check if matches search term (search in endpoint name, IPs, and MACs)
-        const matchesSearch = normalizedSearch === ''
-          || endpoint.includes(normalizedSearch)
-          || ips.includes(normalizedSearch)
-          || macs.includes(normalizedSearch);
-
-        // Treat null/undefined/empty as 'other'
-        if (!type || type === '') {
-          type = 'other';
-        }
-
-        // Check if matches type filter
-        let matchesType = false;
-        if (type === 'local' && showLocal) matchesType = true;
-        else if (type === 'gateway' && showGateway) matchesType = true;
-        else if (type === 'internet' && showInternet) matchesType = true;
-        else if (type === 'printer' && showPrinter) matchesType = true;
-        else if (type === 'tv' && showTv) matchesType = true;
-        else if (type === 'gaming' && showGaming) matchesType = true;
-        else if (type === 'phone' && showPhone) matchesType = true;
-        else if (type === 'virtualization' && showVirtualization) matchesType = true;
-        else if (type === 'soundbar' && showSoundbar) matchesType = true;
-        else if (type === 'appliance' && showAppliance) matchesType = true;
-        else if (type === 'other' && showOther) matchesType = true;
-
-        // Show only if matches both search AND type filter
-        item.style.display = (matchesSearch && matchesType) ? 'block' : 'none';
-      });
-
-      // Apply endpoint limit and optionally update graph
-      applyEndpointLimit(updateGraph);
-    }
-
-    // Update endpoint limit from slider
-    function updateEndpointLimit(value) {
-      document.getElementById('endpointLimitValue').textContent = value;
-      localStorage.setItem('endpointLimit', value);
-
-      // Save to URL parameters and trigger immediate reload
-      const url = new URL(window.location.href);
-      url.searchParams.set('endpoint_limit', value);
-      window.location.href = url.toString();
-    }
-
-    // Apply endpoint limit to visible items
-    function applyEndpointLimit(updateGraph = true) {
-      const limit = parseInt(localStorage.getItem('endpointLimit') || '20');
-      const endpointItems = document.querySelectorAll('#endpoints-container .list-item');
-
-      let visibleCount = 0;
-      endpointItems.forEach(item => {
-        // Only count and limit items that are already visible (not filtered out)
-        if (item.style.display !== 'none') {
-          if (visibleCount < limit) {
-            item.style.display = 'block';
-            visibleCount++;
-          } else {
-            item.style.display = 'none';
-          }
-        }
-      });
-
-      // Update the graph to match the limited endpoint list (only if requested)
-      if (updateGraph) {
-        applyFilters(true);
-      }
-    }
-
-    function selectScanInterval(interval) {
-      const url = new URL(window.location.href);
-      url.searchParams.set('scan_interval', interval);
-      window.location.href = url.toString();
-    }
-
-    // Format bytes to human-readable format
-    function formatBytes(bytes) {
-      if (bytes === 0) return '0 B';
-      const k = 1024;
-      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-
-    // Format byte displays on page load
+    // Set data attributes for device control (template-dependent)
     document.addEventListener('DOMContentLoaded', function() {
-      const bytesInElem = document.getElementById('bytes-in');
-      const bytesOutElem = document.getElementById('bytes-out');
-
-      if (bytesInElem) {
-        const bytesIn = parseInt(bytesInElem.textContent);
-        bytesInElem.textContent = formatBytes(bytesIn);
-      }
-
-      if (bytesOutElem) {
-        const bytesOut = parseInt(bytesOutElem.textContent);
-        bytesOutElem.textContent = formatBytes(bytesOut);
-      }
-
-      // Format endpoint bytes in the list
-      document.querySelectorAll('.endpoint-bytes').forEach(elem => {
-        const bytes = parseInt(elem.textContent);
-        if (!isNaN(bytes) && bytes > 0) {
-          elem.textContent = formatBytes(bytes);
-        }
-      });
-
-      // Restore filter states from URL
-      const urlParams = new URLSearchParams(window.location.search);
-      const filterLocal = urlParams.get('filter_local');
-      const filterGateway = urlParams.get('filter_gateway');
-      const filterInternet = urlParams.get('filter_internet');
-      const filterPrinter = urlParams.get('filter_printer');
-      const filterTv = urlParams.get('filter_tv');
-      const filterGaming = urlParams.get('filter_gaming');
-      const filterPhone = urlParams.get('filter_phone');
-      const filterVirtualization = urlParams.get('filter_virtualization');
-      const filterSoundbar = urlParams.get('filter_soundbar');
-      const filterAppliance = urlParams.get('filter_appliance');
-      const filterOther = urlParams.get('filter_other');
-
-      // Set checkbox states (default to checked if not specified)
-      const localCheckbox = document.getElementById('filterLocal');
-      const gatewayCheckbox = document.getElementById('filterGateway');
-      const internetCheckbox = document.getElementById('filterInternet');
-      const printerCheckbox = document.getElementById('filterPrinter');
-      const tvCheckbox = document.getElementById('filterTv');
-      const gamingCheckbox = document.getElementById('filterGaming');
-      const phoneCheckbox = document.getElementById('filterPhone');
-      const virtualizationCheckbox = document.getElementById('filterVirtualization');
-      const soundbarCheckbox = document.getElementById('filterSoundbar');
-      const applianceCheckbox = document.getElementById('filterAppliance');
-      const otherCheckbox = document.getElementById('filterOther');
-
-      if (localCheckbox && filterLocal !== null) {
-        localCheckbox.checked = filterLocal === '1';
-      }
-
-      if (gatewayCheckbox && filterGateway !== null) {
-        gatewayCheckbox.checked = filterGateway === '1';
-      }
-
-      if (internetCheckbox && filterInternet !== null) {
-        internetCheckbox.checked = filterInternet === '1';
-      }
-
-      if (printerCheckbox && filterPrinter !== null) {
-        printerCheckbox.checked = filterPrinter === '1';
-      }
-
-      if (tvCheckbox && filterTv !== null) {
-        tvCheckbox.checked = filterTv === '1';
-      }
-
-      if (gamingCheckbox && filterGaming !== null) {
-        gamingCheckbox.checked = filterGaming === '1';
-      }
-
-      if (phoneCheckbox && filterPhone !== null) {
-        phoneCheckbox.checked = filterPhone === '1';
-      }
-
-      if (virtualizationCheckbox && filterVirtualization !== null) {
-        virtualizationCheckbox.checked = filterVirtualization === '1';
-      }
-
-      if (soundbarCheckbox && filterSoundbar !== null) {
-        soundbarCheckbox.checked = filterSoundbar === '1';
-      }
-
-      if (applianceCheckbox && filterAppliance !== null) {
-        applianceCheckbox.checked = filterAppliance === '1';
-      }
-
-      if (otherCheckbox && filterOther !== null) {
-        otherCheckbox.checked = filterOther === '1';
-      }
-
-      // Restore endpoint limit from URL or localStorage
-      const urlParams2 = new URLSearchParams(window.location.search);
-      const urlLimit = urlParams2.get('endpoint_limit');
-      const savedLimit = urlLimit || localStorage.getItem('endpointLimit') || '20';
-      const limitSlider = document.getElementById('endpointLimitSlider');
-      const limitValue = document.getElementById('endpointLimitValue');
-
-      if (limitSlider && limitValue) {
-        limitSlider.value = savedLimit;
-        limitValue.textContent = savedLimit;
-        // Also save to localStorage if it came from URL
-        if (urlLimit) {
-          localStorage.setItem('endpointLimit', urlLimit);
-        }
-      }
-
-      // Restore endpoint search filter from URL
-      const filterEndpointsValue = urlParams.get('filter_endpoints');
-      if (filterEndpointsValue) {
-        const endpointsInput = document.getElementById('endpointSearchInput');
-        if (endpointsInput) {
-          endpointsInput.value = filterEndpointsValue;
-          filterEndpointsList(filterEndpointsValue, true);
-        }
-      }
-
-      // Restore right pane search filters from URL
-      const filterHostnamesValue = urlParams.get('filter_hostnames');
-      const filterIpsValue = urlParams.get('filter_ips');
-      const filterMacsValue = urlParams.get('filter_macs');
-
-      if (filterHostnamesValue) {
-        const hostnamesInput = document.getElementById('hostnamesListSearch');
-        if (hostnamesInput) {
-          hostnamesInput.value = filterHostnamesValue;
-          filterHostnamesList(filterHostnamesValue, true);
-        }
-      }
-
-      if (filterIpsValue) {
-        const ipsInput = document.getElementById('ipsListSearch');
-        if (ipsInput) {
-          ipsInput.value = filterIpsValue;
-          filterIpsList(filterIpsValue, true);
-        }
-      }
-
-      if (filterMacsValue) {
-        const macsInput = document.getElementById('macsListSearch');
-        if (macsInput) {
-          macsInput.value = filterMacsValue;
-          filterMacsList(filterMacsValue, true);
-        }
-      }
-
-      // Restore protocol selection from URL
-      const protocolValue = urlParams.get('protocol');
-      if (protocolValue && typeof cy !== 'undefined') {
-        selectedProtocol = protocolValue;
-        // Wait for protocol badges to be rendered, then apply filter
-        setTimeout(() => {
-          const protocolBadge = document.querySelector(`.protocol-badge[data-protocol="${protocolValue}"]`);
-          if (protocolBadge) {
-            filterByProtocol(protocolValue, protocolBadge, true);
-          }
-        }, 100);
-      }
-
-      // Apply filters on page load (skip URL update to avoid redundant history)
-      if (typeof cy !== 'undefined') {
-        applyFilters(true);
-      }
-
-      // Apply endpoint limit on page load
-      applyEndpointLimit();
-    });
-
-    // Update visible protocols in the overlay
-    function updateVisibleProtocols() {
-      // Get all visible protocols from visible edges
-      const visibleProtocols = new Set();
-      cy.edges().forEach(edge => {
-        if (edge.style('display') === 'element') {
-          const protocols = edge.data('protocol');
-          if (protocols) {
-            // Split comma-separated protocols and add each one
-            protocols.split(',').forEach(proto => {
-              if (proto) {
-                visibleProtocols.add(proto);
-              }
-            });
-          }
-        }
-      });
-
-      // Sort protocols alphabetically
-      const sortedProtocols = Array.from(visibleProtocols).sort();
-
-      // Get the container
-      const container = document.getElementById('protocols-container');
-
-      // Clear existing badges
-      container.innerHTML = '';
-
-      // Create badges for all visible protocols
-      if (sortedProtocols.length === 0) {
-        container.innerHTML = '<div class="empty-state">No protocols</div>';
-      } else {
-        sortedProtocols.forEach(protocol => {
-          const badge = document.createElement('div');
-          badge.className = 'protocol-badge';
-          badge.dataset.protocol = protocol;
-          badge.textContent = protocol;
-          badge.onclick = function() { filterByProtocol(protocol, this); };
-
-          // Preserve selected/dimmed state if there's an active filter
-          if (selectedProtocol) {
-            if (protocol === selectedProtocol) {
-              badge.classList.add('selected');
-            } else {
-              badge.classList.add('dimmed');
-            }
-          }
-
-          container.appendChild(badge);
-        });
-      }
-    }
-
-    // Update ports list based on visible edges in the graph
-    function updatePortsFromGraph() {
-      // Get the selected endpoint from URL
-      const urlParams = new URLSearchParams(window.location.search);
-      const selectedEndpoint = urlParams.get('node');
-
-      // Collect ports from visible edges
-      const visiblePorts = new Set();
-      cy.edges().forEach(edge => {
-        if (edge.style('display') === 'element') {
-          const srcPorts = edge.data('src_port');
-          const dstPorts = edge.data('dst_port');
-          const srcNode = edge.source().id();
-          const dstNode = edge.target().id();
-
-          // Get port relevant to selected endpoint (the remote port)
-          if (selectedEndpoint) {
-            if (srcNode === selectedEndpoint && dstPorts) {
-              String(dstPorts).split(',').forEach(p => {
-                const port = parseInt(p.trim());
-                if (!isNaN(port)) visiblePorts.add(port);
-              });
-            }
-            if (dstNode === selectedEndpoint && srcPorts) {
-              String(srcPorts).split(',').forEach(p => {
-                const port = parseInt(p.trim());
-                if (!isNaN(port)) visiblePorts.add(port);
-              });
-            }
-          } else {
-            // No endpoint selected - show all ports from visible edges
-            if (srcPorts) {
-              String(srcPorts).split(',').forEach(p => {
-                const port = parseInt(p.trim());
-                if (!isNaN(port)) visiblePorts.add(port);
-              });
-            }
-            if (dstPorts) {
-              String(dstPorts).split(',').forEach(p => {
-                const port = parseInt(p.trim());
-                if (!isNaN(port)) visiblePorts.add(port);
-              });
-            }
-          }
-        }
-      });
-
-      // Sort ports numerically
-      const sortedPorts = Array.from(visiblePorts).sort((a, b) => a - b);
-
-      // Get the container
-      const container = document.getElementById('ports-container');
-
-      // Clear existing badges
-      container.innerHTML = '';
-
-      // Create badges for all visible ports
-      if (sortedPorts.length === 0) {
-        container.innerHTML = '<div class="empty-state">No ports</div>';
-      } else {
-        sortedPorts.forEach(port => {
-          const badge = document.createElement('div');
-          badge.className = 'protocol-badge';
-          badge.dataset.port = port;
-          badge.textContent = port;
-          badge.onclick = function() { filterByPort(port, this); };
-
-          // Preserve selected/dimmed state if there's an active filter
-          if (selectedPort) {
-            if (port == selectedPort) {
-              badge.classList.add('selected');
-            } else {
-              badge.classList.add('dimmed');
-            }
-          }
-
-          container.appendChild(badge);
-        });
-      }
-    }
-
-    // Check if an IP is on the local network (private IP ranges)
-    function isLocalIP(ip) {
-      if (!ip) return false;
-
-      // IPv4 private ranges
-      const ipv4Private = [
-        /^10\./,                    // 10.0.0.0/8
-        /^172\.(1[6-9]|2[0-9]|3[01])\./, // 172.16.0.0/12
-        /^192\.168\./,              // 192.168.0.0/16
-        /^127\./,                   // 127.0.0.0/8 (loopback)
-        /^169\.254\./,              // 169.254.0.0/16 (link-local)
-        /^0\.0\.0\.0/,              // Unspecified
-        /^255\.255\.255\.255/       // Broadcast
-      ];
-
-      // IPv6 private/local ranges
-      const ipv6Private = [
-        /^::1$/,                    // Loopback
-        /^fe80:/i,                  // Link-local
-        /^fc00:/i,                  // Unique local address
-        /^fd00:/i,                  // Unique local address
-        /^::$/                      // Unspecified
-      ];
-
-      for (let pattern of ipv4Private) {
-        if (pattern.test(ip)) return true;
-      }
-
-      for (let pattern of ipv6Private) {
-        if (pattern.test(ip)) return true;
-      }
-
-      return false;
-    }
-
-    // Select all device type filters
-    function selectAllFilters() {
-      document.getElementById('filterLocal').checked = true;
-      document.getElementById('filterGateway').checked = true;
-      document.getElementById('filterInternet').checked = true;
-      document.getElementById('filterPrinter').checked = true;
-      document.getElementById('filterTv').checked = true;
-      document.getElementById('filterGaming').checked = true;
-      document.getElementById('filterPhone').checked = true;
-      document.getElementById('filterVirtualization').checked = true;
-      document.getElementById('filterSoundbar').checked = true;
-      document.getElementById('filterAppliance').checked = true;
-      document.getElementById('filterOther').checked = true;
-      applyFilters();
-    }
-
-    // Deselect all device type filters
-    function selectNoneFilters() {
-      document.getElementById('filterLocal').checked = false;
-      document.getElementById('filterGateway').checked = false;
-      document.getElementById('filterInternet').checked = false;
-      document.getElementById('filterPrinter').checked = false;
-      document.getElementById('filterTv').checked = false;
-      document.getElementById('filterGaming').checked = false;
-      document.getElementById('filterPhone').checked = false;
-      document.getElementById('filterVirtualization').checked = false;
-      document.getElementById('filterSoundbar').checked = false;
-      document.getElementById('filterAppliance').checked = false;
-      document.getElementById('filterOther').checked = false;
-      applyFilters();
-    }
-
-    // Select all local device type filters (everything except internet)
-    function selectLocalFilters() {
-      document.getElementById('filterLocal').checked = true;
-      document.getElementById('filterGateway').checked = true;
-      document.getElementById('filterInternet').checked = false;
-      document.getElementById('filterPrinter').checked = true;
-      document.getElementById('filterTv').checked = true;
-      document.getElementById('filterGaming').checked = true;
-      document.getElementById('filterPhone').checked = true;
-      document.getElementById('filterVirtualization').checked = true;
-      document.getElementById('filterSoundbar').checked = true;
-      document.getElementById('filterAppliance').checked = true;
-      document.getElementById('filterOther').checked = true;
-      applyFilters();
-    }
-
-    // Filter nodes by type
-    function applyFilters(skipUrlUpdate = false) {
-      // Get type filter states
-      const showLocal = document.getElementById('filterLocal').checked;
-      const showGateway = document.getElementById('filterGateway').checked;
-      const showInternet = document.getElementById('filterInternet').checked;
-      const showPrinter = document.getElementById('filterPrinter').checked;
-      const showTv = document.getElementById('filterTv').checked;
-      const showGaming = document.getElementById('filterGaming').checked;
-      const showPhone = document.getElementById('filterPhone').checked;
-      const showVirtualization = document.getElementById('filterVirtualization').checked;
-      const showSoundbar = document.getElementById('filterSoundbar').checked;
-      const showAppliance = document.getElementById('filterAppliance').checked;
-      const showOther = document.getElementById('filterOther').checked;
-
-      // Save filter state to URL
-      if (!skipUrlUpdate) {
-        const url = new URL(window.location.href);
-        url.searchParams.set('filter_local', showLocal ? '1' : '0');
-        url.searchParams.set('filter_gateway', showGateway ? '1' : '0');
-        url.searchParams.set('filter_internet', showInternet ? '1' : '0');
-        url.searchParams.set('filter_printer', showPrinter ? '1' : '0');
-        url.searchParams.set('filter_tv', showTv ? '1' : '0');
-        url.searchParams.set('filter_gaming', showGaming ? '1' : '0');
-        url.searchParams.set('filter_phone', showPhone ? '1' : '0');
-        url.searchParams.set('filter_virtualization', showVirtualization ? '1' : '0');
-        url.searchParams.set('filter_soundbar', showSoundbar ? '1' : '0');
-        url.searchParams.set('filter_appliance', showAppliance ? '1' : '0');
-        url.searchParams.set('filter_other', showOther ? '1' : '0');
-        window.history.replaceState({}, '', url);
-      }
-
-      // Helper function to check if an endpoint type matches current filters
-      function matchesTypeFilter(type) {
-        if (type === 'local' && showLocal) return true;
-        if (type === 'gateway' && showGateway) return true;
-        if (type === 'internet' && showInternet) return true;
-        if (type === 'printer' && showPrinter) return true;
-        if (type === 'tv' && showTv) return true;
-        if (type === 'gaming' && showGaming) return true;
-        if (type === 'phone' && showPhone) return true;
-        if (type === 'virtualization' && showVirtualization) return true;
-        if (type === 'soundbar' && showSoundbar) return true;
-        if (type === 'appliance' && showAppliance) return true;
-        if (type === 'other' && showOther) return true;
-        return false;
-      }
-
-      // Check if a specific endpoint is selected from URL
-      const urlParams = new URLSearchParams(window.location.search);
-      const selectedEndpointFromUrl = urlParams.get('node');
-      const isEndpointSelected = selectedEndpointFromUrl !== null && selectedEndpointFromUrl !== '';
-
-      // Build set of endpoints that should be visible
-      const visibleEndpointNames = new Set();
-
-      // Always apply endpoint limit slider (both overall view and specific endpoint view)
-      const limit = parseInt(localStorage.getItem('endpointLimit') || '20');
-      const searchTerm = document.getElementById('endpointSearchInput')?.value.trim().toLowerCase() || '';
-
-      // Build a list of graph nodes with their sidebar data
-      const nodeData = [];
-      cy.nodes().forEach(node => {
-        const nodeName = node.data('id');
-        let type = node.data('type');
-
-        // Treat null/undefined/empty as 'other'
-        if (!type || type === '') {
-          type = 'other';
-        }
-
-        // Find corresponding sidebar item for search data
-        const sidebarItem = document.querySelector(`#endpoints-container .list-item[data-endpoint="${nodeName}"]`);
-        const endpointText = sidebarItem ? sidebarItem.textContent.toLowerCase() : nodeName.toLowerCase();
-        const ips = sidebarItem ? (sidebarItem.getAttribute('data-endpoint-ips') || '').toLowerCase() : '';
-        const macs = sidebarItem ? (sidebarItem.getAttribute('data-endpoint-macs') || '').toLowerCase() : '';
-
-        // Check if matches search term
-        const matchesSearch = searchTerm === ''
-          || endpointText.includes(searchTerm)
-          || ips.includes(searchTerm)
-          || macs.includes(searchTerm);
-
-        // Check if matches type filter
-        const matchesType = matchesTypeFilter(type);
-
-        if (matchesSearch && matchesType) {
-          nodeData.push({ name: nodeName, type: type });
-        }
-      });
-
-      // Apply limit to the filtered list
-      for (let i = 0; i < Math.min(limit, nodeData.length); i++) {
-        visibleEndpointNames.add(nodeData[i].name);
-      }
-
-      // Filter nodes in graph based on the visible set
-      cy.nodes().forEach(node => {
-        let type = node.data('type');
-        const nodeName = node.data('id');
-
-        // Treat null/undefined/empty as 'other'
-        if (!type || type === '') {
-          type = 'other';
-        }
-
-        // Check type filter
-        const typeMatch = matchesTypeFilter(type);
-
-        // Check if endpoint is in the visible list
-        const inVisibleList = visibleEndpointNames.has(nodeName);
-
-        // Apply filter: must match type AND be in visible list
-        if (typeMatch && inVisibleList) {
-          node.style('display', 'element');
-        } else {
-          node.style('display', 'none');
-        }
-      });
-
-      // Hide edges connected to hidden nodes
-      cy.edges().forEach(edge => {
-        const sourceVisible = edge.source().style('display') === 'element';
-        const targetVisible = edge.target().style('display') === 'element';
-        edge.style('display', sourceVisible && targetVisible ? 'element' : 'none');
-      });
-
-      // Filter endpoints in sidebar list (reapply search filter to respect type filters)
-      const searchInput = document.getElementById('endpointSearchInput');
-      if (searchInput) {
-        filterEndpointsList(searchInput.value, true);
-      }
-
-      // Filter IPs and hostnames in endpoint details based on internet filter
-      if (!showInternet) {
-        // Hide internet-facing IPs
-        const ipItems = document.querySelectorAll('#ips-container .hostname-item');
-        ipItems.forEach(item => {
-          const ip = item.textContent.trim();
-          if (!isLocalIP(ip)) {
-            item.style.display = 'none';
-          } else {
-            item.style.display = 'block';
-          }
-        });
-
-        // Note: Hostnames are harder to classify without backend help,
-        // so we'll keep them visible for now unless you want to filter more aggressively
-      } else {
-        // Show all IPs when internet filter is enabled
-        const ipItems = document.querySelectorAll('#ips-container .hostname-item');
-        ipItems.forEach(item => {
-          item.style.display = 'block';
-        });
-      }
-
-      // Update visible protocols and ports in overlay
-      updateVisibleProtocols();
-      updatePortsFromGraph();
-
-      // Check if any communications are visible after filtering
-      checkForCommunications();
-
-      // Re-layout visible elements to prevent flower/disjointed pattern
-      relayoutVisibleElements();
-    }
-
-    // Debounced re-layout to prevent excessive layout runs
-    const relayoutVisibleElements = debounce(() => {
-      const visibleElements = cy.elements().filter(ele => ele.style('display') === 'element');
-      if (visibleElements.length > 0) {
-        visibleElements.layout({
-          name: 'cose',
-          nodeRepulsion: 400000,
-          nodeDimensionsIncludeLabels: true,
-          padding: 80,
-          animate: true,
-          animationDuration: 300,
-          fit: true
-        }).run();
-      }
-    }, 100);
-
-    // Filter hostnames list in right pane
-    function filterHostnamesList(searchTerm, skipUrlUpdate = false) {
-      const normalizedSearch = searchTerm.trim().toLowerCase();
-      const hostnameItems = document.querySelectorAll('#hostnames-container .hostname-item');
-
-      // Save to URL parameters
-      if (!skipUrlUpdate) {
-        const url = new URL(window.location.href);
-        if (normalizedSearch) {
-          url.searchParams.set('filter_hostnames', searchTerm);
-        } else {
-          url.searchParams.delete('filter_hostnames');
-        }
-        window.history.replaceState({}, '', url);
-      }
-
-      hostnameItems.forEach(item => {
-        const hostname = item.textContent.toLowerCase();
-        if (normalizedSearch === '' || hostname.includes(normalizedSearch)) {
-          item.style.display = 'block';
-        } else {
-          item.style.display = 'none';
-        }
-      });
-    }
-
-    // Filter IPs list in right pane
-    function filterIpsList(searchTerm, skipUrlUpdate = false) {
-      const normalizedSearch = searchTerm.trim().toLowerCase();
-      const ipItems = document.querySelectorAll('#ips-container .hostname-item');
-
-      // Save to URL parameters
-      if (!skipUrlUpdate) {
-        const url = new URL(window.location.href);
-        if (normalizedSearch) {
-          url.searchParams.set('filter_ips', searchTerm);
-        } else {
-          url.searchParams.delete('filter_ips');
-        }
-        window.history.replaceState({}, '', url);
-      }
-
-      ipItems.forEach(item => {
-        const ip = item.textContent.toLowerCase();
-        if (normalizedSearch === '' || ip.includes(normalizedSearch)) {
-          item.style.display = 'block';
-        } else {
-          item.style.display = 'none';
-        }
-      });
-    }
-
-    // Filter MACs list in right pane
-    function filterMacsList(searchTerm, skipUrlUpdate = false) {
-      const normalizedSearch = searchTerm.trim().toLowerCase();
-      const macItems = document.querySelectorAll('#macs-container .hostname-item');
-
-      // Save to URL parameters
-      if (!skipUrlUpdate) {
-        const url = new URL(window.location.href);
-        if (normalizedSearch) {
-          url.searchParams.set('filter_macs', searchTerm);
-        } else {
-          url.searchParams.delete('filter_macs');
-        }
-        window.history.replaceState({}, '', url);
-      }
-
-      macItems.forEach(item => {
-        const mac = item.textContent.toLowerCase();
-        if (normalizedSearch === '' || mac.includes(normalizedSearch)) {
-          item.style.display = 'block';
-        } else {
-          item.style.display = 'none';
-        }
-      });
-    }
-
-
-    // Global variable to track selected protocol
-    let selectedProtocol = null;
-
-    // Helper function to check if a node type matches current type filters
-    function matchesTypeFilter(type) {
-      const showLocal = document.getElementById('filterLocal').checked;
-      const showGateway = document.getElementById('filterGateway').checked;
-      const showInternet = document.getElementById('filterInternet').checked;
-      const showPrinter = document.getElementById('filterPrinter').checked;
-      const showTv = document.getElementById('filterTv').checked;
-      const showGaming = document.getElementById('filterGaming').checked;
-      const showPhone = document.getElementById('filterPhone').checked;
-      const showVirtualization = document.getElementById('filterVirtualization').checked;
-      const showSoundbar = document.getElementById('filterSoundbar').checked;
-      const showAppliance = document.getElementById('filterAppliance').checked;
-      const showOther = document.getElementById('filterOther').checked;
-
-      if (type === 'local' && showLocal) return true;
-      if (type === 'gateway' && showGateway) return true;
-      if (type === 'internet' && showInternet) return true;
-      if (type === 'printer' && showPrinter) return true;
-      if (type === 'tv' && showTv) return true;
-      if (type === 'gaming' && showGaming) return true;
-      if (type === 'phone' && showPhone) return true;
-      if (type === 'virtualization' && showVirtualization) return true;
-      if (type === 'soundbar' && showSoundbar) return true;
-      if (type === 'appliance' && showAppliance) return true;
-      if (type === 'other' && showOther) return true;
-      return false;
-    }
-
-    // Apply combined protocol and port filters
-    function applyCombinedFilters() {
-      const relevantNodeIds = new Set();
-
-      // Check each edge to see if it matches ALL active filters
-      cy.edges().forEach(edge => {
-        let matchesProtocol = true;
-        let matchesPort = true;
-
-        // Check protocol filter
-        if (selectedProtocol) {
-          const edgeProtocols = edge.data('protocol').split(',');
-          matchesProtocol = edgeProtocols.includes(selectedProtocol);
-        }
-
-        // Check port filter
-        if (selectedPort) {
-          const portStr = String(selectedPort);
-          const srcPorts = edge.data('src_port');
-          const dstPorts = edge.data('dst_port');
-          const srcPortList = srcPorts ? String(srcPorts).split(',').map(p => p.trim()) : [];
-          const dstPortList = dstPorts ? String(dstPorts).split(',').map(p => p.trim()) : [];
-          matchesPort = srcPortList.includes(portStr) || dstPortList.includes(portStr);
-        }
-
-        // Check if both endpoints pass type filters
-        const srcNode = edge.source();
-        const dstNode = edge.target();
-        const srcType = srcNode.data('type') || 'other';
-        const dstType = dstNode.data('type') || 'other';
-        const srcPassesTypeFilter = matchesTypeFilter(srcType);
-        const dstPassesTypeFilter = matchesTypeFilter(dstType);
-
-        // Edge must match ALL active filters AND both nodes must pass type filters
-        if (matchesProtocol && matchesPort && srcPassesTypeFilter && dstPassesTypeFilter) {
-          relevantNodeIds.add(srcNode.id());
-          relevantNodeIds.add(dstNode.id());
-          edge.style('display', 'element');
-          edge.style('opacity', 0.8);
-          edge.style('width', 2);
-        } else {
-          edge.style('display', 'none');
-        }
-      });
-
-      // Show/hide nodes based on relevant edges AND type filter
-      cy.nodes().forEach(node => {
-        const nodeType = node.data('type') || 'other';
-        if (relevantNodeIds.has(node.id()) && matchesTypeFilter(nodeType)) {
-          node.style('display', 'element');
-        } else {
-          node.style('display', 'none');
-        }
-      });
-    }
-
-    // Filter graph by protocol
-    function filterByProtocol(protocol, element, skipUrlUpdate = false) {
-      selectedProtocol = protocol;
-
-      // Save to URL parameters
-      if (!skipUrlUpdate) {
-        const url = new URL(window.location.href);
-        url.searchParams.set('protocol', protocol);
-        window.history.replaceState({}, '', url);
-      }
-
-      // Apply combined filters
-      applyCombinedFilters();
-
-      // Update UI - highlight selected protocol badge, dim others
-      document.querySelectorAll('.protocol-badge').forEach(badge => {
-        if (badge.dataset.protocol === protocol) {
-          badge.classList.add('selected');
-          badge.classList.remove('dimmed');
-        } else {
-          badge.classList.remove('selected');
-          badge.classList.add('dimmed');
-        }
-      });
-
-      // Show clear filter button
-      document.querySelector('.clear-filter-btn').style.display = 'block';
-    }
-
-    // Clear protocol filter
-    function clearProtocolFilter() {
-      selectedProtocol = null;
-
-      // Remove from URL parameters
-      const url = new URL(window.location.href);
-      url.searchParams.delete('protocol');
-      window.history.replaceState({}, '', url);
-
-      // Reset protocol badges
-      document.querySelectorAll('.protocol-badge').forEach(badge => {
-        badge.classList.remove('selected');
-        badge.classList.remove('dimmed');
-      });
-
-      // Hide clear filter button
-      document.querySelector('.clear-filter-btn').style.display = 'none';
-
-      // If port filter is still active, apply it; otherwise reset everything
-      if (selectedPort) {
-        applyCombinedFilters();
-      } else {
-        // Reset all nodes and edges to visible
-        cy.nodes().forEach(node => {
-          node.style('display', 'element');
-        });
-        cy.edges().forEach(edge => {
-          edge.style('display', 'element');
-          edge.style('opacity', 0.4);
-          edge.style('width', 1.5);
-        });
-        // Re-apply type filters
-        applyFilters();
-      }
-    }
-
-    // Filter graph by port
-    let selectedPort = null;
-    function filterByPort(port, element, skipUrlUpdate = false) {
-      selectedPort = port;
-      const portStr = String(port);
-
-      // Save to URL parameters
-      if (!skipUrlUpdate) {
-        const url = new URL(window.location.href);
-        url.searchParams.set('port', portStr);
-        window.history.replaceState({}, '', url);
-      }
-
-      // Apply combined filters
-      applyCombinedFilters();
-
-      // Update UI - highlight selected port badge, dim others
-      document.querySelectorAll('[data-port]').forEach(badge => {
-        if (badge.dataset.port == port) {
-          badge.classList.add('selected');
-          badge.classList.remove('dimmed');
-        } else {
-          badge.classList.remove('selected');
-          badge.classList.add('dimmed');
-        }
-      });
-
-      // Show clear filter button
-      document.querySelector('.clear-port-filter-btn').style.display = 'block';
-
-      // Check if any communications are visible
-      checkForCommunications();
-    }
-
-    // Clear port filter
-    function clearPortFilter() {
-      selectedPort = null;
-
-      // Remove from URL parameters
-      const url = new URL(window.location.href);
-      url.searchParams.delete('port');
-      window.history.replaceState({}, '', url);
-
-      // Reset port badges
-      document.querySelectorAll('[data-port]').forEach(badge => {
-        badge.classList.remove('selected');
-        badge.classList.remove('dimmed');
-      });
-
-      // Hide clear filter button
-      document.querySelector('.clear-port-filter-btn').style.display = 'none';
-
-      // If protocol filter is still active, apply it; otherwise reset everything
-      if (selectedProtocol) {
-        applyCombinedFilters();
-      } else {
-        // Reset all nodes and edges to visible
-        cy.nodes().forEach(node => {
-          node.style('display', 'element');
-        });
-        cy.edges().forEach(edge => {
-          edge.style('display', 'element');
-          edge.style('opacity', 0.4);
-          edge.style('width', 1.5);
-        });
-        // Re-apply type filters
-        applyFilters();
-      }
-
-      // Check if any communications are visible
-      checkForCommunications();
-    }
-
-    // Copy to clipboard with visual feedback
-    function copyToClipboard(text, element) {
-      navigator.clipboard.writeText(text).then(() => {
-        const originalBg = element.style.background;
-        element.style.background = 'var(--accent-success)';
-        element.style.color = 'white';
-        setTimeout(() => {
-          element.style.background = originalBg;
-          element.style.color = '';
-        }, 500);
-      }).catch(err => {
-        console.error('Failed to copy:', err);
-      });
-    }
-
-    // Initialize Cytoscape graph
-    var cy = cytoscape({
-      container: document.getElementById('cy'),
-      boxSelectionEnabled: false,
-      autounselectify: true,
-      layout: {
-        name: 'cose',
-        nodeRepulsion: 400000,
-        nodeDimensionsIncludeLabels: true,
-        padding: 80,
-        animate: true,
-        animationDuration: 500
-      },
-      elements: [
-        {% for endpoint in endpoints %}
-          { data: {
-              id: '{{ endpoint | safe }}',
-              {% if endpoint == hostname %}type: 'local',
-              {% elif endpoint_types[endpoint] %}type: '{{ endpoint_types[endpoint] }}',
-              {% else %}type: 'other',
-              {% endif %}
-              {% if endpoint == selected_node %}selected: true,{% endif %}
-            }
-          },
-        {% endfor %}
-        {% for comm in communications %}
-          {% if comm.src_hostname != comm.dst_hostname %}
-          { data: {
-            id: '{{ comm.sub_protocol | safe }}-{{ comm.src_hostname | safe }}-{{ comm.dst_hostname | safe }}',
-            source: '{{ comm.src_hostname | safe }}',
-            target: '{{ comm.dst_hostname | safe }}',
-            label: '{{ comm.sub_protocol | safe }}',
-            protocol: '{{ comm.sub_protocol | safe }}',
-            src_port: {% if comm.src_port %}'{{ comm.src_port | safe }}'{% else %}null{% endif %},
-            dst_port: {% if comm.dst_port %}'{{ comm.dst_port | safe }}'{% else %}null{% endif %}
-          }},
-          {% endif %}
-        {% endfor %}
-      ],
-      style: [
-        {
-          selector: 'node',
-          style: {
-            'label': function(ele) { return '💻\n' + ele.data('id'); },
-            'shape': 'round-rectangle',
-            'background-color': '#1e293b',
-            'font-size': 28,
-            'font-weight': 600,
-            'text-valign': 'center',
-            'text-halign': 'center',
-            'text-wrap': 'wrap',
-            'text-max-width': '280px',
-            'text-outline-width': 2,
-            'text-outline-color': '#0f172a',
-            'color': '#f1f5f9',
-            'width': 150,
-            'height': 150,
-            'border-width': 2,
-            'border-color': '#64748b'
-          }
-        },
-        {
-          selector: 'node[type = "local"]',
-          style: {
-            'label': function(ele) { return '🖥️\n' + ele.data('id'); },
-            'background-color': '#2d1b4e',
-            'border-color': '#8b5cf6',
-            'border-width': 3
-          }
-        },
-        {
-          selector: 'node[type = "gateway"]',
-          style: {
-            'label': function(ele) { return '🌐\n' + ele.data('id'); },
-            'background-color': '#422006',
-            'border-color': '#f59e0b',
-            'border-width': 3
-          }
-        },
-        {
-          selector: 'node[type = "internet"]',
-          style: {
-            'label': function(ele) { return '🌍\n' + ele.data('id'); },
-            'background-color': '#083344',
-            'border-color': '#06b6d4',
-            'border-width': 2
-          }
-        },
-        {
-          selector: 'node[type = "printer"]',
-          style: {
-            'label': function(ele) { return '🖨️\n' + ele.data('id'); },
-            'background-color': '#1e3a28',
-            'border-color': '#10b981',
-            'border-width': 2
-          }
-        },
-        {
-          selector: 'node[type = "tv"]',
-          style: {
-            'label': function(ele) { return '📺\n' + ele.data('id'); },
-            'background-color': '#3c1f5f',
-            'border-color': '#c084fc',
-            'border-width': 2
-          }
-        },
-        {
-          selector: 'node[type = "gaming"]',
-          style: {
-            'label': function(ele) { return '🎮\n' + ele.data('id'); },
-            'background-color': '#5c1c2e',
-            'border-color': '#f43f5e',
-            'border-width': 2
-          }
-        },
-        {
-          selector: 'node[type = "phone"]',
-          style: {
-            'label': function(ele) { return '📱\n' + ele.data('id'); },
-            'background-color': '#083333',
-            'border-color': '#14b8a6',
-            'border-width': 2
-          }
-        },
-        {
-          selector: 'node[type = "virtualization"]',
-          style: {
-            'label': function(ele) { return '🖥\n' + ele.data('id'); },
-            'background-color': '#1e293b',
-            'border-color': '#94a3b8',
-            'border-width': 2
-          }
-        },
-        {
-          selector: 'node[type = "soundbar"]',
-          style: {
-            'label': function(ele) { return '🔊\n' + ele.data('id'); },
-            'background-color': '#312e81',
-            'border-color': '#818cf8',
-            'border-width': 2
-          }
-        },
-        {
-          selector: 'node[type = "appliance"]',
-          style: {
-            'label': function(ele) { return '🏠\n' + ele.data('id'); },
-            'background-color': '#422006',
-            'border-color': '#fb923c',
-            'border-width': 2
-          }
-        },
-        {
-          selector: 'node[type = "other"]',
-          style: {
-            'label': function(ele) { return '❓\n' + ele.data('id'); },
-            'background-color': '#374151',
-            'border-color': '#9ca3af',
-            'border-width': 2
-          }
-        },
-        {
-          selector: 'node[selected = "true"]',
-          style: {
-            'border-width': 4,
-            'border-color': '#10b981'
-          }
-        },
-        {
-          selector: 'node[type = "local"][selected = "true"]',
-          style: {
-            'border-color': '#10b981'
-          }
-        },
-        {
-          selector: 'node[type = "gateway"][selected = "true"]',
-          style: {
-            'border-color': '#10b981'
-          }
-        },
-        {
-          selector: 'node[type = "internet"][selected = "true"]',
-          style: {
-            'border-color': '#10b981'
-          }
-        },
-        {
-          selector: 'node[type = "printer"][selected = "true"]',
-          style: {
-            'border-color': '#10b981'
-          }
-        },
-        {
-          selector: 'node[type = "tv"][selected = "true"]',
-          style: {
-            'border-color': '#10b981'
-          }
-        },
-        {
-          selector: 'node[type = "gaming"][selected = "true"]',
-          style: {
-            'border-color': '#10b981'
-          }
-        },
-        {
-          selector: 'node[type = "phone"][selected = "true"]',
-          style: {
-            'border-color': '#10b981'
-          }
-        },
-        {
-          selector: 'node[type = "virtualization"][selected = "true"]',
-          style: {
-            'border-color': '#10b981'
-          }
-        },
-        {
-          selector: 'edge',
-          style: {
-            'label': 'data(label)',
-            'curve-style': 'straight',
-            'width': 2,
-            'opacity': 0.5,
-            'line-color': '#475569',
-            'font-size': 0,
-            'color': '#94a3b8',
-            'text-outline-width': 2,
-            'text-outline-color': '#0f172a'
-          }
-        },
-        {
-          selector: 'edge:selected',
-          style: {
-            'font-size': 9,
-            'opacity': 0.8,
-            'width': 2
-          }
-        }
-      ],
-    });
-
-    // Check if there are any visible communications and show message if empty
-    function checkForCommunications() {
-      const noCommsMsg = document.getElementById('no-communications-msg');
-
-      // Count all visible nodes
-      let visibleNodes = 0;
-      cy.nodes().forEach(node => {
-        if (node.style('display') === 'element') {
-          visibleNodes++;
-        }
-      });
-
-      // If no nodes are visible (all filtered out), show message
-      if (visibleNodes === 0) {
-        noCommsMsg.style.display = 'block';
-        return;
-      }
-
-      // Check if a specific endpoint is selected
-      const selectedNode = cy.nodes('[selected = "true"]');
-
-      // Hide message if no specific endpoint is selected
-      if (selectedNode.length === 0) {
-        noCommsMsg.style.display = 'none';
-        return;
-      }
-
-      // Count visible edges connected to the selected node
-      let visibleEdges = 0;
-      selectedNode.connectedEdges().forEach(edge => {
-        if (edge.style('display') === 'element') {
-          visibleEdges++;
-        }
-      });
-
-      if (visibleEdges === 0) {
-        noCommsMsg.style.display = 'block';
-      } else {
-        noCommsMsg.style.display = 'none';
-      }
-    }
-
-    // Initialize visible protocols and ports on page load
-    updateVisibleProtocols();
-    updatePortsFromGraph();
-    checkForCommunications();
-
-    // Node click handler
-    cy.on('tap', 'node', function(event) {
-      var nodeId = event.target.id();
-      var currentUrl = new URL(window.location.href);
-      var currentNodeParam = currentUrl.searchParams.get('node');
-
-      if (currentNodeParam !== nodeId) {
-        currentUrl.searchParams.set('node', nodeId);
-        window.location.href = currentUrl.toString();
+      var controlContent = document.getElementById('control-content');
+      if (controlContent) {
+        controlContent.dataset.ips = '{{ ips | join(sep=",") }}';
+        controlContent.dataset.deviceType = '{{ endpoint_types[endpoint] | default(value="") }}';
+        controlContent.dataset.endpointName = '{{ endpoint | default(value="") }}';
       }
     });
 
-    // Scroll to section in details panel
-    function scrollToSection(sectionId) {
-      const section = document.getElementById(sectionId);
-      if (section) {
-        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }
-
-    // Zoom controls
-    function zoomIn() {
-      cy.zoom({
-        level: cy.zoom() * 1.2,
-        renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 }
-      });
-    }
-
-    function zoomOut() {
-      cy.zoom({
-        level: cy.zoom() / 1.2,
-        renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 }
-      });
-    }
-
-    function fitGraph() {
-      cy.fit(cy.elements(), 50);
-    }
-
-    // Device type reclassification
-    let savedRefreshInterval = null;
-
-    function toggleDeviceTypeDropdown(event) {
-      event.stopPropagation();
-      const dropdown = document.getElementById('device-type-dropdown');
-      const isOpening = !dropdown.classList.contains('open');
-
-      if (isOpening) {
-        // Pause auto-refresh while dropdown is open
-        if (refreshIntervalId) {
-          savedRefreshInterval = document.getElementById('refreshInterval').value;
-          clearInterval(refreshIntervalId);
-          refreshIntervalId = null;
-        }
-      }
-
-      dropdown.classList.toggle('open');
-    }
-
-    // Close dropdown when clicking outside
-    document.addEventListener('click', function(event) {
-      const dropdown = document.getElementById('device-type-dropdown');
-      const btn = document.getElementById('device-type-btn');
-      if (dropdown && !dropdown.contains(event.target) && !btn.contains(event.target)) {
-        dropdown.classList.remove('open');
-        // Resume auto-refresh if it was paused
-        if (savedRefreshInterval && savedRefreshInterval !== '0') {
-          updateRefreshInterval(savedRefreshInterval);
-          savedRefreshInterval = null;
-        }
-      }
-    });
-
-    async function reclassifyEndpoint(deviceType) {
-      const endpointName = '{{ endpoint | safe }}';
-      const dropdown = document.getElementById('device-type-dropdown');
-      dropdown.classList.remove('open');
-
-      try {
-        const response = await fetch('/api/endpoint/classify', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            endpoint_name: endpointName,
-            device_type: deviceType === 'auto' ? null : deviceType,
-          }),
-        });
-
-        const result = await response.json();
-        if (result.success) {
-          window.location.reload();
-        } else {
-          alert('Failed to update device type: ' + result.message);
-        }
-      } catch (error) {
-        alert('Failed to update device type. Please try again.');
-      }
-    }
-
-    // Auto-refresh management
-    let refreshIntervalId = null;
-
-    function updateRefreshInterval(seconds) {
-      // Save preference
-      localStorage.setItem('refreshInterval', seconds);
-
-      // Clear existing interval
-      if (refreshIntervalId) {
-        clearInterval(refreshIntervalId);
-        refreshIntervalId = null;
-      }
-
-      // Update pulse indicator and button state
-      const pulse = document.querySelector('.pulse');
-      const toggleBtn = document.getElementById('refreshToggleBtn');
-
-      if (seconds == 0) {
-        pulse.classList.add('stopped');
-        toggleBtn.innerHTML = '▶️';
-        toggleBtn.classList.add('play');
-        toggleBtn.title = 'Start auto-refresh';
-      } else {
-        pulse.classList.remove('stopped');
-        toggleBtn.innerHTML = '⏹️';
-        toggleBtn.classList.remove('play');
-        toggleBtn.title = 'Stop auto-refresh';
-
-        // Set new interval - behavior depends on active tab
-        refreshIntervalId = setInterval(() => {
-          if (activeTab === 'dns') {
-            // Refresh DNS entries without page reload
-            refreshDnsEntries();
-          } else if (activeTab === 'scanner') {
-            // Don't reload page when on scanner tab - scanner has its own polling
-            // Just refresh the scan status
-            pollScanStatus();
-          } else {
-            // Reload page for network tab
-            window.location.reload();
-          }
-        }, seconds * 1000);
-      }
-    }
-
-    // Toggle auto-refresh on/off
-    function toggleRefresh() {
-      const refreshSelect = document.getElementById('refreshInterval');
-      const currentValue = refreshSelect.value;
-
-      if (currentValue == '0') {
-        // Currently stopped, start with default 5 seconds
-        const lastInterval = localStorage.getItem('lastRefreshInterval') || '5';
-        refreshSelect.value = lastInterval;
-        updateRefreshInterval(lastInterval);
-      } else {
-        // Currently running, stop it
-        localStorage.setItem('lastRefreshInterval', currentValue);
-        refreshSelect.value = '0';
-        updateRefreshInterval('0');
-      }
-    }
-
-    // Manual refresh - respects current tab
-    function manualRefresh() {
-      if (activeTab === 'dns') {
-        refreshDnsEntries();
-      } else if (activeTab === 'scanner') {
-        pollScanStatus();
-      } else {
-        window.location.reload();
-      }
-    }
-
-    // Initialize refresh interval on page load
-    window.addEventListener('DOMContentLoaded', () => {
-      const savedInterval = localStorage.getItem('refreshInterval') || '5';
-      document.getElementById('refreshInterval').value = savedInterval;
-      updateRefreshInterval(savedInterval);
-    });
-
-    // ============================================
-    // Device Control Functions
-    // ============================================
-
-    // Store current device control state
-    let currentDeviceIp = null;
-    let currentDeviceType = null;
-    let deviceCapabilitiesLoaded = false;
-
-    // Switch between Details and Control tabs
-    function switchDetailTab(btn, tabId) {
-      // Deactivate all tabs
-      document.querySelectorAll('.detail-tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.detail-tab-content').forEach(c => c.classList.remove('active'));
-
-      // Activate clicked tab
-      btn.classList.add('active');
-      document.getElementById(tabId).classList.add('active');
-
-      // Load device capabilities when Control tab is clicked
-      if (tabId === 'control-tab-content' && !deviceCapabilitiesLoaded) {
-        loadDeviceCapabilities();
-      }
-    }
-
-    // Load device capabilities from the API
-    async function loadDeviceCapabilities() {
-      const loadingEl = document.getElementById('control-loading');
-      const contentEl = document.getElementById('control-content');
-      const noControlEl = document.getElementById('no-control-message');
-      const pairingRequiredEl = document.getElementById('pairing-required');
-      const rokuRemoteEl = document.getElementById('roku-remote');
-      const samsungRemoteEl = document.getElementById('samsung-remote');
-      const thinqSetupEl = document.getElementById('thinq-setup-required');
-      const thinqRemoteEl = document.getElementById('thinq-remote');
-      const deviceInfoEl = document.getElementById('device-info-section');
-      const appsSectionEl = document.getElementById('apps-section');
-
-      // Hide all control elements first
-      const hideAll = () => {
-        noControlEl.style.display = 'none';
-        pairingRequiredEl.style.display = 'none';
-        rokuRemoteEl.style.display = 'none';
-        samsungRemoteEl.style.display = 'none';
-        thinqSetupEl.style.display = 'none';
-        thinqRemoteEl.style.display = 'none';
-        deviceInfoEl.style.display = 'none';
-        appsSectionEl.style.display = 'none';
-      };
-
-      // Show loading state
-      loadingEl.style.display = 'block';
-      contentEl.style.display = 'none';
-      hideAll();
-
-      // Get device IP from the current endpoint data
-      const ipsStr = '{{ ips | join(sep=",") }}';
-      const ips = ipsStr.split(',').filter(ip => ip.trim());
-
-      if (ips.length === 0) {
-        loadingEl.style.display = 'none';
-        contentEl.style.display = 'block';
-        noControlEl.style.display = 'block';
-        deviceCapabilitiesLoaded = true;
-        return;
-      }
-
-      currentDeviceIp = ips[0].trim();
-
-      // Get device type and hostname from template
-      const endpointTypeStr = '{{ endpoint_types[endpoint] | default(value="") }}';
-      const deviceType = endpointTypeStr || null;
-      const endpointName = '{{ endpoint | default(value="") }}';
-
-      try {
-        let url = `/api/device/capabilities?ip=${encodeURIComponent(currentDeviceIp)}`;
-        if (deviceType) url += `&device_type=${encodeURIComponent(deviceType)}`;
-        if (endpointName) url += `&hostname=${encodeURIComponent(endpointName)}`;
-        const response = await fetch(url);
-        const capabilities = await response.json();
-
-        loadingEl.style.display = 'none';
-        contentEl.style.display = 'block';
-        hideAll();
-
-        if (capabilities.can_control) {
-          currentDeviceType = capabilities.device_type;
-
-          // Check if pairing is required (Samsung TVs)
-          if (capabilities.needs_pairing && !capabilities.is_paired) {
-            pairingRequiredEl.style.display = 'block';
-            deviceCapabilitiesLoaded = true;
-            return;
-          }
-
-          // Show device info if available
-          if (capabilities.device_info) {
-            deviceInfoEl.style.display = 'block';
-            const modelEl = document.getElementById('device-model');
-            const info = capabilities.device_info;
-            let infoText = info.name || info.model || (capabilities.device_type === 'roku' ? 'Roku Device' : 'Samsung TV');
-            if (info.software_version) {
-              infoText += ` (v${info.software_version})`;
-            }
-            modelEl.textContent = infoText;
-          }
-
-          // Show device-specific controls
-          if (capabilities.device_type === 'roku') {
-            rokuRemoteEl.style.display = 'block';
-
-            // Show apps if available
-            if (capabilities.apps && capabilities.apps.length > 0) {
-              appsSectionEl.style.display = 'block';
-              const appsGrid = document.getElementById('apps-grid');
-              appsGrid.innerHTML = '';
-
-              capabilities.apps.forEach(app => {
-                const btn = document.createElement('button');
-                btn.className = 'app-btn';
-                btn.onclick = () => launchApp(app.id);
-                btn.title = app.name;
-
-                if (app.icon_url) {
-                  const img = document.createElement('img');
-                  img.src = app.icon_url;
-                  img.alt = app.name;
-                  img.onerror = () => { img.style.display = 'none'; };
-                  btn.appendChild(img);
-                }
-
-                const name = document.createElement('span');
-                name.textContent = app.name.length > 12 ? app.name.substring(0, 12) + '...' : app.name;
-                btn.appendChild(name);
-
-                appsGrid.appendChild(btn);
-              });
-            }
-          } else if (capabilities.device_type === 'samsung') {
-            samsungRemoteEl.style.display = 'block';
-          } else if (capabilities.device_type && capabilities.device_type.startsWith('lg_thinq')) {
-            // Check if ThinQ is configured
-            await handleThinQDevice(capabilities, thinqSetupEl, thinqRemoteEl, deviceInfoEl);
-          }
-        } else {
-          // Check if this might be a ThinQ-compatible device (LG appliance by hostname)
-          const endpointName = '{{ endpoint | default(value="") }}';
-          if (endpointName.toLowerCase().includes('lma') || endpointName.toLowerCase().includes('lg')) {
-            await handleThinQDevice(null, thinqSetupEl, thinqRemoteEl, deviceInfoEl);
-          } else {
-            noControlEl.style.display = 'block';
-          }
-        }
-
-        deviceCapabilitiesLoaded = true;
-      } catch (error) {
-        console.error('Failed to load device capabilities:', error);
-        loadingEl.style.display = 'none';
-        contentEl.style.display = 'block';
-        noControlEl.style.display = 'block';
-        rokuRemoteEl.style.display = 'none';
-        deviceCapabilitiesLoaded = true;
-      }
-    }
-
-    // Send a command to the device
-    async function sendCommand(command) {
-      if (!currentDeviceIp || !currentDeviceType) {
-        console.error('No device selected');
-        return;
-      }
-
-      try {
-        const response = await fetch('/api/device/command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ip: currentDeviceIp,
-            command: command,
-            device_type: currentDeviceType
-          })
-        });
-
-        const result = await response.json();
-        if (!result.success) {
-          console.error('Command failed:', result.message);
-        }
-      } catch (error) {
-        console.error('Failed to send command:', error);
-      }
-    }
-
-    // Launch an app on the device
-    async function launchApp(appId) {
-      if (!currentDeviceIp || !currentDeviceType) {
-        console.error('No device selected');
-        return;
-      }
-
-      try {
-        const response = await fetch('/api/device/launch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ip: currentDeviceIp,
-            app_id: appId,
-            device_type: currentDeviceType
-          })
-        });
-
-        const result = await response.json();
-        if (!result.success) {
-          console.error('App launch failed:', result.message);
-        }
-      } catch (error) {
-        console.error('Failed to launch app:', error);
-      }
-    }
-
-    // Pair with a device (Samsung TVs)
-    async function pairDevice() {
-      if (!currentDeviceIp || !currentDeviceType) {
-        console.error('No device selected');
-        return;
-      }
-
-      const statusEl = document.getElementById('pairing-status');
-      statusEl.textContent = 'Connecting... Please check your TV for an approval prompt.';
-      statusEl.style.color = 'var(--accent-primary)';
-
-      try {
-        const response = await fetch('/api/device/pair', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ip: currentDeviceIp,
-            device_type: currentDeviceType
-          })
-        });
-
-        const result = await response.json();
-        if (result.success) {
-          statusEl.textContent = result.message;
-          statusEl.style.color = 'var(--accent-success)';
-          // Reload capabilities to show the remote
-          deviceCapabilitiesLoaded = false;
-          setTimeout(() => loadDeviceCapabilities(), 1000);
-        } else {
-          statusEl.textContent = result.message;
-          statusEl.style.color = '#ef4444';
-        }
-      } catch (error) {
-        console.error('Pairing failed:', error);
-        statusEl.textContent = 'Pairing failed. Please try again.';
-        statusEl.style.color = '#ef4444';
-      }
-    }
-
-    // =========================================================================
-    // LG ThinQ Functions
-    // =========================================================================
-
-    let currentThinQDeviceId = null;
-    let currentThinQDeviceType = null;
-
-    // Handle ThinQ device - check if configured and show appropriate UI
-    async function handleThinQDevice(capabilities, setupEl, remoteEl, deviceInfoEl) {
-      try {
-        const statusResponse = await fetch('/api/thinq/status');
-        const status = await statusResponse.json();
-
-        if (!status.configured) {
-          // Show setup form
-          setupEl.style.display = 'block';
-          return;
-        }
-
-        // ThinQ is configured - find matching device
-        const endpointName = '{{ endpoint | default(value="") }}';
-
-        // Try to match by hostname or find a device
-        let matchedDevice = null;
-        if (capabilities && capabilities.device_type && capabilities.device_type.includes(':')) {
-          // Device ID is embedded in device_type (lg_thinq:device_id)
-          const deviceId = capabilities.device_type.split(':')[1];
-          matchedDevice = status.devices.find(d => d.device_id === deviceId);
-        }
-
-        if (!matchedDevice && status.devices.length > 0) {
-          // Try to match by model/name similarity or just use first device
-          matchedDevice = status.devices[0];
-        }
-
-        if (matchedDevice) {
-          currentThinQDeviceId = matchedDevice.device_id;
-          currentThinQDeviceType = matchedDevice.device_type;
-          currentDeviceType = `lg_thinq:${matchedDevice.device_id}`;
-
-          // Show device info
-          deviceInfoEl.style.display = 'block';
-          const modelEl = document.getElementById('device-model');
-          let infoText = matchedDevice.name || matchedDevice.device_type;
-          if (matchedDevice.model) {
-            infoText += ` (${matchedDevice.model})`;
-          }
-          infoText += matchedDevice.online ? ' - Online' : ' - Offline';
-          modelEl.textContent = infoText;
-
-          // Show remote and populate controls
-          remoteEl.style.display = 'block';
-          populateThinQControls(matchedDevice);
-          refreshThinQStatus();
-        } else {
-          // No devices found
-          const statusEl = document.getElementById('thinq-device-status');
-          statusEl.textContent = 'No ThinQ devices found. Make sure your appliances are registered in the LG ThinQ app.';
-          remoteEl.style.display = 'block';
-        }
-      } catch (error) {
-        console.error('Failed to check ThinQ status:', error);
-        setupEl.style.display = 'block';
-      }
-    }
-
-    // Populate ThinQ controls based on device type
-    function populateThinQControls(device) {
-      const controlsEl = document.getElementById('thinq-controls');
-      controlsEl.innerHTML = '';
-
-      const deviceType = device.device_type.toLowerCase();
-
-      // Common controls
-      const addButton = (label, command) => {
-        const btn = document.createElement('button');
-        btn.className = 'remote-btn';
-        btn.onclick = () => sendThinQCommand(command);
-        btn.textContent = label;
-        btn.style.flex = '1';
-        btn.style.minWidth = '100px';
-        controlsEl.appendChild(btn);
-      };
-
-      if (deviceType.includes('dishwasher')) {
-        addButton('📊 Get Status', 'status');
-        addButton('▶️ Start', 'start');
-        addButton('⏹️ Stop', 'stop');
-      } else if (deviceType.includes('washer') || deviceType.includes('washing')) {
-        addButton('📊 Get Status', 'status');
-        addButton('▶️ Start', 'start');
-        addButton('⏸️ Pause', 'pause');
-        addButton('⏹️ Stop', 'stop');
-      } else if (deviceType.includes('dryer')) {
-        addButton('📊 Get Status', 'status');
-        addButton('▶️ Start', 'start');
-        addButton('⏸️ Pause', 'pause');
-        addButton('⏹️ Stop', 'stop');
-      } else if (deviceType.includes('refrigerator') || deviceType.includes('fridge')) {
-        addButton('📊 Get Status', 'status');
-        addButton('❄️ Express Freeze', 'express_freeze');
-        addButton('🌿 Eco Mode', 'eco_mode');
-      } else if (deviceType.includes('air') || deviceType.includes('ac')) {
-        addButton('📊 Get Status', 'status');
-        addButton('🔛 Power On', 'power_on');
-        addButton('⏻ Power Off', 'power_off');
-      } else {
-        // Generic controls
-        addButton('📊 Get Status', 'status');
-      }
-    }
-
-    // Setup ThinQ with PAT token
-    async function setupThinQ() {
-      const patToken = document.getElementById('thinq-pat-token').value.trim();
-      const countryCode = document.getElementById('thinq-country-code').value;
-      const statusEl = document.getElementById('thinq-setup-status');
-
-      if (!patToken) {
-        statusEl.textContent = 'Please enter your Personal Access Token.';
-        statusEl.style.color = '#ef4444';
-        return;
-      }
-
-      statusEl.textContent = 'Connecting to LG ThinQ...';
-      statusEl.style.color = 'var(--accent-primary)';
-
-      try {
-        const response = await fetch('/api/thinq/setup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            pat_token: patToken,
-            country_code: countryCode
-          })
-        });
-
-        const result = await response.json();
-        if (result.success) {
-          statusEl.textContent = result.message;
-          statusEl.style.color = 'var(--accent-success)';
-          // Reload capabilities to show controls
-          deviceCapabilitiesLoaded = false;
-          setTimeout(() => loadDeviceCapabilities(), 1000);
-        } else {
-          statusEl.textContent = result.message;
-          statusEl.style.color = '#ef4444';
-        }
-      } catch (error) {
-        console.error('ThinQ setup failed:', error);
-        statusEl.textContent = 'Setup failed. Please check your token and try again.';
-        statusEl.style.color = '#ef4444';
-      }
-    }
-
-    // Refresh ThinQ device status
-    async function refreshThinQStatus() {
-      if (!currentThinQDeviceId) {
-        return;
-      }
-
-      const statusEl = document.getElementById('thinq-device-status');
-      statusEl.textContent = 'Refreshing status...';
-
-      try {
-        const response = await fetch('/api/device/command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ip: currentDeviceIp || '0.0.0.0',
-            command: 'status',
-            device_type: `lg_thinq:${currentThinQDeviceId}`
-          })
-        });
-
-        const result = await response.json();
-        if (result.success) {
-          // Format the status message
-          let statusText = result.message;
-          if (result.data) {
-            statusText = formatThinQStatus(result.data);
-          }
-          statusEl.innerHTML = statusText;
-          statusEl.style.color = 'var(--text-secondary)';
-        } else {
-          statusEl.textContent = result.message;
-          statusEl.style.color = '#ef4444';
-        }
-      } catch (error) {
-        console.error('Failed to refresh ThinQ status:', error);
-        statusEl.textContent = 'Failed to get device status.';
-        statusEl.style.color = '#ef4444';
-      }
-    }
-
-    // Format ThinQ status data for display
-    function formatThinQStatus(data) {
-      if (typeof data === 'string') {
-        return data;
-      }
-
-      let html = '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem;">';
-      for (const [key, value] of Object.entries(data)) {
-        const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        html += `<div style="color: var(--text-secondary);">${label}:</div>`;
-        html += `<div style="color: var(--text-primary);">${value}</div>`;
-      }
-      html += '</div>';
-      return html;
-    }
-
-    // Send ThinQ command
-    async function sendThinQCommand(command) {
-      if (!currentThinQDeviceId) {
-        console.error('No ThinQ device selected');
-        return;
-      }
-
-      const statusEl = document.getElementById('thinq-device-status');
-      statusEl.textContent = `Sending ${command}...`;
-
-      try {
-        const response = await fetch('/api/device/command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ip: currentDeviceIp || '0.0.0.0',
-            command: command,
-            device_type: `lg_thinq:${currentThinQDeviceId}`
-          })
-        });
-
-        const result = await response.json();
-        if (result.success) {
-          if (command === 'status' && result.data) {
-            statusEl.innerHTML = formatThinQStatus(result.data);
-          } else {
-            statusEl.textContent = result.message;
-            statusEl.style.color = 'var(--accent-success)';
-            // Refresh status after a command
-            setTimeout(() => refreshThinQStatus(), 2000);
-          }
-        } else {
-          statusEl.textContent = result.message;
-          statusEl.style.color = '#ef4444';
-        }
-      } catch (error) {
-        console.error('ThinQ command failed:', error);
-        statusEl.textContent = 'Command failed. Please try again.';
-        statusEl.style.color = '#ef4444';
-      }
-    }
-
-    // Disconnect ThinQ
-    async function disconnectThinQ() {
-      if (!confirm('Are you sure you want to disconnect from LG ThinQ? You will need to re-enter your PAT token.')) {
-        return;
-      }
-
-      try {
-        // Call a disconnect endpoint (we'll add this)
-        const response = await fetch('/api/thinq/disconnect', {
-          method: 'POST'
-        });
-
-        // Reload to show setup form
-        deviceCapabilitiesLoaded = false;
-        loadDeviceCapabilities();
-      } catch (error) {
-        console.error('Failed to disconnect ThinQ:', error);
-      }
-    }
+    // Initialize the app
+    App.init({ endpointName: '{{ endpoint | default(value="") }}' });
   </script>
+
+  <!-- Protocol Endpoints Dropdown -->
+  <div id="protocol-dropdown" class="protocol-dropdown">
+    <div class="protocol-dropdown-header">Talked via <span id="protocol-dropdown-name"></span></div>
+    <div id="protocol-dropdown-content"></div>
+  </div>
 </body>
 </html>

@@ -11,15 +11,17 @@ use tera::{Context, Tera};
 use tokio::task;
 
 use crate::db::new_connection;
+use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::device_control::DeviceController;
 use crate::network::endpoint::{
-    EndPoint, get_hostname_vendor, get_mac_vendor, get_model_from_hostname,
+    EndPoint, get_hostname_vendor, get_mac_vendor, get_model_from_hostname, get_model_from_mac,
+    get_model_from_vendor_and_type, strip_local_suffix,
 };
 use crate::network::mdns_lookup::MDnsLookup;
 use crate::network::protocol::ProtocolPort;
 use crate::scanner::manager::{ScanConfig, ScanManager};
 use crate::scanner::{ScanResult, ScanType, check_scan_privileges};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::sync::OnceLock;
 use tokio::sync::mpsc;
 
@@ -85,17 +87,51 @@ fn get_interfaces() -> Vec<String> {
     interfaces.into_iter().map(|iface| iface.name).collect()
 }
 
+/// Check if a string looks like an IP address (IPv4 or IPv6)
+fn looks_like_ip(s: &str) -> bool {
+    // IPv6: contains colons
+    if s.contains(':') {
+        return true;
+    }
+    // IPv4: all parts are numeric when split by dots
+    let parts: Vec<&str> = s.split('.').collect();
+    if parts.len() == 4 && parts.iter().all(|p| p.parse::<u8>().is_ok()) {
+        return true;
+    }
+    false
+}
+
+/// Try to resolve an IP-like name using mDNS cache or reverse DNS lookup
+fn resolve_from_mdns_cache(name: &str) -> Option<String> {
+    if looks_like_ip(name) {
+        // probe_hostname checks cache first, then tries reverse DNS lookup
+        MDnsLookup::probe_hostname(name).map(|h| strip_local_suffix(&h))
+    } else {
+        None
+    }
+}
+
 fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
     let conn = new_connection();
+    // Use JOIN instead of correlated subquery for better performance
     let mut stmt = conn
         .prepare(
             "
-            SELECT DISTINCT e.NAME
+            SELECT DISTINCT COALESCE(e.custom_name,
+                CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
+                ea_best.hostname) AS display_name
             FROM endpoints e
             INNER JOIN communications c
                 ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
-                WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
-                AND e.NAME IS NOT NULL AND e.NAME != ''
+            LEFT JOIN (
+                SELECT endpoint_id, MIN(hostname) AS hostname
+                FROM endpoint_attributes
+                WHERE hostname IS NOT NULL AND hostname != ''
+                  AND hostname NOT LIKE '%:%'
+                  AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'
+                GROUP BY endpoint_id
+            ) ea_best ON ea_best.endpoint_id = e.id
+            WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
         ",
         )
         .expect("Failed to prepare statement");
@@ -110,13 +146,15 @@ fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
             if hostname.is_empty() {
                 None
             } else {
-                Some(hostname)
+                // If the hostname looks like an IP, try to resolve it from mDNS cache
+                Some(resolve_from_mdns_cache(&hostname).unwrap_or(hostname))
             }
         })
         .collect();
 
-    // Get the local hostname
-    let local_hostname = get_hostname().unwrap_or_else(|_| "Unknown".to_string());
+    // Get the local hostname (strip .local suffix to match stored endpoint names)
+    let local_hostname =
+        strip_local_suffix(&get_hostname().unwrap_or_else(|_| "Unknown".to_string()));
 
     // Sort endpoints with local hostname first
     endpoints.sort_by(|a, b| {
@@ -167,6 +205,96 @@ fn get_protocols_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<St
     rows.filter_map(|row| row.ok()).collect()
 }
 
+/// Get endpoints using a protocol, optionally filtered to only those communicating with a specific endpoint
+fn get_endpoints_for_protocol(
+    protocol: &str,
+    internal_minutes: u64,
+    from_endpoint: Option<&str>,
+) -> Vec<String> {
+    let conn = new_connection();
+
+    match from_endpoint {
+        Some(endpoint) => {
+            // Get endpoints that communicated with the specified endpoint over this protocol
+            let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, endpoint);
+            if endpoint_ids.is_empty() {
+                return Vec::new();
+            }
+
+            let placeholders = build_in_placeholders(endpoint_ids.len());
+            let query = format!(
+                "SELECT DISTINCT e.name
+                FROM endpoints e
+                INNER JOIN communications c ON (c.src_endpoint_id = e.id OR c.dst_endpoint_id = e.id)
+                WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
+                    AND (COALESCE(NULLIF(c.sub_protocol, ''), c.ip_header_protocol) = ?)
+                    AND e.name IS NOT NULL AND e.name != ''
+                    AND (
+                        (c.src_endpoint_id IN ({0}) AND c.dst_endpoint_id = e.id)
+                        OR (c.dst_endpoint_id IN ({0}) AND c.src_endpoint_id = e.id)
+                    )
+                ORDER BY e.name",
+                placeholders
+            );
+
+            let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
+
+            let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![
+                Box::new(internal_minutes),
+                Box::new(protocol.to_string()),
+            ];
+            params_vec.extend(box_i64_params(&endpoint_ids));
+            params_vec.extend(box_i64_params(&endpoint_ids));
+
+            let rows = stmt
+                .query_map(params_to_refs(&params_vec).as_slice(), |row| {
+                    row.get::<_, String>(0)
+                })
+                .expect("Failed to execute query");
+
+            rows.filter_map(|row| row.ok()).collect()
+        }
+        None => {
+            // Get all endpoints using this protocol
+            let query = "SELECT DISTINCT e.name
+                FROM endpoints e
+                INNER JOIN communications c ON (c.src_endpoint_id = e.id OR c.dst_endpoint_id = e.id)
+                WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
+                    AND (COALESCE(NULLIF(c.sub_protocol, ''), c.ip_header_protocol) = ?)
+                    AND e.name IS NOT NULL AND e.name != ''
+                ORDER BY e.name";
+
+            let mut stmt = conn.prepare(query).expect("Failed to prepare statement");
+
+            let rows = stmt
+                .query_map(params![internal_minutes, protocol], |row| {
+                    row.get::<_, String>(0)
+                })
+                .expect("Failed to execute query");
+
+            rows.filter_map(|row| row.ok()).collect()
+        }
+    }
+}
+
+/// Get all protocols seen across all endpoints
+fn get_all_protocols(internal_minutes: u64) -> Vec<String> {
+    let conn = new_connection();
+
+    let query = "SELECT DISTINCT COALESCE(NULLIF(c.sub_protocol, ''), c.ip_header_protocol) as protocol
+        FROM communications c
+        WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
+        ORDER BY protocol";
+
+    let mut stmt = conn.prepare(query).expect("Failed to prepare statement");
+
+    let rows = stmt
+        .query_map(params![internal_minutes], |row| row.get::<_, String>(0))
+        .expect("Failed to execute query");
+
+    rows.filter_map(|row| row.ok()).collect()
+}
+
 fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String> {
     let conn = new_connection();
 
@@ -176,18 +304,17 @@ fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String
     }
 
     let placeholders = build_in_placeholders(endpoint_ids.len());
+    // Only get destination ports where endpoint is the destination (listening ports)
+    // Excludes ephemeral ports (49152-65535) which are just used for receiving responses
     let query = format!(
-        "SELECT DISTINCT
-            CASE
-                WHEN c.src_endpoint_id IN ({0}) THEN c.destination_port
-                WHEN c.dst_endpoint_id IN ({0}) THEN c.source_port
-            END as port
+        "SELECT DISTINCT c.destination_port as port
         FROM communications c
         LEFT JOIN endpoints AS src_endpoint ON c.src_endpoint_id = src_endpoint.id
         LEFT JOIN endpoints AS dst_endpoint ON c.dst_endpoint_id = dst_endpoint.id
         WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
-            AND (c.src_endpoint_id IN ({0}) OR c.dst_endpoint_id IN ({0}))
-            AND port IS NOT NULL
+            AND c.dst_endpoint_id IN ({0})
+            AND c.destination_port IS NOT NULL
+            AND c.destination_port < 49152
             AND src_endpoint.name != '' AND dst_endpoint.name != ''
             AND src_endpoint.name IS NOT NULL AND dst_endpoint.name IS NOT NULL
         ORDER BY CAST(port AS INTEGER)",
@@ -196,11 +323,9 @@ fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String
 
     let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
 
-    // Build parameters: internal_minutes + endpoint_ids (4 times for the 4 IN clauses)
+    // Build parameters: internal_minutes + endpoint_ids (1 time for the IN clause)
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(internal_minutes)];
-    for _ in 0..4 {
-        params.extend(box_i64_params(&endpoint_ids));
-    }
+    params.extend(box_i64_params(&endpoint_ids));
 
     let rows = stmt
         .query_map(params_to_refs(&params).as_slice(), |row| {
@@ -213,28 +338,23 @@ fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String
         .collect()
 }
 
-/// Extract ports from communications data (already filtered for graph)
-/// This ensures ports shown match what's visible in the graph
+/// Extract listening ports from communications data (already filtered for graph)
+/// Only shows destination ports where endpoint is the destination (ports it's listening on)
+/// Excludes ephemeral ports (49152-65535) which are just used for receiving responses
 fn get_ports_from_communications(communications: &[Node], selected_endpoint: &str) -> Vec<String> {
     let mut ports: std::collections::HashSet<i64> = std::collections::HashSet::new();
 
     for node in communications {
-        // Get port where selected endpoint is involved
-        if node.src_hostname == selected_endpoint
+        // Only get destination port when endpoint is the destination (listening port)
+        // Skip ephemeral ports (49152+)
+        if node.dst_hostname == selected_endpoint
             && let Some(ref port_str) = node.dst_port
         {
             for p in port_str.split(',') {
                 if let Ok(port) = p.trim().parse::<i64>() {
-                    ports.insert(port);
-                }
-            }
-        }
-        if node.dst_hostname == selected_endpoint
-            && let Some(ref port_str) = node.src_port
-        {
-            for p in port_str.split(',') {
-                if let Ok(port) = p.trim().parse::<i64>() {
-                    ports.insert(port);
+                    if port < 49152 {
+                        ports.insert(port);
+                    }
                 }
             }
         }
@@ -249,52 +369,96 @@ fn get_endpoint_ips_and_macs(endpoints: &[String]) -> HashMap<String, (Vec<Strin
     let conn = new_connection();
     let mut result: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
 
+    // Initialize all endpoints with empty vectors
     for endpoint in endpoints {
-        let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, endpoint);
+        result.insert(endpoint.clone(), (Vec::new(), Vec::new()));
+    }
 
-        if endpoint_ids.is_empty() {
-            result.insert(endpoint.clone(), (Vec::new(), Vec::new()));
-            continue;
-        }
+    // Single batch query to get all IPs and MACs with their display names
+    let mut stmt = conn
+        .prepare(
+            "SELECT
+                COALESCE(e.custom_name,
+                    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
+                    (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
+                     AND hostname IS NOT NULL AND hostname != ''
+                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
+                ea.ip,
+                ea.mac
+             FROM endpoints e
+             INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id",
+        )
+        .expect("Failed to prepare batch IPs/MACs statement");
 
-        let placeholders = build_in_placeholders(endpoint_ids.len());
-        let query = format!(
-            "SELECT DISTINCT ea.ip, ea.mac
-             FROM endpoint_attributes ea
-             WHERE ea.endpoint_id IN ({})",
-            placeholders
-        );
+    let rows = stmt
+        .query_map([], |row| {
+            let name: String = row.get(0)?;
+            let ip: Option<String> = row.get(1)?;
+            let mac: Option<String> = row.get(2)?;
+            Ok((name, ip, mac))
+        })
+        .expect("Failed to execute batch IPs/MACs query");
 
-        if let Ok(mut stmt) = conn.prepare(&query) {
-            let params = box_i64_params(&endpoint_ids);
-            if let Ok(rows) = stmt.query_map(params_to_refs(&params).as_slice(), |row| {
-                Ok((
-                    row.get::<_, Option<String>>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                ))
-            }) {
-                let mut ips = Vec::new();
-                let mut macs = Vec::new();
-
-                for (ip, mac) in rows.flatten() {
-                    if let Some(ip_str) = ip
-                        && !ip_str.is_empty()
-                        && !ips.contains(&ip_str)
-                    {
-                        ips.push(ip_str);
-                    }
-                    if let Some(mac_str) = mac
-                        && !mac_str.is_empty()
-                        && !macs.contains(&mac_str)
-                    {
-                        macs.push(mac_str);
-                    }
-                }
-
-                ips.sort();
-                macs.sort();
-                result.insert(endpoint.clone(), (ips, macs));
+    for row in rows.flatten() {
+        let (name, ip, mac) = row;
+        if let Some((ips, macs)) = result.get_mut(&name) {
+            if let Some(ip_str) = ip
+                && !ip_str.is_empty()
+                && !ips.contains(&ip_str)
+            {
+                ips.push(ip_str);
             }
+            if let Some(mac_str) = mac
+                && !mac_str.is_empty()
+                && !macs.contains(&mac_str)
+            {
+                macs.push(mac_str);
+            }
+        }
+    }
+
+    // Sort all the vectors
+    for (ips, macs) in result.values_mut() {
+        ips.sort();
+        macs.sort();
+    }
+
+    result
+}
+
+/// Get DHCP vendor class for all endpoints (for model identification)
+fn get_endpoint_vendor_classes(endpoints: &[String]) -> HashMap<String, String> {
+    let conn = new_connection();
+    let mut result: HashMap<String, String> = HashMap::new();
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT
+                COALESCE(e.custom_name,
+                    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
+                    (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
+                     AND hostname IS NOT NULL AND hostname != ''
+                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
+                ea.dhcp_vendor_class
+             FROM endpoints e
+             INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
+             WHERE ea.dhcp_vendor_class IS NOT NULL AND ea.dhcp_vendor_class != ''",
+        )
+        .expect("Failed to prepare vendor class statement");
+
+    let rows = stmt
+        .query_map([], |row| {
+            let name: String = row.get(0)?;
+            let vendor_class: String = row.get(1)?;
+            Ok((name, vendor_class))
+        })
+        .expect("Failed to execute vendor class query");
+
+    for row in rows.flatten() {
+        let (name, vendor_class) = row;
+        // Only store for endpoints we care about, and prefer first non-empty value
+        if endpoints.contains(&name) && !result.contains_key(&name) {
+            result.insert(name, vendor_class);
         }
     }
 
@@ -379,7 +543,7 @@ fn resolve_identifier_to_endpoint_ids(conn: &Connection, identifier: &str) -> Ve
     if let Ok(mut stmt) = conn.prepare(
         "SELECT e.id FROM endpoints e
          LEFT JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
-         WHERE LOWER(e.name) = LOWER(?1)
+         WHERE LOWER(e.name) = LOWER(?1) OR LOWER(e.custom_name) = LOWER(?1)
          GROUP BY e.id
          ORDER BY MAX(c.last_seen_at) DESC
          LIMIT 1",
@@ -394,10 +558,11 @@ fn resolve_identifier_to_endpoint_ids(conn: &Connection, identifier: &str) -> Ve
         return endpoint_ids;
     }
 
-    // Only try IP/MAC matching if there was no exact name match
+    // Only try IP/MAC/hostname matching if there was no exact name match
+    // Note: hostname is stored in endpoint_attributes, not endpoints.name
     if let Ok(mut stmt) = conn.prepare(
         "SELECT DISTINCT endpoint_id FROM endpoint_attributes
-         WHERE LOWER(ip) = LOWER(?1) OR LOWER(mac) = LOWER(?1)",
+         WHERE LOWER(ip) = LOWER(?1) OR LOWER(mac) = LOWER(?1) OR LOWER(hostname) = LOWER(?1)",
     ) && let Ok(rows) = stmt.query_map([identifier], |row| row.get::<_, i64>(0))
     {
         endpoint_ids.extend(rows.flatten());
@@ -424,27 +589,43 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
         None => None,
     };
 
+    // Use CTE to pre-compute display names and IPs for each endpoint
+    // This avoids correlated subqueries which are slow
+    let endpoint_info_cte = "
+        WITH endpoint_info AS (
+            SELECT
+                e.id,
+                COALESCE(e.custom_name,
+                    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
+                    MIN(CASE WHEN ea.hostname IS NOT NULL AND ea.hostname != '' THEN ea.hostname END)) AS display_name,
+                MIN(ea.ip) AS ip
+            FROM endpoints e
+            LEFT JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
+            GROUP BY e.id
+        )";
+
     // Build query - either filtered by endpoint or show all
     let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match &endpoint_ids {
         Some(ids) => {
             let placeholders = build_in_placeholders(ids.len());
             let query = format!(
-                "SELECT
-                src_endpoint.name AS src_hostname,
-                dst_endpoint.name AS dst_hostname,
-                c.source_port as src_port,
-                c.destination_port as dst_port,
-                c.ip_header_protocol as header_protocol,
-                c.sub_protocol,
-                (SELECT ip FROM endpoint_attributes WHERE endpoint_id = src_endpoint.id LIMIT 1) AS src_ip,
-                (SELECT ip FROM endpoint_attributes WHERE endpoint_id = dst_endpoint.id LIMIT 1) AS dst_ip
+                "{endpoint_info_cte}
+                SELECT
+                    src_info.display_name AS src_hostname,
+                    dst_info.display_name AS dst_hostname,
+                    c.source_port as src_port,
+                    c.destination_port as dst_port,
+                    c.ip_header_protocol as header_protocol,
+                    c.sub_protocol,
+                    src_info.ip AS src_ip,
+                    dst_info.ip AS dst_ip
                 FROM communications AS c
-                LEFT JOIN endpoints AS src_endpoint ON c.src_endpoint_id = src_endpoint.id
-                LEFT JOIN endpoints AS dst_endpoint ON c.dst_endpoint_id = dst_endpoint.id
+                INNER JOIN endpoint_info AS src_info ON c.src_endpoint_id = src_info.id
+                INNER JOIN endpoint_info AS dst_info ON c.dst_endpoint_id = dst_info.id
                 WHERE (c.src_endpoint_id IN ({0}) OR c.dst_endpoint_id IN ({0}))
                 AND c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
-                AND src_endpoint.name != '' AND dst_endpoint.name != ''
-                AND src_endpoint.name IS NOT NULL AND dst_endpoint.name IS NOT NULL",
+                AND src_info.display_name IS NOT NULL AND src_info.display_name != ''
+                AND dst_info.display_name IS NOT NULL AND dst_info.display_name != ''",
                 placeholders
             );
 
@@ -454,21 +635,24 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
             (query, params)
         }
         None => {
-            let query = "SELECT
-                src_endpoint.name AS src_hostname,
-                dst_endpoint.name AS dst_hostname,
-                c.source_port as src_port,
-                c.destination_port as dst_port,
-                c.ip_header_protocol as header_protocol,
-                c.sub_protocol,
-                (SELECT ip FROM endpoint_attributes WHERE endpoint_id = src_endpoint.id LIMIT 1) AS src_ip,
-                (SELECT ip FROM endpoint_attributes WHERE endpoint_id = dst_endpoint.id LIMIT 1) AS dst_ip
+            let query = format!(
+                "{endpoint_info_cte}
+                SELECT
+                    src_info.display_name AS src_hostname,
+                    dst_info.display_name AS dst_hostname,
+                    c.source_port as src_port,
+                    c.destination_port as dst_port,
+                    c.ip_header_protocol as header_protocol,
+                    c.sub_protocol,
+                    src_info.ip AS src_ip,
+                    dst_info.ip AS dst_ip
                 FROM communications AS c
-                LEFT JOIN endpoints AS src_endpoint ON c.src_endpoint_id = src_endpoint.id
-                LEFT JOIN endpoints AS dst_endpoint ON c.dst_endpoint_id = dst_endpoint.id
+                INNER JOIN endpoint_info AS src_info ON c.src_endpoint_id = src_info.id
+                INNER JOIN endpoint_info AS dst_info ON c.dst_endpoint_id = dst_info.id
                 WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
-                AND src_endpoint.name != '' AND dst_endpoint.name != ''
-                AND src_endpoint.name IS NOT NULL AND dst_endpoint.name IS NOT NULL".to_string();
+                AND src_info.display_name IS NOT NULL AND src_info.display_name != ''
+                AND dst_info.display_name IS NOT NULL AND dst_info.display_name != ''"
+            );
 
             (query, vec![Box::new(internal_minutes)])
         }
@@ -569,9 +753,13 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
                     )
                 };
 
+                // Try to resolve IP-like hostnames from mDNS cache
+                let src_resolved = resolve_from_mdns_cache(&src).unwrap_or(src);
+                let dst_resolved = resolve_from_mdns_cache(&dst).unwrap_or(dst);
+
                 Node {
-                    src_hostname: src,
-                    dst_hostname: dst,
+                    src_hostname: src_resolved,
+                    dst_hostname: dst_resolved,
                     sub_protocol,
                     src_type,
                     dst_type,
@@ -621,14 +809,112 @@ fn get_all_endpoint_types(
     // Get all manual device types first
     let manual_types = EndPoint::get_all_manual_device_types(&conn);
 
+    // Build lookup maps for manual types (case-insensitive)
+    let manual_types_lower: HashMap<String, String> = manual_types
+        .iter()
+        .map(|(k, v)| (k.to_lowercase(), v.clone()))
+        .collect();
+
+    // Batch fetch all IPs for all endpoints in one query
+    let mut all_ips: HashMap<String, Vec<String>> = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT
+                    COALESCE(e.custom_name,
+                        CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
+                        (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
+                         AND hostname IS NOT NULL AND hostname != ''
+                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
+                    ea.ip
+                 FROM endpoints e
+                 INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
+                 WHERE ea.ip IS NOT NULL",
+            )
+            .expect("Failed to prepare IP batch statement");
+
+        let rows = stmt
+            .query_map([], |row| {
+                let name: String = row.get(0)?;
+                let ip: String = row.get(1)?;
+                Ok((name, ip))
+            })
+            .expect("Failed to execute IP batch query");
+
+        for row in rows.flatten() {
+            all_ips.entry(row.0).or_default().push(row.1);
+        }
+    }
+
+    // Batch fetch all MACs for all endpoints in one query
+    let mut all_macs: HashMap<String, Vec<String>> = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT
+                    COALESCE(e.custom_name,
+                        CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
+                        (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
+                         AND hostname IS NOT NULL AND hostname != ''
+                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
+                    ea.mac
+                 FROM endpoints e
+                 INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
+                 WHERE ea.mac IS NOT NULL",
+            )
+            .expect("Failed to prepare MAC batch statement");
+
+        let rows = stmt
+            .query_map([], |row| {
+                let name: String = row.get(0)?;
+                let mac: String = row.get(1)?;
+                Ok((name, mac))
+            })
+            .expect("Failed to execute MAC batch query");
+
+        for row in rows.flatten() {
+            all_macs.entry(row.0).or_default().push(row.1);
+        }
+    }
+
+    // Batch fetch all ports for all endpoints in one query
+    let mut all_ports: HashMap<String, Vec<u16>> = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT
+                    COALESCE(e.custom_name,
+                        CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
+                        (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
+                         AND hostname IS NOT NULL AND hostname != ''
+                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
+                    COALESCE(c.source_port, c.destination_port) as port
+                 FROM endpoints e
+                 INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
+                 WHERE c.source_port IS NOT NULL OR c.destination_port IS NOT NULL
+                 GROUP BY e.id, port",
+            )
+            .expect("Failed to prepare port batch statement");
+
+        let rows = stmt
+            .query_map([], |row| {
+                let name: String = row.get(0)?;
+                let port: i64 = row.get(1)?;
+                Ok((name, port))
+            })
+            .expect("Failed to execute port batch query");
+
+        for row in rows.flatten() {
+            if let Ok(port) = u16::try_from(row.1) {
+                all_ports.entry(row.0).or_default().push(port);
+            }
+        }
+    }
+
+    // Now classify each endpoint using the batch-fetched data
     for endpoint in endpoints {
         // Check for manual override first (case-insensitive)
-        let manual_type = manual_types
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(endpoint))
-            .map(|(_, v)| v.clone());
-        if let Some(manual_type) = manual_type {
-            // Convert the manual type string to a static str
+        if let Some(manual_type) = manual_types_lower.get(&endpoint.to_lowercase()) {
             let static_type: &'static str = match manual_type.as_str() {
                 "local" => "local",
                 "gateway" => "gateway",
@@ -647,93 +933,37 @@ fn get_all_endpoint_types(
             continue;
         }
 
-        // Get IP address and MAC addresses for this endpoint from endpoint_attributes
-        let mut ip_stmt = conn
-            .prepare(
-                "SELECT ea.ip
-             FROM endpoint_attributes ea
-             INNER JOIN endpoints e ON ea.endpoint_id = e.id
-             WHERE e.name = ?1 AND ea.ip IS NOT NULL
-             LIMIT 1",
-            )
-            .expect("Failed to prepare statement");
-
-        let mut ip = ip_stmt
-            .query_row([endpoint], |row| {
-                let ip_value: Option<String> = row.get(0).ok();
-                Ok(ip_value)
-            })
-            .ok()
-            .flatten();
-
-        // If no IP found in database, try to extract from hostname like "162-254-199-179.valve.net"
-        if ip.is_none() {
+        // Get IPs from batch data, or try to extract from hostname
+        let mut ips = all_ips.get(endpoint).cloned().unwrap_or_default();
+        if ips.is_empty() {
             // Try to parse IP from hostname pattern: xxx-xxx-xxx-xxx.domain
             let parts: Vec<&str> = endpoint.split('.').collect();
             if let Some(first_part) = parts.first() {
                 let ip_candidate = first_part.replace('-', ".");
                 if ip_candidate.parse::<std::net::IpAddr>().is_ok() {
-                    ip = Some(ip_candidate);
+                    ips.push(ip_candidate);
                 }
             }
         }
 
-        // Get MAC addresses for this endpoint
-        let mut mac_stmt = conn
-            .prepare(
-                "SELECT DISTINCT ea.mac
-             FROM endpoint_attributes ea
-             INNER JOIN endpoints e ON ea.endpoint_id = e.id
-             WHERE e.name = ?1 AND ea.mac IS NOT NULL",
-            )
-            .expect("Failed to prepare MAC statement");
-
-        let macs: Vec<String> = mac_stmt
-            .query_map([endpoint], |row| row.get(0))
-            .ok()
-            .map(|rows| rows.filter_map(|r| r.ok()).collect())
-            .unwrap_or_default();
+        let macs = all_macs.get(endpoint).cloned().unwrap_or_default();
+        let ports = all_ports.get(endpoint).cloned().unwrap_or_default();
 
         // First check network-level classification (gateway, internet)
-        if let Some(endpoint_type) = EndPoint::classify_endpoint(ip.clone(), Some(endpoint.clone()))
+        // Use first IP for network-level classification
+        let first_ip = ips.first().cloned();
+        if let Some(endpoint_type) =
+            EndPoint::classify_endpoint(first_ip.clone(), Some(endpoint.clone()))
         {
             types.insert(endpoint.clone(), endpoint_type);
-        } else {
-            // If no network-level classification, check device type based on ports and MACs
-            // Get ports for this endpoint
-            let mut port_stmt = conn
-                .prepare(
-                    "SELECT DISTINCT
-                        CASE
-                            WHEN LOWER(src.name) = LOWER(?1) THEN c.destination_port
-                            WHEN LOWER(dst.name) = LOWER(?1) THEN c.source_port
-                        END as port
-                    FROM communications c
-                    INNER JOIN endpoints src ON c.src_endpoint_id = src.id
-                    INNER JOIN endpoints dst ON c.dst_endpoint_id = dst.id
-                    WHERE (LOWER(src.name) = LOWER(?1) OR LOWER(dst.name) = LOWER(?1))
-                        AND port IS NOT NULL",
-                )
-                .expect("Failed to prepare port query statement");
-
-            let ports: Vec<u16> = port_stmt
-                .query_map([endpoint], |row| {
-                    let port: Option<i64> = row.get(0).ok();
-                    Ok(port.and_then(|p| u16::try_from(p).ok()))
-                })
-                .ok()
-                .map(|rows| rows.filter_map(|row| row.ok()).flatten().collect())
-                .unwrap_or_default();
-
-            if let Some(device_type) =
-                EndPoint::classify_device_type(Some(endpoint), ip.as_deref(), &ports, &macs)
-            {
-                types.insert(endpoint.clone(), device_type);
-            } else if let Some(ref ip_str) = ip {
-                // Only classify as local if the IP is actually on the local network
-                if EndPoint::is_on_local_network(ip_str) {
-                    types.insert(endpoint.clone(), "local");
-                }
+        } else if let Some(device_type) =
+            EndPoint::classify_device_type(Some(endpoint), &ips, &ports, &macs)
+        {
+            types.insert(endpoint.clone(), device_type);
+        } else if let Some(ref ip_str) = first_ip {
+            // Only classify as local if the IP is actually on the local network
+            if EndPoint::is_on_local_network(ip_str) {
+                types.insert(endpoint.clone(), "local");
             }
         }
     }
@@ -743,6 +973,22 @@ fn get_all_endpoint_types(
 
 #[derive(Serialize)]
 struct BytesStats {
+    bytes_in: i64,
+    bytes_out: i64,
+}
+
+#[derive(Serialize)]
+struct EndpointDetailsResponse {
+    endpoint_name: String,
+    device_type: String,
+    is_manual_override: bool,
+    device_vendor: String,
+    device_model: String,
+    ips: Vec<String>,
+    macs: Vec<String>,
+    hostnames: Vec<String>,
+    ports: Vec<String>,
+    protocols: Vec<String>,
     bytes_in: i64,
     bytes_out: i64,
 }
@@ -787,6 +1033,228 @@ async fn get_dns_entries_api() -> impl Responder {
     HttpResponse::Ok().json(get_dns_entries())
 }
 
+#[derive(serde::Deserialize)]
+struct ProbeRequest {
+    ip: String,
+}
+
+#[derive(serde::Serialize)]
+struct ProbeResponse {
+    ip: String,
+    hostname: Option<String>,
+    success: bool,
+}
+
+/// Probe a device for its hostname using reverse DNS/mDNS lookup
+#[post("/api/probe-hostname")]
+async fn probe_hostname(body: Json<ProbeRequest>) -> impl Responder {
+    use crate::network::mdns_lookup::MDnsLookup;
+
+    let hostname = MDnsLookup::probe_hostname(&body.ip);
+
+    HttpResponse::Ok().json(ProbeResponse {
+        ip: body.ip.clone(),
+        hostname: hostname.clone(),
+        success: hostname.is_some(),
+    })
+}
+
+#[get("/api/endpoint/{name}/details")]
+async fn get_endpoint_details(
+    path: actix_web::web::Path<String>,
+    query: actix_web::web::Query<NodeQuery>,
+) -> impl Responder {
+    let endpoint_name = path.into_inner();
+    let internal_minutes = query.scan_interval.unwrap_or(60);
+
+    // Get IPs, MACs, and hostnames
+    let (ips, macs, hostnames) = get_all_ips_macs_and_hostnames_from_single_hostname(
+        endpoint_name.clone(),
+        internal_minutes,
+    );
+
+    // Get device type for this endpoint
+    let conn = new_connection();
+    let manual_types = EndPoint::get_all_manual_device_types(&conn);
+
+    // Check for manual override first (case-insensitive)
+    let manual_type = manual_types
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(&endpoint_name))
+        .map(|(_, v)| v.clone());
+
+    // Get local hostname for comparison
+    let local_hostname =
+        strip_local_suffix(&get_hostname().unwrap_or_else(|_| "Unknown".to_string()));
+
+    let (device_type, is_manual_override) = if let Some(mt) = manual_type {
+        (mt, true)
+    } else if endpoint_name.eq_ignore_ascii_case(&local_hostname) {
+        // This is the local machine
+        ("local".to_string(), false)
+    } else {
+        // First check network-level classification (gateway, internet)
+        let first_ip = ips.first().cloned();
+        if let Some(network_type) =
+            EndPoint::classify_endpoint(first_ip.clone(), Some(endpoint_name.clone()))
+        {
+            (network_type.to_string(), false)
+        } else {
+            // Use EndPoint::classify_device_type for device-specific detection
+            let auto_type = EndPoint::classify_device_type(Some(&endpoint_name), &ips, &[], &macs)
+                .unwrap_or_else(|| {
+                    // Fallback: if on local network, classify as "local", otherwise "other"
+                    if let Some(ref ip_str) = first_ip {
+                        if EndPoint::is_on_local_network(ip_str) {
+                            "local"
+                        } else {
+                            "other"
+                        }
+                    } else {
+                        "other"
+                    }
+                });
+            (auto_type.to_string(), false)
+        }
+    };
+
+    // Get device vendor from MAC or hostname
+    // Prefer hostname vendor over component manufacturers (Espressif, Tuya, etc.)
+    let mac_vendor = macs.iter().find_map(|mac| get_mac_vendor(mac));
+    let hostname_vendor = get_hostname_vendor(&endpoint_name);
+
+    // Component vendors - these make chips/modules used by other manufacturers
+    const COMPONENT_VENDORS: &[&str] = &[
+        "Espressif",
+        "Tuya",
+        "Realtek",
+        "MediaTek",
+        "Qualcomm",
+        "Broadcom",
+        "Marvell",
+        "USI",
+        "Wisol",
+        "Murata",
+    ];
+
+    let device_vendor: String = match (hostname_vendor, mac_vendor) {
+        // Hostname vendor identified (e.g., LG from "ldf7774st") - prefer it
+        (Some(hv), _) => hv,
+        // MAC vendor is a component manufacturer - don't show it
+        (None, Some(mv)) if COMPONENT_VENDORS.contains(&mv) => "",
+        // MAC vendor is a product manufacturer - show it
+        (None, Some(mv)) => mv,
+        // No vendor identified
+        (None, None) => "",
+    }
+    .to_string();
+
+    // Get DHCP vendor class for this endpoint (if available)
+    let dhcp_vendor_class: Option<String> = conn
+        .query_row(
+            "SELECT ea.dhcp_vendor_class
+         FROM endpoints e
+         INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
+         WHERE (LOWER(e.name) = LOWER(?1) OR LOWER(e.custom_name) = LOWER(?1))
+         AND ea.dhcp_vendor_class IS NOT NULL AND ea.dhcp_vendor_class != ''
+         LIMIT 1",
+            rusqlite::params![&endpoint_name],
+            |row| row.get(0),
+        )
+        .ok();
+
+    // Get device model: hostname first, then MAC, then DHCP vendor class, then vendor+type fallback
+    let device_model: String = get_model_from_hostname(&endpoint_name)
+        .or_else(|| macs.iter().find_map(|mac| get_model_from_mac(mac)))
+        .or_else(|| {
+            // Try DHCP vendor class (e.g., "samsung:SM-G998B")
+            dhcp_vendor_class
+                .as_ref()
+                .and_then(|vc| extract_model_from_vendor_class(vc))
+        })
+        .or_else(|| {
+            // Use vendor + device type for more specific model
+            if !device_vendor.is_empty() {
+                get_model_from_vendor_and_type(&device_vendor, &device_type)
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default();
+
+    // Get protocols
+    let protocols = get_protocols_for_endpoint(endpoint_name.clone(), internal_minutes);
+
+    // Get ports
+    let ports = get_ports_for_endpoint(endpoint_name.clone(), internal_minutes);
+
+    // Get bytes stats
+    let bytes_stats = get_bytes_for_endpoint(endpoint_name.clone(), internal_minutes);
+
+    let response = EndpointDetailsResponse {
+        endpoint_name,
+        device_type,
+        is_manual_override,
+        device_vendor,
+        device_model,
+        ips,
+        macs,
+        hostnames,
+        ports,
+        protocols,
+        bytes_in: bytes_stats.bytes_in,
+        bytes_out: bytes_stats.bytes_out,
+    };
+
+    HttpResponse::Ok().json(response)
+}
+
+#[derive(Serialize)]
+struct ProtocolEndpointsResponse {
+    protocol: String,
+    endpoints: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct ProtocolQuery {
+    scan_interval: Option<u64>,
+    from_endpoint: Option<String>,
+}
+
+#[get("/api/protocol/{protocol}/endpoints")]
+async fn get_protocol_endpoints(
+    path: actix_web::web::Path<String>,
+    query: actix_web::web::Query<ProtocolQuery>,
+) -> impl Responder {
+    let protocol = path.into_inner();
+    let internal_minutes = query.scan_interval.unwrap_or(60);
+
+    let endpoints = get_endpoints_for_protocol(
+        &protocol,
+        internal_minutes,
+        query.from_endpoint.as_deref(),
+    );
+
+    HttpResponse::Ok().json(ProtocolEndpointsResponse {
+        protocol,
+        endpoints,
+    })
+}
+
+#[derive(Serialize)]
+struct AllProtocolsResponse {
+    protocols: Vec<String>,
+}
+
+#[get("/api/protocols")]
+async fn get_all_protocols_api(
+    query: actix_web::web::Query<NodeQuery>,
+) -> impl Responder {
+    let internal_minutes = query.scan_interval.unwrap_or(60);
+    let protocols = get_all_protocols(internal_minutes);
+    HttpResponse::Ok().json(AllProtocolsResponse { protocols })
+}
+
 fn get_bytes_for_endpoint(hostname: String, internal_minutes: u64) -> BytesStats {
     let conn = new_connection();
 
@@ -796,7 +1264,9 @@ fn get_bytes_for_endpoint(hostname: String, internal_minutes: u64) -> BytesStats
             "SELECT COALESCE(SUM(c.bytes), 0)
              FROM communications c
              JOIN endpoints dst ON c.dst_endpoint_id = dst.id
-             WHERE LOWER(dst.name) = LOWER(?1)
+             WHERE (LOWER(dst.name) = LOWER(?1)
+                    OR LOWER(dst.custom_name) = LOWER(?1)
+                    OR dst.id IN (SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(hostname) = LOWER(?1)))
              AND c.last_seen_at >= (strftime('%s', 'now') - (?2 * 60))",
             params![&hostname, &internal_minutes.to_string()],
             |row| row.get(0),
@@ -809,7 +1279,9 @@ fn get_bytes_for_endpoint(hostname: String, internal_minutes: u64) -> BytesStats
             "SELECT COALESCE(SUM(c.bytes), 0)
              FROM communications c
              JOIN endpoints src ON c.src_endpoint_id = src.id
-             WHERE LOWER(src.name) = LOWER(?1)
+             WHERE (LOWER(src.name) = LOWER(?1)
+                    OR LOWER(src.custom_name) = LOWER(?1)
+                    OR src.id IN (SELECT endpoint_id FROM endpoint_attributes WHERE LOWER(hostname) = LOWER(?1)))
              AND c.last_seen_at >= (strftime('%s', 'now') - (?2 * 60))",
             params![&hostname, &internal_minutes.to_string()],
             |row| row.get(0),
@@ -826,33 +1298,102 @@ fn get_all_endpoints_bytes(endpoints: &[String], internal_minutes: u64) -> HashM
     let conn = new_connection();
     let mut result: HashMap<String, i64> = HashMap::new();
 
+    // Initialize all endpoints with 0 bytes
     for endpoint in endpoints {
-        // Get total bytes (in + out) for this endpoint
-        let bytes_in: i64 = conn
-            .query_row(
-                "SELECT COALESCE(SUM(c.bytes), 0)
-                 FROM communications c
-                 JOIN endpoints dst ON c.dst_endpoint_id = dst.id
-                 WHERE LOWER(dst.name) = LOWER(?1)
-                 AND c.last_seen_at >= (strftime('%s', 'now') - (?2 * 60))",
-                params![endpoint, &internal_minutes.to_string()],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
+        result.insert(endpoint.clone(), 0);
+    }
 
-        let bytes_out: i64 = conn
-            .query_row(
-                "SELECT COALESCE(SUM(c.bytes), 0)
-                 FROM communications c
-                 JOIN endpoints src ON c.src_endpoint_id = src.id
-                 WHERE LOWER(src.name) = LOWER(?1)
-                 AND c.last_seen_at >= (strftime('%s', 'now') - (?2 * 60))",
-                params![endpoint, &internal_minutes.to_string()],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
+    // Single query to get all bytes data at once
+    // Get display_name for each endpoint and sum bytes
+    let mut stmt = conn
+        .prepare(
+            "SELECT
+                COALESCE(e.custom_name,
+                    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
+                    (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
+                     AND hostname IS NOT NULL AND hostname != ''
+                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
+                COALESCE(SUM(c.bytes), 0) as total_bytes
+             FROM endpoints e
+             INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
+             WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
+             GROUP BY e.id",
+        )
+        .expect("Failed to prepare statement");
 
-        result.insert(endpoint.clone(), bytes_in + bytes_out);
+    let rows = stmt
+        .query_map([internal_minutes], |row| {
+            let name: String = row.get(0)?;
+            let bytes: i64 = row.get(1)?;
+            Ok((name, bytes))
+        })
+        .expect("Failed to execute query");
+
+    for row in rows.flatten() {
+        let (name, bytes) = row;
+        if let Some(existing) = result.get_mut(&name) {
+            *existing = bytes;
+        }
+    }
+
+    result
+}
+
+fn get_all_endpoints_last_seen(
+    endpoints: &[String],
+    internal_minutes: u64,
+) -> HashMap<String, String> {
+    let conn = new_connection();
+    let mut result: HashMap<String, String> = HashMap::new();
+
+    // Initialize all endpoints with empty string (never seen)
+    for endpoint in endpoints {
+        result.insert(endpoint.clone(), String::new());
+    }
+
+    // Single query to get last_seen_at for each endpoint
+    let mut stmt = conn
+        .prepare(
+            "SELECT
+                COALESCE(e.custom_name,
+                    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
+                    (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
+                     AND hostname IS NOT NULL AND hostname != ''
+                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
+                MAX(c.last_seen_at) as last_seen
+             FROM endpoints e
+             INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
+             WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
+             GROUP BY e.id",
+        )
+        .expect("Failed to prepare statement");
+
+    let rows = stmt
+        .query_map([internal_minutes], |row| {
+            let name: String = row.get(0)?;
+            let last_seen: i64 = row.get(1)?;
+            Ok((name, last_seen))
+        })
+        .expect("Failed to execute query");
+
+    let now = chrono::Utc::now().timestamp();
+
+    for row in rows.flatten() {
+        let (name, last_seen) = row;
+        if let Some(existing) = result.get_mut(&name) {
+            // Format as relative time
+            let seconds_ago = now - last_seen;
+            let formatted = if seconds_ago < 60 {
+                "Just now".to_string()
+            } else if seconds_ago < 3600 {
+                format!("{}m ago", seconds_ago / 60)
+            } else if seconds_ago < 86400 {
+                format!("{}h ago", seconds_ago / 3600)
+            } else {
+                format!("{}d ago", seconds_ago / 86400)
+            };
+            *existing = formatted;
+        }
     }
 
     result
@@ -892,7 +1433,12 @@ pub fn start(preferred_port: u16) {
                         .service(static_files)
                         .service(index)
                         .service(set_endpoint_type)
+                        .service(rename_endpoint)
                         .service(get_dns_entries_api)
+                        .service(probe_hostname)
+                        .service(get_endpoint_details)
+                        .service(get_protocol_endpoints)
+                        .service(get_all_protocols_api)
                         .service(get_device_capabilities)
                         .service(send_device_command)
                         .service(launch_device_app)
@@ -982,10 +1528,11 @@ async fn static_files(path: actix_web::web::Path<String>) -> impl Responder {
 // Define a handler function for the web request
 #[get("/")]
 async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
-    let hostname = get_hostname().unwrap_or_else(|_| "Unknown".to_string());
+    let hostname = strip_local_suffix(&get_hostname().unwrap_or_else(|_| "Unknown".to_string()));
     let selected_endpoint = query.node.clone().unwrap_or_else(|| hostname.clone());
 
     let communications = get_nodes(query.node.clone(), query.scan_interval.unwrap_or(60));
+
     let mut endpoints = get_endpoints(&communications);
 
     // If a specific node was selected but isn't in the endpoints list, add it
@@ -997,34 +1544,76 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     }
     let interfaces = get_interfaces();
     let supported_protocols = ProtocolPort::get_supported_protocols();
-    // Get all active endpoints, then filter to only those in the graph when a node is selected
-    let dropdown_endpoints = {
-        let all_endpoints = dropdown_endpoints(query.scan_interval.unwrap_or(60));
-        if query.node.is_some() {
-            // Filter to only endpoints that appear in the graph (communicated with selected node)
-            all_endpoints
-                .into_iter()
-                .filter(|e| endpoints.contains(e))
-                .collect()
-        } else {
-            all_endpoints
-        }
-    };
+
+    let dropdown_endpoints = dropdown_endpoints(query.scan_interval.unwrap_or(60));
     let endpoint_ips_macs = get_endpoint_ips_and_macs(&dropdown_endpoints);
-    // Build vendor lookup for all endpoints (MAC first, hostname fallback)
+
+    // Build vendor lookup for all endpoints (hostname first, then MAC)
+    // Hostname detection is more accurate for devices with generic WiFi chips
+    // Component manufacturers that shouldn't be shown as device vendors
+    let component_vendors = [
+        "Espressif",
+        "Tuya",
+        "Realtek",
+        "MediaTek",
+        "Qualcomm",
+        "Broadcom",
+        "Marvell",
+        "USI",
+        "Wisol",
+        "Murata",
+        "AzureWave",
+        "Intel",
+    ];
     let endpoint_vendors: HashMap<String, String> = dropdown_endpoints
         .iter()
         .filter_map(|endpoint| {
-            let vendor = endpoint_ips_macs
-                .get(endpoint)
-                .and_then(|(_, macs)| macs.iter().find_map(|mac| get_mac_vendor(mac)))
-                .or_else(|| get_hostname_vendor(endpoint))
-                .map(|v| v.to_string());
-            vendor.map(|v| (endpoint.clone(), v))
+            // Try hostname-based detection first (catches PS4, Xbox, etc.)
+            if let Some(vendor) = get_hostname_vendor(endpoint) {
+                return Some((endpoint.clone(), vendor.to_string()));
+            }
+            // Fall back to MAC-based detection, but filter out component manufacturers
+            let mac_vendor = endpoint_ips_macs.get(endpoint).and_then(|(_, macs)| {
+                macs.iter()
+                    .find_map(|mac| get_mac_vendor(mac).filter(|v| !component_vendors.contains(v)))
+            });
+            mac_vendor.map(|v| (endpoint.clone(), v.to_string()))
         })
         .collect();
+
+    // Fetch DHCP vendor classes for model identification
+    let endpoint_dhcp_vendor_classes = get_endpoint_vendor_classes(&dropdown_endpoints);
+
+    // Build model lookup for all endpoints (hostname first, then MAC, then DHCP vendor class)
+    let endpoint_models: HashMap<String, String> = dropdown_endpoints
+        .iter()
+        .filter_map(|endpoint| {
+            // Try hostname-based detection first
+            if let Some(model) = get_model_from_hostname(endpoint) {
+                return Some((endpoint.clone(), model));
+            }
+            // Fall back to MAC-based detection
+            if let Some((_, macs)) = endpoint_ips_macs.get(endpoint) {
+                for mac in macs {
+                    if let Some(model) = get_model_from_mac(mac) {
+                        return Some((endpoint.clone(), model));
+                    }
+                }
+            }
+            // Fall back to DHCP vendor class (e.g., "samsung:SM-G998B" -> "SM-G998B")
+            if let Some(vendor_class) = endpoint_dhcp_vendor_classes.get(endpoint)
+                && let Some(model) = extract_model_from_vendor_class(vendor_class)
+            {
+                return Some((endpoint.clone(), model));
+            }
+            None
+        })
+        .collect();
+
     let endpoint_bytes =
         get_all_endpoints_bytes(&dropdown_endpoints, query.scan_interval.unwrap_or(60));
+    let endpoint_last_seen =
+        get_all_endpoints_last_seen(&dropdown_endpoints, query.scan_interval.unwrap_or(60));
     let mut endpoint_types = get_endpoint_types(&communications);
     let (dropdown_types, manual_overrides) = get_all_endpoint_types(&dropdown_endpoints);
     // Merge dropdown types into endpoint_types
@@ -1047,6 +1636,18 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     }
     // Always classify local device as "local"
     endpoint_types.insert(hostname.clone(), "local");
+
+    // Second pass: enhance models using vendor + device type for endpoints without models
+    let mut endpoint_models = endpoint_models;
+    for (endpoint, device_type) in &endpoint_types {
+        if !endpoint_models.contains_key(endpoint)
+            && let Some(vendor) = endpoint_vendors.get(endpoint)
+            && let Some(model) = get_model_from_vendor_and_type(vendor, device_type)
+        {
+            endpoint_models.insert(endpoint.clone(), model);
+        }
+    }
+
     // Convert manual_overrides to Vec for serialization
     let manual_overrides: Vec<String> = manual_overrides.into_iter().collect();
 
@@ -1059,15 +1660,53 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         .iter()
         .filter_map(|mac| get_mac_vendor(mac).map(|vendor| (mac.clone(), vendor.to_string())))
         .collect();
-    // Get first vendor for display next to device type (MAC first, then hostname fallback)
-    let device_vendor: String = macs
-        .iter()
-        .find_map(|mac| get_mac_vendor(mac))
-        .or_else(|| get_hostname_vendor(&selected_endpoint))
-        .unwrap_or("")
-        .to_string();
-    // Get model from hostname
-    let device_model: String = get_model_from_hostname(&selected_endpoint).unwrap_or_default();
+    // Get first vendor for display next to device type
+    // Prefer hostname vendor over component manufacturers (Espressif, Tuya, etc.)
+    let mac_vendor = macs.iter().find_map(|mac| get_mac_vendor(mac));
+    let hostname_vendor = get_hostname_vendor(&selected_endpoint);
+
+    const COMPONENT_VENDORS: &[&str] = &[
+        "Espressif",
+        "Tuya",
+        "Realtek",
+        "MediaTek",
+        "Qualcomm",
+        "Broadcom",
+        "Marvell",
+        "USI",
+        "Wisol",
+        "Murata",
+    ];
+
+    let device_vendor: String = match (hostname_vendor, mac_vendor) {
+        (Some(hv), _) => hv,
+        (None, Some(mv)) if COMPONENT_VENDORS.contains(&mv) => "",
+        (None, Some(mv)) => mv,
+        (None, None) => "",
+    }
+    .to_string();
+    // Get model: hostname first, then MAC, then DHCP vendor class, then vendor+type fallback
+    let device_model: String = get_model_from_hostname(&selected_endpoint)
+        .or_else(|| macs.iter().find_map(|mac| get_model_from_mac(mac)))
+        .or_else(|| {
+            // Try DHCP vendor class (e.g., "samsung:SM-G998B")
+            endpoint_dhcp_vendor_classes
+                .get(&selected_endpoint)
+                .and_then(|vc| extract_model_from_vendor_class(vc))
+        })
+        .or_else(|| {
+            // Use vendor + device type for more specific model
+            let device_type = endpoint_types
+                .get(&selected_endpoint)
+                .copied()
+                .unwrap_or("other");
+            if !device_vendor.is_empty() {
+                get_model_from_vendor_and_type(&device_vendor, device_type)
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default();
     let protocols =
         get_protocols_for_endpoint(selected_endpoint.clone(), query.scan_interval.unwrap_or(60));
     // Use ports from communications data when a node is selected (matches graph)
@@ -1092,7 +1731,9 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     context.insert("dropdown_endpoints", &dropdown_endpoints);
     context.insert("endpoint_ips_macs", &endpoint_ips_macs);
     context.insert("endpoint_vendors", &endpoint_vendors);
+    context.insert("endpoint_models", &endpoint_models);
     context.insert("endpoint_bytes", &endpoint_bytes);
+    context.insert("endpoint_last_seen", &endpoint_last_seen);
     context.insert("scan_interval", &query.scan_interval.unwrap_or(60));
     context.insert("ips", &ips);
     context.insert("macs", &macs);
@@ -1166,6 +1807,67 @@ async fn set_endpoint_type(body: Json<ClassifyRequest>) -> impl Responder {
         Err(e) => HttpResponse::InternalServerError().json(ClassifyResponse {
             success: false,
             message: format!("Database error: {}", e),
+        }),
+    }
+}
+
+#[derive(Deserialize)]
+struct RenameRequest {
+    endpoint_name: String,
+    custom_name: Option<String>,
+}
+
+#[derive(Serialize)]
+struct RenameResponse {
+    success: bool,
+    message: String,
+    original_name: Option<String>,
+}
+
+#[post("/api/endpoint/rename")]
+async fn rename_endpoint(body: Json<RenameRequest>) -> impl Responder {
+    let conn = new_connection();
+
+    // If custom_name is empty string, treat as None (clear the custom name)
+    let custom_name = match &body.custom_name {
+        Some(n) if n.is_empty() => None,
+        Some(n) => Some(n.as_str()),
+        None => None,
+    };
+
+    // When clearing the custom name, get the original name first so the UI can redirect
+    let original_name = if custom_name.is_none() {
+        EndPoint::get_original_name(&conn, &body.endpoint_name)
+    } else {
+        None
+    };
+
+    match EndPoint::set_custom_name(&conn, &body.endpoint_name, custom_name) {
+        Ok(rows_updated) => {
+            if rows_updated > 0 {
+                HttpResponse::Ok().json(RenameResponse {
+                    success: true,
+                    message: format!(
+                        "Custom name {} for {}",
+                        custom_name
+                            .map(|n| format!("set to '{}'", n))
+                            .unwrap_or_else(|| "cleared".to_string()),
+                        body.endpoint_name
+                    ),
+                    original_name,
+                })
+            } else {
+                HttpResponse::NotFound().json(RenameResponse {
+                    success: false,
+                    message: format!("Endpoint '{}' not found", body.endpoint_name),
+                    original_name: None,
+                })
+            }
+        }
+        Err(e) => HttpResponse::InternalServerError().json(RenameResponse {
+            success: false,
+            message: format!("Database error: {}", e),
+            original_name: None,
         }),
     }
 }
@@ -1455,9 +2157,9 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
         ScanResult::Icmp(icmp) => {
             if icmp.alive {
                 let ip_str = icmp.ip.to_string();
-                if let Ok(endpoint_id) =
-                    EndPoint::get_or_insert_endpoint(&conn, None, Some(ip_str), None, &[])
-                {
+                // For ICMP (no MAC), only record if endpoint already exists
+                // This prevents creating ghost entries for false positive pings
+                if let Some(endpoint_id) = find_existing_endpoint_by_ip(&conn, &ip_str) {
                     let details = serde_json::json!({
                         "ttl": icmp.ttl,
                         "rtt_ms": icmp.rtt_ms,
@@ -1475,18 +2177,16 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
         ScanResult::Port(port) => {
             if port.open {
                 let ip_str = port.ip.to_string();
-                if let Ok(endpoint_id) =
-                    EndPoint::get_or_insert_endpoint(&conn, None, Some(ip_str), None, &[])
-                {
+                // For port scans (no MAC), only record if endpoint already exists
+                if let Some(endpoint_id) = find_existing_endpoint_by_ip(&conn, &ip_str) {
                     insert_open_port(&conn, endpoint_id, port.port, port.service_name.as_deref())?;
                 }
             }
         }
         ScanResult::Ssdp(ssdp) => {
             let ip_str = ssdp.ip.to_string();
-            if let Ok(endpoint_id) =
-                EndPoint::get_or_insert_endpoint(&conn, None, Some(ip_str), None, &[])
-            {
+            // For SSDP (no MAC), only record if endpoint already exists
+            if let Some(endpoint_id) = find_existing_endpoint_by_ip(&conn, &ip_str) {
                 let details = serde_json::json!({
                     "location": ssdp.location,
                     "server": ssdp.server,
@@ -1498,6 +2198,21 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Find an existing endpoint by IP address (must have a MAC to be considered valid)
+/// Returns None if no endpoint with a MAC exists for this IP
+fn find_existing_endpoint_by_ip(conn: &Connection, ip: &str) -> Option<i64> {
+    conn.query_row(
+        "SELECT ea.endpoint_id FROM endpoint_attributes ea
+         WHERE ea.ip = ?1 AND ea.mac IS NOT NULL AND ea.mac != ''
+         LIMIT 1",
+        params![ip],
+        |row| row.get(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
 }
 
 /// Insert a scan result into the database
