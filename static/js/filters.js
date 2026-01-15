@@ -111,6 +111,10 @@
             var showAppliance = document.getElementById('filterAppliance')?.checked ?? true;
             var showOther = document.getElementById('filterOther')?.checked ?? true;
 
+            // Get search term
+            var searchInput = document.getElementById('endpointSearch');
+            var searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
             // Save filter state to URL
             if (!skipUrlUpdate) {
                 var url = new URL(window.location.href);
@@ -125,29 +129,49 @@
                 url.searchParams.set('filter_soundbar', showSoundbar ? '1' : '0');
                 url.searchParams.set('filter_appliance', showAppliance ? '1' : '0');
                 url.searchParams.set('filter_other', showOther ? '1' : '0');
+                if (searchTerm) {
+                    url.searchParams.set('search', searchTerm);
+                } else {
+                    url.searchParams.delete('search');
+                }
                 window.history.replaceState({}, '', url);
             }
 
-            // Filter table rows based on endpoint type
+            // Filter table rows based on endpoint type and search term
             var tableRows = document.querySelectorAll('.endpoint-row');
             tableRows.forEach(function(row) {
                 var rowType = row.dataset.endpointType || 'other';
-                var shouldShow = false;
+                var shouldShowByType = false;
 
-                if (rowType === 'local' && showLocal) shouldShow = true;
-                else if (rowType === 'gateway' && showGateway) shouldShow = true;
-                else if (rowType === 'internet' && showInternet) shouldShow = true;
-                else if (rowType === 'printer' && showPrinter) shouldShow = true;
-                else if (rowType === 'tv' && showTv) shouldShow = true;
-                else if (rowType === 'gaming' && showGaming) shouldShow = true;
-                else if (rowType === 'phone' && showPhone) shouldShow = true;
-                else if (rowType === 'virtualization' && showVirtualization) shouldShow = true;
-                else if (rowType === 'soundbar' && showSoundbar) shouldShow = true;
-                else if (rowType === 'appliance' && showAppliance) shouldShow = true;
-                else if (rowType === 'other' && showOther) shouldShow = true;
+                if (rowType === 'local' && showLocal) shouldShowByType = true;
+                else if (rowType === 'gateway' && showGateway) shouldShowByType = true;
+                else if (rowType === 'internet' && showInternet) shouldShowByType = true;
+                else if (rowType === 'printer' && showPrinter) shouldShowByType = true;
+                else if (rowType === 'tv' && showTv) shouldShowByType = true;
+                else if (rowType === 'gaming' && showGaming) shouldShowByType = true;
+                else if (rowType === 'phone' && showPhone) shouldShowByType = true;
+                else if (rowType === 'virtualization' && showVirtualization) shouldShowByType = true;
+                else if (rowType === 'soundbar' && showSoundbar) shouldShowByType = true;
+                else if (rowType === 'appliance' && showAppliance) shouldShowByType = true;
+                else if (rowType === 'other' && showOther) shouldShowByType = true;
 
-                row.style.display = shouldShow ? '' : 'none';
+                // Apply search filter if search term exists
+                var shouldShowBySearch = true;
+                if (searchTerm) {
+                    var endpointName = (row.dataset.endpointName || '').toLowerCase();
+                    var endpointVendor = (row.dataset.endpointVendor || '').toLowerCase();
+                    var endpointModel = (row.dataset.endpointModel || '').toLowerCase();
+
+                    shouldShowBySearch = endpointName.includes(searchTerm) ||
+                                         endpointVendor.includes(searchTerm) ||
+                                         endpointModel.includes(searchTerm);
+                }
+
+                row.style.display = (shouldShowByType && shouldShowBySearch) ? '' : 'none';
             });
+
+            // Remove filters-pending class to show rows (prevents flash of unfiltered content)
+            document.body.classList.remove('filters-pending');
 
             // Filter IPs in endpoint details based on internet filter
             if (!showInternet) {
@@ -173,7 +197,7 @@
          */
         filterHostnamesList: function(searchTerm, skipUrlUpdate) {
             var normalizedSearch = searchTerm.trim().toLowerCase();
-            var hostnameItems = document.querySelectorAll('#hostnames-container .hostname-item');
+            var hostnameItems = document.querySelectorAll('#hostnames-container .listbox-item');
 
             if (!skipUrlUpdate) {
                 var url = new URL(window.location.href);
@@ -188,6 +212,33 @@
             hostnameItems.forEach(function(item) {
                 var hostname = item.textContent.toLowerCase();
                 if (normalizedSearch === '' || hostname.includes(normalizedSearch)) {
+                    item.style.display = 'block';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        },
+
+        /**
+         * Filter ports list in right pane
+         */
+        filterPortsList: function(searchTerm, skipUrlUpdate) {
+            var normalizedSearch = searchTerm.trim().toLowerCase();
+            var portItems = document.querySelectorAll('#ports-container .listbox-item');
+
+            if (!skipUrlUpdate) {
+                var url = new URL(window.location.href);
+                if (normalizedSearch) {
+                    url.searchParams.set('filter_ports', searchTerm);
+                } else {
+                    url.searchParams.delete('filter_ports');
+                }
+                window.history.replaceState({}, '', url);
+            }
+
+            portItems.forEach(function(item) {
+                var port = item.textContent.toLowerCase();
+                if (normalizedSearch === '' || port.includes(normalizedSearch)) {
                     item.style.display = 'block';
                 } else {
                     item.style.display = 'none';
@@ -247,6 +298,115 @@
                     item.style.display = 'none';
                 }
             });
+        },
+
+        /**
+         * Filter by protocol - highlights protocol and filters communications table
+         */
+        filterByProtocol: function(protocol, element) {
+            // Toggle selection
+            if (element.classList.contains('selected')) {
+                App.Filters.clearProtocolFilter();
+                return;
+            }
+
+            // Clear previous selection
+            document.querySelectorAll('#protocols-container .protocol-badge').forEach(function(badge) {
+                badge.classList.remove('selected');
+            });
+
+            // Select this protocol
+            element.classList.add('selected');
+
+            // Show the clear button
+            var clearBtn = document.querySelector('.clear-filter-btn');
+            if (clearBtn) clearBtn.style.display = '';
+
+            // Filter communications table by protocol if it exists
+            var commRows = document.querySelectorAll('.communication-row');
+            commRows.forEach(function(row) {
+                var rowProtocol = row.dataset.protocol;
+                if (rowProtocol === protocol) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        },
+
+        /**
+         * Clear protocol filter
+         */
+        clearProtocolFilter: function() {
+            // Remove selection from all protocols
+            document.querySelectorAll('#protocols-container .protocol-badge').forEach(function(badge) {
+                badge.classList.remove('selected');
+            });
+
+            // Hide the clear button
+            var clearBtn = document.querySelector('.clear-filter-btn');
+            if (clearBtn) clearBtn.style.display = 'none';
+
+            // Show all communications
+            var commRows = document.querySelectorAll('.communication-row');
+            commRows.forEach(function(row) {
+                row.style.display = '';
+            });
+        },
+
+        /**
+         * Filter by port - highlights port and filters communications table
+         */
+        filterByPort: function(port, element) {
+            // Toggle selection
+            if (element.classList.contains('selected')) {
+                App.Filters.clearPortFilter();
+                return;
+            }
+
+            // Clear previous selection
+            document.querySelectorAll('#ports-container .listbox-item').forEach(function(item) {
+                item.classList.remove('selected');
+            });
+
+            // Select this port
+            element.classList.add('selected');
+
+            // Show the clear button
+            var clearBtn = document.querySelector('.clear-port-filter-btn');
+            if (clearBtn) clearBtn.style.display = '';
+
+            // Filter communications table by port if it exists
+            var commRows = document.querySelectorAll('.communication-row');
+            commRows.forEach(function(row) {
+                var rowSrcPort = row.dataset.srcPort;
+                var rowDstPort = row.dataset.dstPort;
+                if (rowSrcPort === port || rowDstPort === port) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        },
+
+        /**
+         * Clear port filter
+         */
+        clearPortFilter: function() {
+            // Remove selection from all ports
+            document.querySelectorAll('#ports-container .listbox-item').forEach(function(item) {
+                item.classList.remove('selected');
+            });
+
+            // Hide the clear button
+            var clearBtn = document.querySelector('.clear-port-filter-btn');
+            if (clearBtn) clearBtn.style.display = 'none';
+
+            // Show all communications
+            var commRows = document.querySelectorAll('.communication-row');
+            commRows.forEach(function(row) {
+                row.style.display = '';
+            });
         }
     };
 
@@ -256,8 +416,13 @@
     window.selectNoneFilters = App.Filters.selectNone;
     window.selectLocalFilters = App.Filters.selectLocal;
     window.filterHostnamesList = App.Filters.filterHostnamesList;
+    window.filterPortsList = App.Filters.filterPortsList;
     window.filterIpsList = App.Filters.filterIpsList;
     window.filterMacsList = App.Filters.filterMacsList;
     window.isLocalIP = App.Filters.isLocalIP;
+    window.filterByProtocol = App.Filters.filterByProtocol;
+    window.clearProtocolFilter = App.Filters.clearProtocolFilter;
+    window.filterByPort = App.Filters.filterByPort;
+    window.clearPortFilter = App.Filters.clearPortFilter;
 
 })(window.App);

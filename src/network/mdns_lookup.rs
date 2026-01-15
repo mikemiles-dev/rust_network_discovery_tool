@@ -1,7 +1,8 @@
-use dns_lookup::get_hostname;
+use dns_lookup::{get_hostname, lookup_addr};
 use mdns_sd::{ServiceDaemon, ServiceEvent};
 use pnet::datalink;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::net::IpAddr;
 use std::sync::{OnceLock, RwLock};
 use std::time::SystemTime;
 use tokio::task;
@@ -102,6 +103,22 @@ impl MDnsLookup {
             // Printers
             "_printer._tcp.local.",
             "_pdl-datastream._tcp.local.", // Print Data Language
+            // iOS/iPadOS devices (iPhones, iPads)
+            "_companion-link._tcp.local.", // iOS companion link (AirDrop, Handoff)
+            "_apple-mobdev2._tcp.local.",  // Apple mobile device service
+            "_sleep-proxy._udp.local.",    // Sleep proxy (iOS devices)
+            "_rdlink._tcp.local.",         // Remote desktop link
+            // LG ThinQ appliances (dishwashers, washers, dryers, etc.)
+            "_lge._tcp.local.",   // LG ThinQ general
+            "_lge._udp.local.",   // LG ThinQ UDP
+            "_xbcs._tcp.local.",  // LG ThinQ appliances
+            "_webos._tcp.local.", // LG WebOS TVs
+            // Additional smart home and IoT services
+            "_matter._tcp.local.",      // Matter smart home protocol
+            "_amzn-alexa._tcp.local.",  // Amazon Alexa devices
+            "_device-info._tcp.local.", // Device info (many Apple/smart devices)
+            "_dyson_mqtt._tcp.local.",  // Dyson devices (fans, purifiers)
+            "_eero._tcp.local.",        // Eero routers/mesh
         ];
 
         for service in services_to_browse.iter() {
@@ -136,6 +153,20 @@ impl MDnsLookup {
                                         .write()
                                     {
                                         lookups.insert(addr.to_string(), host.to_string());
+                                    }
+
+                                    // Update existing endpoint name if it's currently just an IP or empty
+                                    // Strip .local suffix before saving
+                                    let clean_hostname =
+                                        crate::network::endpoint::strip_local_suffix(&host);
+                                    if let Ok(conn) = crate::db::new_connection_result() {
+                                        // Update endpoint name if currently empty, null, or set to the IP address
+                                        let _ = conn.execute(
+                                            "UPDATE endpoints SET name = ?1
+                                             WHERE (name IS NULL OR name = '' OR name = ?2)
+                                             AND id IN (SELECT endpoint_id FROM endpoint_attributes WHERE ip = ?2)",
+                                            rusqlite::params![clean_hostname, addr],
+                                        );
                                     }
 
                                     // Store service type (always store for device classification)
@@ -209,5 +240,62 @@ impl MDnsLookup {
         } else {
             Vec::new()
         }
+    }
+
+    /// Actively probe for a device's hostname using reverse DNS lookup
+    /// This works for devices that register with local DNS or respond to PTR queries
+    pub fn probe_hostname(ip: &str) -> Option<String> {
+        // First check our mDNS cache
+        if let Some(hostname) = Self::lookup(ip) {
+            return Some(hostname);
+        }
+
+        // Try reverse DNS lookup (works for mDNS .local addresses too)
+        if let Ok(addr) = ip.parse::<IpAddr>() {
+            if let Ok(hostname) = lookup_addr(&addr) {
+                // Cache the result
+                if let Ok(mut lookups) = MDNS_LOOKUPS
+                    .get_or_init(|| RwLock::new(HashMap::new()))
+                    .write()
+                {
+                    lookups.insert(ip.to_string(), hostname.clone());
+                }
+                return Some(hostname);
+            }
+        }
+
+        None
+    }
+
+    /// Spawn a background task to probe for hostname and update endpoint if found
+    /// This is non-blocking and runs in the background
+    pub fn probe_hostname_async(ip: String, endpoint_id: i64) {
+        task::spawn_blocking(move || {
+            // Small delay to avoid hammering the network
+            std::thread::sleep(std::time::Duration::from_millis(100));
+
+            if let Some(hostname) = Self::probe_hostname(&ip) {
+                // Strip .local and other local suffixes before saving
+                let hostname = crate::network::endpoint::strip_local_suffix(&hostname);
+
+                // Update the endpoint with the discovered hostname
+                if let Ok(conn) = crate::db::new_connection_result() {
+                    // Update if name is NULL, empty, or currently set to any IP address
+                    // (checks if current name matches any IP in endpoint_attributes for this endpoint)
+                    let _ = conn.execute(
+                        "UPDATE endpoints SET name = ?1
+                         WHERE id = ?2
+                         AND (name IS NULL OR name = ''
+                              OR name IN (SELECT ip FROM endpoint_attributes WHERE endpoint_id = ?2))",
+                        rusqlite::params![hostname, endpoint_id],
+                    );
+                    // Also add to endpoint_attributes if not already there
+                    let _ = conn.execute(
+                        "INSERT OR IGNORE INTO endpoint_attributes (created_at, endpoint_id, ip, hostname) VALUES (strftime('%s', 'now'), ?1, ?2, ?3)",
+                        rusqlite::params![endpoint_id, ip, hostname],
+                    );
+                }
+            }
+        });
     }
 }

@@ -178,6 +178,8 @@ pub struct Communication {
     pub dhcp_client_id: Option<String>,
     // DHCP Vendor Class (Option 60) for model identification (e.g., "samsung:SM-G998B")
     pub dhcp_vendor_class: Option<String>,
+    // DHCP Hostname (Option 12) - the device's actual hostname from DHCP request
+    pub dhcp_hostname: Option<String>,
     // Note: payload is used only for parsing hostnames (SNI/HTTP), not stored in DB
     payload: Vec<u8>,
 }
@@ -207,6 +209,7 @@ impl Communication {
             packet_size,
             dhcp_client_id: None,
             dhcp_vendor_class: None,
+            dhcp_hostname: None,
             payload,
         };
         if let Some(ip_header_protocol) = &communication.ip_header_protocol
@@ -240,9 +243,10 @@ impl Communication {
             || communication.destination_port == Some(67)
             || communication.destination_port == Some(68);
         if is_dhcp {
-            let (client_id, vendor_class, _hostname) = parse_dhcp_options(&communication.payload);
+            let (client_id, vendor_class, hostname) = parse_dhcp_options(&communication.payload);
             communication.dhcp_client_id = client_id;
             communication.dhcp_vendor_class = vendor_class;
+            communication.dhcp_hostname = hostname;
         }
 
         // Clear MAC addresses for internet traffic to prevent grouping remote endpoints under gateway MAC
@@ -327,15 +331,16 @@ impl Communication {
     }
 
     pub fn insert_communication(&self, conn: &Connection) -> Result<()> {
-        // For DHCP packets, the source is the client - pass DHCP Client ID and Vendor Class for tracking
+        // For DHCP packets, the source is the client - pass DHCP Client ID, Vendor Class, and Hostname for tracking
         let src_endpoint_id = match EndPoint::get_or_insert_endpoint_with_dhcp(
             conn,
             self.source_mac.clone(),
             self.source_ip.clone(),
             self.sub_protocol.clone(),
             &[],
-            self.dhcp_client_id.clone(), // Pass DHCP Client ID for source (client)
+            self.dhcp_client_id.clone(),    // Pass DHCP Client ID for source (client)
             self.dhcp_vendor_class.clone(), // Pass DHCP Vendor Class for model identification
+            self.dhcp_hostname.clone(),     // Pass DHCP Hostname (Option 12) - device's actual name
         ) {
             Ok(id) => id,
             Err(InsertEndpointError::BothMacAndIpNone) => {
@@ -359,6 +364,7 @@ impl Communication {
             self.get_payload(),
             None, // Destination doesn't need DHCP Client ID (usually the server)
             None, // Destination doesn't need DHCP Vendor Class
+            None, // Destination doesn't need DHCP Hostname
         ) {
             Ok(id) => id,
             Err(InsertEndpointError::BothMacAndIpNone) => {

@@ -10,10 +10,13 @@ use crate::network::endpoint_attribute::EndPointAttribute;
 const MAX_CHANNEL_BUFFER_SIZE: usize = 50_000; // ~25MB at 500 bytes per Communication
 
 pub fn new_connection() -> Connection {
+    new_connection_result().expect("Failed to open database")
+}
+
+pub fn new_connection_result() -> Result<Connection, rusqlite::Error> {
     let db_url = get_database_url();
     let db_path = db_url.strip_prefix("sqlite://").unwrap_or(&db_url);
-    let conn =
-        Connection::open(db_path).unwrap_or_else(|_| panic!("Failed to open database: {}", db_url));
+    let conn = Connection::open(db_path)?;
 
     // Set busy timeout first (this doesn't require any locks)
     // 30 seconds to handle heavy contention during scanning
@@ -26,7 +29,7 @@ pub fn new_connection() -> Connection {
     // NORMAL sync is safe with WAL mode
     let _ = conn.execute("PRAGMA synchronous = NORMAL;", []);
 
-    conn
+    Ok(conn)
 }
 
 #[cfg(test)]

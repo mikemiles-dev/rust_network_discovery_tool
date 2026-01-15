@@ -93,8 +93,18 @@
             }
         }
 
+        // Restore endpoint search from URL
+        var searchValue = urlParams.get('search');
+        if (searchValue) {
+            var searchInput = document.getElementById('endpointSearch');
+            if (searchInput) {
+                searchInput.value = searchValue;
+            }
+        }
+
         // Restore right pane search filters from URL
         var filterHostnamesValue = urlParams.get('filter_hostnames');
+        var filterPortsValue = urlParams.get('filter_ports');
         var filterIpsValue = urlParams.get('filter_ips');
         var filterMacsValue = urlParams.get('filter_macs');
 
@@ -103,6 +113,14 @@
             if (hostnamesInput) {
                 hostnamesInput.value = filterHostnamesValue;
                 App.Filters.filterHostnamesList(filterHostnamesValue, true);
+            }
+        }
+
+        if (filterPortsValue && App.Filters) {
+            var portsInput = document.getElementById('portsListSearch');
+            if (portsInput) {
+                portsInput.value = filterPortsValue;
+                App.Filters.filterPortsList(filterPortsValue, true);
             }
         }
 

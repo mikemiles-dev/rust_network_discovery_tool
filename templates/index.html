@@ -135,6 +135,60 @@
       margin-left: auto;
     }
 
+    .search-bar {
+      background: rgba(30, 41, 59, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      border-radius: 0.75rem;
+      padding: 0.5rem 1rem;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .search-bar .search-input-wrapper {
+      flex: 1;
+      position: relative;
+    }
+
+    .search-bar .search-input {
+      width: 100%;
+      padding: 0.5rem 0.75rem 0.5rem 2rem;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(71, 85, 105, 0.5);
+      border-radius: 0.5rem;
+      color: var(--text-primary);
+      font-size: 0.85rem;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .search-bar .search-input:focus {
+      border-color: #8b5cf6;
+      box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+    }
+
+    .search-bar .search-input::placeholder {
+      color: var(--text-secondary);
+    }
+
+    .search-bar .search-icon {
+      position: absolute;
+      left: 0.65rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      pointer-events: none;
+    }
+
+    .search-bar .refresh-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
     .card {
       background: rgba(51, 65, 85, 0.5);
       border-radius: 0.75rem;
@@ -901,6 +955,62 @@
       margin-bottom: 0.75rem;
     }
 
+    .listbox {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      border-radius: 0.5rem;
+      max-height: 150px;
+      overflow-y: auto;
+      margin-bottom: 0.75rem;
+    }
+
+    .listbox::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .listbox::-webkit-scrollbar-track {
+      background: rgba(30, 41, 59, 0.3);
+      border-radius: 3px;
+    }
+
+    .listbox::-webkit-scrollbar-thumb {
+      background: rgba(100, 116, 139, 0.5);
+      border-radius: 3px;
+    }
+
+    .listbox::-webkit-scrollbar-thumb:hover {
+      background: rgba(100, 116, 139, 0.7);
+    }
+
+    .listbox-item {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.75rem;
+      color: var(--text-primary);
+      border-bottom: 1px solid rgba(51, 65, 85, 0.3);
+      cursor: pointer;
+      transition: background 0.15s;
+      font-family: 'Monaco', 'Courier New', monospace;
+    }
+
+    .listbox-item:last-child {
+      border-bottom: none;
+    }
+
+    .listbox-item:hover {
+      background: rgba(59, 130, 246, 0.15);
+    }
+
+    .listbox-item.selected {
+      background: rgba(59, 130, 246, 0.25);
+    }
+
+    .listbox .empty-state {
+      padding: 1rem;
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+    }
+
     .hostname-item {
       background: transparent;
       color: var(--text-primary);
@@ -914,6 +1024,27 @@
       -moz-user-select: text;
       -ms-user-select: text;
       line-height: 1.4;
+    }
+
+    .probe-btn {
+      margin-left: 0.5rem;
+      padding: 0.1rem 0.4rem;
+      font-size: 0.65rem;
+      background: var(--accent-color);
+      color: white;
+      border: none;
+      border-radius: 0.2rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .probe-btn:hover {
+      background: var(--accent-hover);
+    }
+
+    .probe-btn:disabled {
+      background: var(--text-secondary);
+      cursor: not-allowed;
     }
 
     /* Detail Tabs (inside right panel) */
@@ -1091,9 +1222,17 @@
       height: 32px;
       border-radius: 0.25rem;
     }
+
+    /* Hide endpoint rows until filters are applied to prevent flash of unfiltered content */
+    .filters-pending .endpoint-row {
+      visibility: hidden;
+    }
+    .filters-pending .endpoint-row.selected {
+      visibility: visible;
+    }
   </style>
 </head>
-<body>
+<body class="filters-pending">
   <header>
     <div style="display: flex; flex-direction: column; justify-content: space-between; height: 100%;">
       <div class="logo">⚡ Rust Network Discovery Tool</div>
@@ -1114,26 +1253,6 @@
           <option value="240" {% if scan_interval == 240 %}selected{% endif %}>4 Hours</option>
           <option value="1440" {% if scan_interval == 1440 %}selected{% endif %}>1 Day</option>
         </select>
-      </div>
-      <div class="control-group" id="auto-refresh-controls">
-        <label class="control-label">Auto-Refresh</label>
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <select id="refreshInterval" onchange="updateRefreshInterval(this.value)">
-            <option value="0">Off</option>
-            <option value="3">3 seconds</option>
-            <option value="5" selected>5 seconds</option>
-            <option value="10">10 seconds</option>
-            <option value="30">30 seconds</option>
-            <option value="60">1 minute</option>
-          </select>
-          <button onclick="manualRefresh()" class="stop-refresh-btn" title="Refresh now">
-            🔄
-          </button>
-          <button id="refreshToggleBtn" onclick="toggleRefresh()" class="stop-refresh-btn" style="margin-right: 0.5rem;" title="Stop auto-refresh">
-            ⏹️
-          </button>
-          <div class="pulse"></div>
-        </div>
       </div>
     </div>
   </header>
@@ -1197,6 +1316,27 @@
       </div>
     </div>
 
+    <!-- Search Bar -->
+    <div class="search-bar">
+      <div class="search-input-wrapper">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="endpointSearch" class="search-input" placeholder="Search by name, vendor, or model..." oninput="applyFilters()">
+      </div>
+      <div class="refresh-controls">
+        <select id="refreshInterval" onchange="updateRefreshInterval(this.value)" style="padding: 0.35rem 0.5rem; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(71, 85, 105, 0.5); border-radius: 0.375rem; color: var(--text-primary); font-size: 0.75rem; cursor: pointer;">
+          <option value="0">Auto-Refresh: Off</option>
+          <option value="3">3 seconds</option>
+          <option value="5" selected>5 seconds</option>
+          <option value="10">10 seconds</option>
+          <option value="30">30 seconds</option>
+          <option value="60">1 minute</option>
+        </select>
+        <button onclick="manualRefresh()" class="stop-refresh-btn" title="Refresh now">🔄</button>
+        <button id="refreshToggleBtn" onclick="toggleRefresh()" class="stop-refresh-btn" title="Stop auto-refresh">⏹️</button>
+        <div class="pulse"></div>
+      </div>
+    </div>
+
     <main id="graph-container">
       <!-- Endpoints Table View -->
       <div class="endpoints-table-container">
@@ -1216,6 +1356,9 @@
             <tr class="endpoint-row {% if node == selected_node %}selected{% endif %}"
                 onclick="selectNode('{{ node | safe }}')"
                 data-endpoint="{{ node | safe }}"
+                data-endpoint-name="{{ node | safe }}"
+                data-endpoint-vendor="{{ endpoint_vendors[node] | default(value='') }}"
+                data-endpoint-model="{{ endpoint_models[node] | default(value='') }}"
                 data-endpoint-type="{% if node == hostname %}local{% elif endpoint_types[node] == "gateway" %}gateway{% elif endpoint_types[node] == "internet" %}internet{% elif endpoint_types[node] == "printer" %}printer{% elif endpoint_types[node] == "tv" %}tv{% elif endpoint_types[node] == "gaming" %}gaming{% elif endpoint_types[node] == "phone" %}phone{% elif endpoint_types[node] == "virtualization" %}virtualization{% elif endpoint_types[node] == "soundbar" %}soundbar{% elif endpoint_types[node] == "appliance" %}appliance{% elif endpoint_types[node] %}local{% else %}other{% endif %}"
                 data-endpoint-bytes="{{ endpoint_bytes[node] | default(value=0) }}">
               <td class="endpoint-type-cell">{% if node == hostname %}🖥️{% elif endpoint_types[node] == "gateway" %}🌐{% elif endpoint_types[node] == "internet" %}🌍{% elif endpoint_types[node] == "printer" %}🖨️{% elif endpoint_types[node] == "tv" %}📺{% elif endpoint_types[node] == "gaming" %}🎮{% elif endpoint_types[node] == "phone" %}📱{% elif endpoint_types[node] == "virtualization" %}🖥{% elif endpoint_types[node] == "soundbar" %}🔊{% elif endpoint_types[node] == "appliance" %}🏠{% elif endpoint_types[node] %}💻{% else %}❓{% endif %}</td>
@@ -1350,12 +1493,17 @@
           Ports
           <button class="clear-port-filter-btn" onclick="clearPortFilter()" style="display: none;">Clear</button>
         </div>
-        <div class="overlay-content" id="ports-container">
+        <div style="margin-bottom: 0.75rem;">
+          <input type="text" id="portsListSearch" placeholder="Filter ports..."
+                 oninput="filterPortsList(this.value)"
+                 style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
+        </div>
+        <div class="listbox" id="ports-container">
           {% if not endpoint %}
             <div class="empty-state">No endpoint selected</div>
           {% elif ports %}
             {% for port in ports %}
-            <div class="protocol-badge" data-port="{{ port | safe }}" onclick="filterByPort('{{ port | safe }}', this)">{{ port | safe }}</div>
+            <div class="listbox-item" data-port="{{ port | safe }}" onclick="filterByPort('{{ port | safe }}', this)">{{ port | safe }}</div>
             {% endfor %}
           {% else %}
             <div class="empty-state">No ports</div>
@@ -1370,12 +1518,12 @@
                  oninput="filterHostnamesList(this.value)"
                  style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
         </div>
-        <div class="overlay-hostnames" id="hostnames-container">
+        <div class="listbox" id="hostnames-container">
           {% if not endpoint %}
             <div class="empty-state">No endpoint selected</div>
           {% elif hostnames %}
             {% for hostname in hostnames %}
-            <div class="hostname-item">{{ hostname | safe }}</div>
+            <div class="listbox-item">{{ hostname | safe }}</div>
             {% endfor %}
           {% else %}
             <div class="empty-state">No hostnames</div>

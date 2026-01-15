@@ -108,7 +108,7 @@
             var portsContainer = document.getElementById('ports-container');
             if (portsContainer) {
                 portsContainer.innerHTML = data.ports.length > 0
-                    ? data.ports.map(function(p) { return '<div class="protocol-badge" data-port="' + p + '" onclick="filterByPort(\'' + p + '\', this)">' + p + '</div>'; }).join('')
+                    ? data.ports.map(function(p) { return '<div class="listbox-item" data-port="' + p + '" onclick="filterByPort(\'' + p + '\', this)">' + p + '</div>'; }).join('')
                     : '<div class="empty-state">No ports</div>';
             }
 
@@ -116,15 +116,22 @@
             var hostnamesContainer = document.getElementById('hostnames-container');
             if (hostnamesContainer) {
                 hostnamesContainer.innerHTML = data.hostnames.length > 0
-                    ? data.hostnames.map(function(h) { return '<div class="hostname-item">' + h + '</div>'; }).join('')
+                    ? data.hostnames.map(function(h) { return '<div class="listbox-item">' + h + '</div>'; }).join('')
                     : '<div class="empty-state">No hostnames</div>';
             }
 
-            // Update IPs container
+            // Update IPs container (with probe buttons for IPs without hostnames)
             var ipsContainer = document.getElementById('ips-container');
             if (ipsContainer) {
+                var hasHostnames = data.hostnames && data.hostnames.length > 0;
                 ipsContainer.innerHTML = data.ips.length > 0
-                    ? data.ips.map(function(ip) { return '<div class="hostname-item">' + ip + '</div>'; }).join('')
+                    ? data.ips.map(function(ip) {
+                        // Show probe button if no hostnames are known
+                        var probeBtn = !hasHostnames
+                            ? ' <button class="probe-btn" onclick="probeHostname(\'' + ip + '\')">Probe</button>'
+                            : '';
+                        return '<div class="hostname-item">' + ip + probeBtn + '</div>';
+                    }).join('')
                     : '<div class="empty-state">No IP addresses</div>';
             }
 
@@ -258,6 +265,39 @@
             if (section) {
                 section.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
+        },
+
+        /**
+         * Probe an IP address for its hostname using reverse DNS/mDNS
+         */
+        probeHostname: function(ip) {
+            var btn = event.target;
+            var originalText = btn.textContent;
+            btn.textContent = 'Probing...';
+            btn.disabled = true;
+
+            fetch('/api/probe-hostname', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip: ip })
+            })
+            .then(function(response) { return response.json(); })
+            .then(function(result) {
+                if (result.success && result.hostname) {
+                    alert('Hostname found: ' + result.hostname);
+                    // Refresh the page to show the new hostname
+                    window.location.reload();
+                } else {
+                    alert('No hostname found for ' + ip + '. The device may not respond to reverse DNS queries.');
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }
+            })
+            .catch(function(error) {
+                alert('Error probing hostname: ' + error);
+                btn.textContent = originalText;
+                btn.disabled = false;
+            });
         }
     };
 
@@ -266,6 +306,7 @@
     window.unselectNode = App.Endpoints.unselectNode;
     window.selectScanInterval = App.Endpoints.selectScanInterval;
     window.scrollToSection = App.Endpoints.scrollToSection;
+    window.probeHostname = App.Endpoints.probeHostname;
     window.getDeviceTypeInfo = App.Endpoints.getDeviceTypeInfo;
     window.updateEndpointDetails = App.Endpoints.updateDetails;
 

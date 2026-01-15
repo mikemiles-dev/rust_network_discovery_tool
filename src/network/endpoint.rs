@@ -100,7 +100,7 @@ const TV_PATTERNS: &[&str] = &[
     "tv",
     "samsung",
     "lg-",
-    "sony",
+    "bravia", // Sony TVs (not "sony" - that would match PlayStation too)
     "vizio",
     "roku",
     "chromecast",
@@ -199,6 +199,7 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("00:fc:8b", "Amazon"),
     ("0c:47:c9", "Amazon"),
     ("10:2c:6b", "Amazon"),
+    ("14:91:38", "Amazon"),
     ("14:91:82", "Amazon"),
     ("18:74:2e", "Amazon"),
     ("24:4c:e3", "Amazon"),
@@ -478,6 +479,95 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("f8:b4:6a", "HP"),
     ("fc:15:b4", "HP"),
     ("fc:3f:db", "HP"),
+    // Huawei (phones, tablets, routers, smart devices)
+    ("00:18:82", "Huawei"),
+    ("00:1e:10", "Huawei"),
+    ("00:25:68", "Huawei"),
+    ("00:25:9e", "Huawei"),
+    ("00:46:4b", "Huawei"),
+    ("00:e0:fc", "Huawei"),
+    ("04:02:1f", "Huawei"),
+    ("04:25:c5", "Huawei"),
+    ("04:4a:6c", "Huawei"),
+    ("04:b0:e7", "Huawei"),
+    ("04:f9:38", "Huawei"),
+    ("08:19:a6", "Huawei"),
+    ("08:63:61", "Huawei"),
+    ("0c:37:dc", "Huawei"),
+    ("10:44:00", "Huawei"),
+    ("10:47:80", "Huawei"),
+    ("14:30:04", "Huawei"),
+    ("14:b9:68", "Huawei"),
+    ("18:de:d7", "Huawei"),
+    ("1c:1d:67", "Huawei"),
+    ("20:08:ed", "Huawei"),
+    ("20:0b:c7", "Huawei"),
+    ("24:09:95", "Huawei"),
+    ("24:69:a5", "Huawei"),
+    ("28:31:52", "Huawei"),
+    ("28:6e:d4", "Huawei"),
+    ("2c:55:d3", "Huawei"),
+    ("30:74:96", "Huawei"),
+    ("34:00:a3", "Huawei"),
+    ("38:f8:89", "Huawei"),
+    ("40:4d:8e", "Huawei"),
+    ("44:55:b1", "Huawei"),
+    ("48:00:31", "Huawei"),
+    ("48:3c:0c", "Huawei"),
+    ("4c:1f:cc", "Huawei"),
+    ("4c:b1:6c", "Huawei"),
+    ("50:01:6b", "Huawei"),
+    ("54:25:ea", "Huawei"),
+    ("58:2a:f7", "Huawei"),
+    ("5c:7d:5e", "Huawei"),
+    ("60:de:44", "Huawei"),
+    ("64:16:f0", "Huawei"),
+    ("68:a0:f6", "Huawei"),
+    ("6c:b7:49", "Huawei"),
+    ("70:72:3c", "Huawei"),
+    ("70:8a:09", "Huawei"),
+    ("74:88:2a", "Huawei"),
+    ("78:f5:57", "Huawei"),
+    ("7c:11:cb", "Huawei"),
+    ("80:b6:86", "Huawei"),
+    ("80:d0:9b", "Huawei"),
+    ("84:5b:12", "Huawei"),
+    ("88:28:b3", "Huawei"),
+    ("88:53:d4", "Huawei"),
+    ("8c:34:fd", "Huawei"),
+    ("94:04:9c", "Huawei"),
+    ("94:77:2b", "Huawei"),
+    ("9c:28:ef", "Huawei"),
+    ("a4:4b:d5", "Huawei"),
+    ("a4:be:2b", "Huawei"),
+    ("a8:ca:7b", "Huawei"),
+    ("ac:4e:91", "Huawei"),
+    ("ac:e8:7b", "Huawei"),
+    ("b4:15:13", "Huawei"),
+    ("b4:30:52", "Huawei"),
+    ("bc:25:e0", "Huawei"),
+    ("bc:76:70", "Huawei"),
+    ("c0:70:09", "Huawei"),
+    ("c4:07:2f", "Huawei"),
+    ("c8:d1:5e", "Huawei"),
+    ("cc:53:b5", "Huawei"),
+    ("cc:a2:23", "Huawei"),
+    ("d0:2d:b3", "Huawei"),
+    ("d4:6a:a8", "Huawei"),
+    ("d4:6e:5c", "Huawei"),
+    ("d8:49:0b", "Huawei"),
+    ("dc:d2:fc", "Huawei"),
+    ("e0:19:1d", "Huawei"),
+    ("e0:24:7f", "Huawei"),
+    ("e4:68:a3", "Huawei"),
+    ("e8:08:8b", "Huawei"),
+    ("e8:cd:2d", "Huawei"),
+    ("ec:23:3d", "Huawei"),
+    ("f0:43:47", "Huawei"),
+    ("f4:4c:7f", "Huawei"),
+    ("f4:63:1f", "Huawei"),
+    ("f8:01:13", "Huawei"),
+    ("fc:48:ef", "Huawei"),
     // AzureWave Technology (WiFi/Bluetooth modules in laptops, tablets, etc.)
     ("2c:dc:d7", "AzureWave"),
     // Google/Nest (Nest thermostat, Home, Chromecast, etc.)
@@ -513,7 +603,6 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("b0:be:76", "TP-Link"),
     // Wemo (Belkin smart plugs)
     ("08:86:3b", "Belkin"),
-    ("14:91:38", "Belkin"),
     ("24:f5:a2", "Belkin"),
     ("58:ef:68", "Belkin"),
     ("94:10:3e", "Belkin"),
@@ -544,6 +633,35 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("e0:4f:43", "USI"),
     // Wisol (Korean IoT/RF modules - sensors, trackers)
     ("70:2c:1f", "Wisol"),
+    // Espressif (ESP32/ESP8266 IoT WiFi modules - used in many smart devices)
+    ("94:3c:c6", "Espressif"),
+    ("24:62:ab", "Espressif"),
+    ("30:ae:a4", "Espressif"),
+    ("60:01:94", "Espressif"),
+    ("84:cc:a8", "Espressif"),
+    ("ac:67:b2", "Espressif"),
+    ("cc:50:e3", "Espressif"),
+    ("5c:cf:7f", "Espressif"),
+    ("d8:bf:c0", "Espressif"),
+    ("98:f4:ab", "Espressif"),
+    ("a0:20:a6", "Espressif"),
+    ("dc:4f:22", "Espressif"),
+    ("48:3f:da", "Espressif"),
+    ("c4:4f:33", "Espressif"),
+    ("70:03:9f", "Espressif"),
+    // LG Electronics (used for some smart appliances)
+    ("00:1e:75", "LG Electronics"),
+    ("10:68:3f", "LG Electronics"),
+    ("20:3d:bd", "LG Electronics"),
+    ("34:4d:f7", "LG Electronics"),
+    ("40:b0:fa", "LG Electronics"),
+    ("5c:f9:38", "LG Electronics"),
+    ("64:99:5d", "LG Electronics"),
+    ("74:a7:22", "LG Electronics"),
+    ("88:c9:d0", "LG Electronics"),
+    ("a8:16:d0", "LG Electronics"),
+    ("c4:36:6c", "LG Electronics"),
+    ("cc:2d:8c", "LG Electronics"),
     // Apple devices
     ("00:03:93", "Apple"),
     ("00:05:02", "Apple"),
@@ -730,6 +848,7 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("9c:35:eb", "Apple"),
     ("9c:4f:da", "Apple"),
     ("9c:8b:a0", "Apple"),
+    ("9c:da:a8", "Apple"),
     ("9c:f3:87", "Apple"),
     ("a0:18:28", "Apple"),
     ("a0:99:9b", "Apple"),
@@ -1250,10 +1369,10 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
 // mDNS service types for device classification
 const TV_SERVICES: &[&str] = &[
     "_googlecast._tcp",
-    "_airplay._tcp",
-    "_raop._tcp",
     "_roku._tcp",
-    "_spotify-connect._tcp",
+    // Note: _raop._tcp removed - too generic (MacBooks, iPhones, HomePods advertise it)
+    // Note: _spotify-connect._tcp removed - too generic (phones, speakers, consoles all use it)
+    // Note: _airplay._tcp removed - too generic (iPhones, MacBooks also advertise it)
 ];
 const PRINTER_SERVICES: &[&str] = &["_ipp._tcp", "_printer._tcp", "_pdl-datastream._tcp"];
 
@@ -1377,6 +1496,15 @@ const GAMING_VENDORS: &[&str] = &["Nintendo", "Sony"];
 
 // TV/streaming vendors that should be classified as TV
 const TV_VENDORS: &[&str] = &["Roku"];
+
+// Services that indicate a Mac (desktop/laptop) vs mobile device
+// Macs typically advertise file sharing services; iPhones/iPads don't
+const MAC_DESKTOP_SERVICES: &[&str] = &[
+    "_afpovertcp._tcp", // Apple Filing Protocol
+    "_smb._tcp",        // SMB file sharing
+    "_ssh._tcp",        // SSH access (typically enabled on Macs)
+    "_sftp-ssh._tcp",   // SFTP
+];
 
 /// Get vendor name from MAC address OUI
 pub fn get_mac_vendor(mac: &str) -> Option<&'static str> {
@@ -1777,6 +1905,56 @@ pub fn get_model_from_hostname(hostname: &str) -> Option<String> {
         if lower.contains("vacuum") || lower.contains("jet") {
             return Some("Samsung Jet".to_string());
         }
+    }
+
+    // Huawei devices - phones, tablets, routers
+    if lower.contains("huawei") || lower.starts_with("honor") || lower.contains("harmonyos") {
+        let parts: Vec<&str> = hostname.split(['-', '_', ' ', '.']).collect();
+
+        // Huawei phones: P40, P30, Mate 40, Mate 30, Nova, etc.
+        for part in &parts {
+            let upper = part.to_uppercase();
+            // P series: P40, P30, P20
+            if upper.starts_with("P") && upper.len() >= 2 && upper.chars().skip(1).all(|c| c.is_ascii_digit()) {
+                return Some(format!("Huawei {}", upper));
+            }
+            // Mate series: MATE40, MATE30
+            if upper.starts_with("MATE") && upper.len() >= 5 {
+                return Some(format!("Huawei {}", upper));
+            }
+            // Nova series
+            if upper.starts_with("NOVA") {
+                return Some(format!("Huawei {}", upper));
+            }
+        }
+
+        // Honor devices
+        if lower.contains("honor") {
+            for part in &parts {
+                let upper = part.to_uppercase();
+                // Honor number series: Honor 50, Honor 70, etc.
+                if upper.chars().all(|c| c.is_ascii_digit()) && upper.len() >= 1 {
+                    return Some(format!("Honor {}", upper));
+                }
+                // Honor X series
+                if upper.starts_with("X") && upper.len() >= 2 {
+                    return Some(format!("Honor {}", upper));
+                }
+            }
+            return Some("Honor Phone".to_string());
+        }
+
+        // MatePad tablets
+        if lower.contains("matepad") {
+            return Some("MatePad".to_string());
+        }
+
+        // HarmonyOS devices
+        if lower.contains("harmonyos") {
+            return Some("Huawei HarmonyOS Device".to_string());
+        }
+
+        return Some("Huawei Device".to_string());
     }
 
     // LG TVs: often have model numbers like OLED55C1, 65UP8000
@@ -2285,6 +2463,12 @@ pub fn get_model_from_vendor_and_type(vendor: &str, device_type: &str) -> Option
         ("Google", "phone") => Some("Google Pixel".to_string()),
         ("Google", _) => Some("Google Device".to_string()),
 
+        // Huawei by device type
+        ("Huawei", "phone") => Some("Huawei Phone".to_string()),
+        ("Huawei", "gateway") => Some("Huawei Router".to_string()),
+        ("Huawei", "tv") => Some("Huawei Smart Screen".to_string()),
+        ("Huawei", _) => Some("Huawei Device".to_string()),
+
         // Amazon by device type
         ("Amazon", "tv") => Some("Fire TV".to_string()),
         ("Amazon", _) => Some("Amazon Device".to_string()),
@@ -2350,6 +2534,35 @@ fn is_tv_mac(macs: &[String]) -> bool {
         .any(|mac| get_mac_vendor(mac).is_some_and(|v| TV_VENDORS.contains(&v)))
 }
 
+/// Check if any MAC address is from Apple
+fn is_apple_mac(macs: &[String]) -> bool {
+    macs.iter()
+        .any(|mac| get_mac_vendor(mac).is_some_and(|v| v == "Apple"))
+}
+
+/// Check if device is likely a phone based on MAC and services
+/// Apple devices that don't advertise file sharing services are likely iPhones/iPads
+fn is_phone_mac(macs: &[String], ips: &[String]) -> bool {
+    // Only applies to Apple devices (iPhones/iPads)
+    if !is_apple_mac(macs) {
+        return false;
+    }
+
+    // Check if device advertises any desktop/Mac services
+    for ip_str in ips {
+        let services = crate::network::mdns_lookup::MDnsLookup::get_services(ip_str);
+        for service in &services {
+            if MAC_DESKTOP_SERVICES.contains(&service.as_str()) {
+                // This is a Mac (desktop), not a phone
+                return false;
+            }
+        }
+    }
+
+    // Apple device without desktop services = likely iPhone/iPad
+    true
+}
+
 /// Check if hostname indicates an LG ThinQ appliance
 fn is_lg_appliance(hostname: &str) -> bool {
     if matches_prefix(hostname, LG_APPLIANCE_PREFIXES) {
@@ -2383,6 +2596,10 @@ fn classify_by_port(port: u16) -> Option<&'static str> {
     match port {
         // Printer ports
         9100 | 631 | 515 => Some(CLASSIFICATION_PRINTER),
+        // Gaming console ports (check BEFORE TV ports)
+        9295 | 9296 | 9297 => Some(CLASSIFICATION_GAMING), // PlayStation Remote Play
+        3478 | 3479 | 3480 => Some(CLASSIFICATION_GAMING), // PlayStation Network
+        3074 => Some(CLASSIFICATION_GAMING),                // Xbox Live
         // TV/Streaming ports
         8008 | 8009 => Some(CLASSIFICATION_TV), // Chromecast
         7000 | 7001 | 8001 | 8002 => Some(CLASSIFICATION_TV), // Samsung TV
@@ -2521,7 +2738,7 @@ impl EndPoint {
     /// This is separate from network-level classification (gateway, internet)
     pub fn classify_device_type(
         hostname: Option<&str>,
-        ip: Option<&str>,
+        ips: &[String],
         ports: &[u16],
         macs: &[String],
     ) -> Option<&'static str> {
@@ -2536,28 +2753,21 @@ impl EndPoint {
             return Some(CLASSIFICATION_APPLIANCE);
         }
 
-        // Check mDNS service advertisements (most reliable for smart devices)
-        if let Some(ip_str) = ip {
-            let services = crate::network::mdns_lookup::MDnsLookup::get_services(ip_str);
-            if let Some(classification) = classify_by_services(&services) {
-                return Some(classification);
-            }
-        }
-
-        // Check hostname patterns
+        // Check hostname patterns FIRST - most reliable for user devices
+        // This prevents mDNS services from misclassifying computers/phones as TVs
         if let Some(h) = lower {
             // Order matters: check more specific patterns first
             if is_printer_hostname(h) {
                 return Some(CLASSIFICATION_PRINTER);
             }
-            if is_tv_hostname(h) {
-                return Some(CLASSIFICATION_TV);
+            if is_phone_hostname(h) {
+                return Some(CLASSIFICATION_PHONE);
             }
             if is_gaming_hostname(h) {
                 return Some(CLASSIFICATION_GAMING);
             }
-            if is_phone_hostname(h) {
-                return Some(CLASSIFICATION_PHONE);
+            if is_tv_hostname(h) {
+                return Some(CLASSIFICATION_TV);
             }
             if is_vm_hostname(h) {
                 return Some(CLASSIFICATION_VIRTUALIZATION);
@@ -2570,7 +2780,20 @@ impl EndPoint {
             }
         }
 
+        // Check mDNS service advertisements for ALL IPs
+        // This catches smart devices that don't have distinctive hostnames
+        for ip_str in ips {
+            let services = crate::network::mdns_lookup::MDnsLookup::get_services(ip_str);
+            if let Some(classification) = classify_by_services(&services) {
+                return Some(classification);
+            }
+        }
+
         // MAC-based detection (identifies devices by vendor OUI)
+        // Check phone first - Apple devices without desktop services are likely iPhones/iPads
+        if is_phone_mac(macs, ips) {
+            return Some(CLASSIFICATION_PHONE);
+        }
         if is_gaming_mac(macs) {
             return Some(CLASSIFICATION_GAMING);
         }
@@ -2751,7 +2974,7 @@ impl EndPoint {
         protocol: Option<String>,
         payload: &[u8],
     ) -> Result<i64, InsertEndpointError> {
-        Self::get_or_insert_endpoint_with_dhcp(conn, mac, ip, protocol, payload, None, None)
+        Self::get_or_insert_endpoint_with_dhcp(conn, mac, ip, protocol, payload, None, None, None)
     }
 
     pub fn get_or_insert_endpoint_with_dhcp(
@@ -2762,6 +2985,7 @@ impl EndPoint {
         payload: &[u8],
         dhcp_client_id: Option<String>,
         dhcp_vendor_class: Option<String>,
+        dhcp_hostname: Option<String>,
     ) -> Result<i64, InsertEndpointError> {
         // Filter out broadcast/multicast MACs - these aren't real endpoints
         if let Some(ref mac_addr) = mac
@@ -2815,7 +3039,12 @@ impl EndPoint {
         if is_local_ip && !has_identifier {
             return Err(InsertEndpointError::BothMacAndIpNone);
         }
-        let hostname = Self::lookup_hostname(ip.clone(), mac.clone(), protocol.clone(), payload);
+        // Strip .local and other local suffixes from hostnames to prevent duplicates
+        // Prefer DHCP hostname (Option 12) when available - this is the device's actual name
+        let hostname = dhcp_hostname
+            .clone()
+            .or_else(|| Self::lookup_hostname(ip.clone(), mac.clone(), protocol.clone(), payload))
+            .map(|h| strip_local_suffix(&h));
         let endpoint_id = match EndPointAttribute::find_existing_endpoint_id_with_dhcp(
             conn,
             lookup_mac.clone(),
@@ -2824,9 +3053,17 @@ impl EndPoint {
             dhcp_client_id.clone(),
         ) {
             Some(id) => {
-                // Always try to insert new hostname if it's different from IP
-                // This captures all hostnames seen at this endpoint (remote or local)
-                if ip != hostname && hostname.is_some() {
+                // Only insert new attributes if we have useful data (MAC or hostname different from IP)
+                // Don't insert empty MAC attributes for local IPs (causes bloat)
+                let should_insert = if is_local_ip {
+                    // For local IPs, only insert if we have a MAC or a real hostname
+                    has_any_mac || (ip != hostname && hostname.is_some())
+                } else {
+                    // For remote IPs, insert if hostname is different from IP
+                    ip != hostname && hostname.is_some()
+                };
+
+                if should_insert {
                     // Attempt to insert - will be ignored if duplicate due to UNIQUE constraint
                     let _ = EndPointAttribute::insert_endpoint_attribute_with_dhcp(
                         conn,
@@ -2862,6 +3099,25 @@ impl EndPoint {
             endpoint_id,
             hostname.clone().unwrap_or_default(),
         )?;
+
+        // If we have an IP but no hostname, spawn a background task to probe for the hostname
+        // This is non-blocking and will update the endpoint if a hostname is found
+        let hostname_is_ip = hostname
+            .as_ref()
+            .map(|h| h.parse::<std::net::IpAddr>().is_ok())
+            .unwrap_or(true);
+        if let Some(ref ip_addr) = ip {
+            if hostname.is_none() || hostname_is_ip {
+                // Only probe for local IPs (remote servers probably won't respond to our mDNS)
+                if Self::is_on_local_network(ip_addr) {
+                    crate::network::mdns_lookup::MDnsLookup::probe_hostname_async(
+                        ip_addr.clone(),
+                        endpoint_id,
+                    );
+                }
+            }
+        }
+
         Ok(endpoint_id)
     }
 
@@ -3386,7 +3642,7 @@ mod tests {
         // Insert an endpoint
         let result = EndPoint::get_or_insert_endpoint(
             &conn,
-            Some("aa:bb:cc:dd:ee:ff".to_string()),
+            Some("00:11:22:33:44:55".to_string()),
             Some("192.168.1.100".to_string()),
             None,
             &[],
@@ -3414,7 +3670,7 @@ mod tests {
         // Insert endpoint first time
         let id1 = EndPoint::get_or_insert_endpoint(
             &conn,
-            Some("aa:bb:cc:dd:ee:ff".to_string()),
+            Some("00:11:22:33:44:55".to_string()),
             Some("192.168.1.100".to_string()),
             None,
             &[],
@@ -3424,7 +3680,7 @@ mod tests {
         // Insert same endpoint again
         let id2 = EndPoint::get_or_insert_endpoint(
             &conn,
-            Some("aa:bb:cc:dd:ee:ff".to_string()),
+            Some("00:11:22:33:44:55".to_string()),
             Some("192.168.1.100".to_string()),
             None,
             &[],
@@ -3585,19 +3841,19 @@ mod tests {
     fn test_classify_device_type_integration() {
         // Full integration test of classify_device_type
         assert_eq!(
-            EndPoint::classify_device_type(Some("hp-laserjet"), None, &[], &[]),
+            EndPoint::classify_device_type(Some("hp-laserjet"), &[], &[], &[]),
             Some("printer")
         );
         assert_eq!(
-            EndPoint::classify_device_type(Some("roku-ultra"), None, &[], &[]),
+            EndPoint::classify_device_type(Some("roku-ultra"), &[], &[], &[]),
             Some("tv")
         );
         assert_eq!(
-            EndPoint::classify_device_type(Some("unknown-device"), None, &[9100], &[]),
+            EndPoint::classify_device_type(Some("unknown-device"), &[], &[9100], &[]),
             Some("printer")
         );
         assert_eq!(
-            EndPoint::classify_device_type(Some("my-laptop"), None, &[80, 443], &[]),
+            EndPoint::classify_device_type(Some("my-laptop"), &[], &[80, 443], &[]),
             None
         );
     }
@@ -3608,7 +3864,7 @@ mod tests {
         assert_eq!(
             EndPoint::classify_device_type(
                 Some("unknown"),
-                None,
+                &[],
                 &[],
                 &["3c:5c:c4:90:a2:93".to_string()]
             ),
@@ -3618,7 +3874,7 @@ mod tests {
         assert_eq!(
             EndPoint::classify_device_type(
                 Some("192.168.1.50"),
-                None,
+                &[],
                 &[],
                 &["18:d6:c7:12:34:56".to_string()]
             ),
@@ -3628,27 +3884,27 @@ mod tests {
         assert_eq!(
             EndPoint::classify_device_type(
                 Some("unknown"),
-                None,
+                &[],
                 &[],
                 &["34:3e:a4:00:00:00".to_string()]
             ),
             Some("appliance")
         );
-        // Unknown MAC (Apple)
+        // Apple MAC without desktop services = phone (iPhone/iPad)
         assert_eq!(
             EndPoint::classify_device_type(
                 Some("unknown"),
-                None,
+                &[],
                 &[],
                 &["a4:83:e7:12:34:56".to_string()]
             ),
-            None
+            Some("phone")
         );
         // Hostname takes precedence over MAC
         assert_eq!(
             EndPoint::classify_device_type(
                 Some("hp-printer"),
-                None,
+                &[],
                 &[],
                 &["3c:5c:c4:90:a2:93".to_string()]
             ),
