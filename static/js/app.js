@@ -16,6 +16,19 @@
             App.Classification.setupDropdownClose();
         }
 
+        // Setup protocol dropdown close handler (click outside to close)
+        document.addEventListener('click', function(e) {
+            var dropdown = document.getElementById('protocol-dropdown');
+            if (dropdown && dropdown.classList.contains('show')) {
+                // Check if click is outside dropdown and not on a protocol badge
+                if (!dropdown.contains(e.target) && !e.target.classList.contains('protocol-badge')) {
+                    if (App.Filters && App.Filters.hideProtocolDropdown) {
+                        App.Filters.hideProtocolDropdown();
+                    }
+                }
+            }
+        });
+
         // Check scan capabilities on load
         if (App.Scanner) {
             App.Scanner.checkCapabilities();

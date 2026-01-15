@@ -357,12 +357,13 @@
         },
 
         /**
-         * Filter by protocol - highlights protocol and filters communications table
+         * Show dropdown with all endpoints using this protocol
          */
         filterByProtocol: function(protocol, element) {
-            // Toggle selection
+            // Toggle - if clicking the same protocol, hide dropdown
             if (element.classList.contains('selected')) {
-                App.Filters.clearProtocolFilter();
+                element.classList.remove('selected');
+                App.Filters.hideProtocolDropdown();
                 return;
             }
 
@@ -374,24 +375,84 @@
             // Select this protocol
             element.classList.add('selected');
 
-            // Show the clear button
-            var clearBtn = document.querySelector('.clear-filter-btn');
-            if (clearBtn) clearBtn.style.display = '';
-
-            // Filter communications table by protocol if it exists
-            var commRows = document.querySelectorAll('.communication-row');
-            commRows.forEach(function(row) {
-                var rowProtocol = row.dataset.protocol;
-                if (rowProtocol === protocol) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            });
+            // Show the protocol endpoints dropdown
+            App.Filters.showProtocolDropdown(protocol, element);
         },
 
         /**
-         * Clear protocol filter
+         * Show dropdown with endpoints using this protocol
+         */
+        showProtocolDropdown: function(protocol, element) {
+            var dropdown = document.getElementById('protocol-dropdown');
+            var content = document.getElementById('protocol-dropdown-content');
+            var nameSpan = document.getElementById('protocol-dropdown-name');
+
+            if (!dropdown || !content) return;
+
+            // Set protocol name in header
+            nameSpan.textContent = protocol;
+
+            // Show loading state
+            content.innerHTML = '<div class="protocol-dropdown-loading">Loading...</div>';
+
+            // Position the dropdown near the clicked element
+            var rect = element.getBoundingClientRect();
+            dropdown.style.left = rect.left + 'px';
+            dropdown.style.top = (rect.bottom + 4) + 'px';
+
+            // Make sure dropdown doesn't go off screen
+            dropdown.classList.add('show');
+            var dropdownRect = dropdown.getBoundingClientRect();
+            if (dropdownRect.right > window.innerWidth) {
+                dropdown.style.left = (window.innerWidth - dropdownRect.width - 10) + 'px';
+            }
+            if (dropdownRect.bottom > window.innerHeight) {
+                dropdown.style.top = (rect.top - dropdownRect.height - 4) + 'px';
+            }
+
+            // Get scan interval from URL
+            var urlParams = new URLSearchParams(window.location.search);
+            var scanInterval = urlParams.get('scan_interval') || '60';
+
+            // Fetch endpoints for this protocol
+            fetch('/api/protocol/' + encodeURIComponent(protocol) + '/endpoints?scan_interval=' + scanInterval)
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    if (data.endpoints && data.endpoints.length > 0) {
+                        content.innerHTML = data.endpoints.map(function(endpoint) {
+                            return '<div class="protocol-dropdown-item" onclick="App.Filters.selectEndpointFromDropdown(\'' + endpoint.replace(/'/g, "\\'") + '\')">' + endpoint + '</div>';
+                        }).join('');
+                    } else {
+                        content.innerHTML = '<div class="protocol-dropdown-empty">No endpoints found</div>';
+                    }
+                })
+                .catch(function(err) {
+                    content.innerHTML = '<div class="protocol-dropdown-empty">Error loading endpoints</div>';
+                });
+        },
+
+        /**
+         * Hide the protocol dropdown
+         */
+        hideProtocolDropdown: function() {
+            var dropdown = document.getElementById('protocol-dropdown');
+            if (dropdown) {
+                dropdown.classList.remove('show');
+            }
+        },
+
+        /**
+         * Select an endpoint from the protocol dropdown
+         */
+        selectEndpointFromDropdown: function(endpoint) {
+            // Navigate to the endpoint
+            var urlParams = new URLSearchParams(window.location.search);
+            urlParams.set('node', endpoint);
+            window.location.search = urlParams.toString();
+        },
+
+        /**
+         * Clear protocol selection and hide dropdown
          */
         clearProtocolFilter: function() {
             // Remove selection from all protocols
@@ -399,15 +460,8 @@
                 badge.classList.remove('selected');
             });
 
-            // Hide the clear button
-            var clearBtn = document.querySelector('.clear-filter-btn');
-            if (clearBtn) clearBtn.style.display = 'none';
-
-            // Show all communications
-            var commRows = document.querySelectorAll('.communication-row');
-            commRows.forEach(function(row) {
-                row.style.display = '';
-            });
+            // Hide dropdown
+            App.Filters.hideProtocolDropdown();
         },
 
         /**

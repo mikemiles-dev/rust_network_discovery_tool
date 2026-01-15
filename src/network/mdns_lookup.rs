@@ -253,17 +253,17 @@ impl MDnsLookup {
         }
 
         // Try reverse DNS lookup (works for mDNS .local addresses too)
-        if let Ok(addr) = ip.parse::<IpAddr>() {
-            if let Ok(hostname) = lookup_addr(&addr) {
-                // Cache the result
-                if let Ok(mut lookups) = MDNS_LOOKUPS
-                    .get_or_init(|| RwLock::new(HashMap::new()))
-                    .write()
-                {
-                    lookups.insert(ip.to_string(), hostname.clone());
-                }
-                return Some(hostname);
+        if let Ok(addr) = ip.parse::<IpAddr>()
+            && let Ok(hostname) = lookup_addr(&addr)
+        {
+            // Cache the result
+            if let Ok(mut lookups) = MDNS_LOOKUPS
+                .get_or_init(|| RwLock::new(HashMap::new()))
+                .write()
+            {
+                lookups.insert(ip.to_string(), hostname.clone());
             }
+            return Some(hostname);
         }
 
         None

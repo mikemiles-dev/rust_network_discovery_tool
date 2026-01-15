@@ -2,6 +2,7 @@ use rusqlite::Connection;
 use tokio::{sync::mpsc, task};
 
 use std::env;
+use std::sync::OnceLock;
 
 use crate::network::communication::Communication;
 use crate::network::endpoint::EndPoint;
@@ -109,8 +110,27 @@ fn get_channel_buffer_size() -> usize {
         .unwrap_or(MAX_CHANNEL_BUFFER_SIZE) // Default value if env var is not set or invalid
 }
 
+static RESOLVED_DB_PATH: OnceLock<String> = OnceLock::new();
+
 fn get_database_url() -> String {
-    env::var("DATABASE_URL").unwrap_or_else(|_| "test.db".to_string())
+    RESOLVED_DB_PATH
+        .get_or_init(|| {
+            let db_path = env::var("DATABASE_URL").unwrap_or_else(|_| "test.db".to_string());
+
+            // Convert relative paths to absolute to avoid issues with working directory changes
+            if !db_path.starts_with('/')
+                && !db_path.starts_with("sqlite://")
+                && db_path != ":memory:"
+                && let Ok(cwd) = env::current_dir()
+            {
+                let abs_path = cwd.join(&db_path).to_string_lossy().to_string();
+                eprintln!("Database path resolved to: {}", abs_path);
+                return abs_path;
+            }
+
+            db_path
+        })
+        .clone()
 }
 
 pub struct SQLWriter {

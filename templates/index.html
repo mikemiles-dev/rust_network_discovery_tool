@@ -975,6 +975,68 @@
       opacity: 0.4;
     }
 
+    .protocol-dropdown {
+      position: fixed;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 0.5rem;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+      min-width: 200px;
+      max-width: 300px;
+      max-height: 300px;
+      overflow-y: auto;
+      z-index: 1000;
+      display: none;
+    }
+
+    .protocol-dropdown.show {
+      display: block;
+    }
+
+    .protocol-dropdown-header {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border-color);
+      background: var(--bg-primary);
+      position: sticky;
+      top: 0;
+    }
+
+    .protocol-dropdown-item {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.8125rem;
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: background 0.15s;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.3);
+    }
+
+    .protocol-dropdown-item:last-child {
+      border-bottom: none;
+    }
+
+    .protocol-dropdown-item:hover {
+      background: var(--accent-primary);
+      color: white;
+    }
+
+    .protocol-dropdown-empty {
+      padding: 0.75rem;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      text-align: center;
+      font-style: italic;
+    }
+
+    .protocol-dropdown-loading {
+      padding: 0.75rem;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      text-align: center;
+    }
+
     .overlay-hostnames {
       display: flex;
       flex-direction: column;
@@ -1513,7 +1575,6 @@
 
         <div class="overlay-header" id="protocols-section">
           Protocols
-          <button class="clear-filter-btn" onclick="clearProtocolFilter()" style="display: none;">Clear Filter</button>
         </div>
         <div class="overlay-content" id="protocols-container">
           {% if not endpoint %}
@@ -1997,5 +2058,11 @@
     // Initialize the app
     App.init({ endpointName: '{{ endpoint | default(value="") }}' });
   </script>
+
+  <!-- Protocol Endpoints Dropdown -->
+  <div id="protocol-dropdown" class="protocol-dropdown">
+    <div class="protocol-dropdown-header">Endpoints using <span id="protocol-dropdown-name"></span></div>
+    <div id="protocol-dropdown-content"></div>
+  </div>
 </body>
 </html>

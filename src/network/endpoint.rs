@@ -1915,7 +1915,10 @@ pub fn get_model_from_hostname(hostname: &str) -> Option<String> {
         for part in &parts {
             let upper = part.to_uppercase();
             // P series: P40, P30, P20
-            if upper.starts_with("P") && upper.len() >= 2 && upper.chars().skip(1).all(|c| c.is_ascii_digit()) {
+            if upper.starts_with("P")
+                && upper.len() >= 2
+                && upper.chars().skip(1).all(|c| c.is_ascii_digit())
+            {
                 return Some(format!("Huawei {}", upper));
             }
             // Mate series: MATE40, MATE30
@@ -1933,7 +1936,7 @@ pub fn get_model_from_hostname(hostname: &str) -> Option<String> {
             for part in &parts {
                 let upper = part.to_uppercase();
                 // Honor number series: Honor 50, Honor 70, etc.
-                if upper.chars().all(|c| c.is_ascii_digit()) && upper.len() >= 1 {
+                if upper.chars().all(|c| c.is_ascii_digit()) && !upper.is_empty() {
                     return Some(format!("Honor {}", upper));
                 }
                 // Honor X series
@@ -2597,9 +2600,9 @@ fn classify_by_port(port: u16) -> Option<&'static str> {
         // Printer ports
         9100 | 631 | 515 => Some(CLASSIFICATION_PRINTER),
         // Gaming console ports (check BEFORE TV ports)
-        9295 | 9296 | 9297 => Some(CLASSIFICATION_GAMING), // PlayStation Remote Play
-        3478 | 3479 | 3480 => Some(CLASSIFICATION_GAMING), // PlayStation Network
-        3074 => Some(CLASSIFICATION_GAMING),                // Xbox Live
+        9295..=9297 => Some(CLASSIFICATION_GAMING), // PlayStation Remote Play
+        3478..=3480 => Some(CLASSIFICATION_GAMING), // PlayStation Network
+        3074 => Some(CLASSIFICATION_GAMING),               // Xbox Live
         // TV/Streaming ports
         8008 | 8009 => Some(CLASSIFICATION_TV), // Chromecast
         7000 | 7001 | 8001 | 8002 => Some(CLASSIFICATION_TV), // Samsung TV
@@ -3106,16 +3109,15 @@ impl EndPoint {
             .as_ref()
             .map(|h| h.parse::<std::net::IpAddr>().is_ok())
             .unwrap_or(true);
-        if let Some(ref ip_addr) = ip {
-            if hostname.is_none() || hostname_is_ip {
-                // Only probe for local IPs (remote servers probably won't respond to our mDNS)
-                if Self::is_on_local_network(ip_addr) {
-                    crate::network::mdns_lookup::MDnsLookup::probe_hostname_async(
-                        ip_addr.clone(),
-                        endpoint_id,
-                    );
-                }
-            }
+        if let Some(ref ip_addr) = ip
+            && (hostname.is_none() || hostname_is_ip)
+            && Self::is_on_local_network(ip_addr)
+        {
+            // Only probe for local IPs (remote servers probably won't respond to our mDNS)
+            crate::network::mdns_lookup::MDnsLookup::probe_hostname_async(
+                ip_addr.clone(),
+                endpoint_id,
+            );
         }
 
         Ok(endpoint_id)

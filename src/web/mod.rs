@@ -124,7 +124,8 @@ fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
         .collect();
 
     // Get the local hostname (strip .local suffix to match stored endpoint names)
-    let local_hostname = strip_local_suffix(&get_hostname().unwrap_or_else(|_| "Unknown".to_string()));
+    let local_hostname =
+        strip_local_suffix(&get_hostname().unwrap_or_else(|_| "Unknown".to_string()));
 
     // Sort endpoints with local hostname first
     endpoints.sort_by(|a, b| {
@@ -175,6 +176,28 @@ fn get_protocols_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<St
     rows.filter_map(|row| row.ok()).collect()
 }
 
+fn get_endpoints_for_protocol(protocol: &str, internal_minutes: u64) -> Vec<String> {
+    let conn = new_connection();
+
+    let query = "SELECT DISTINCT e.name
+        FROM endpoints e
+        INNER JOIN communications c ON (c.src_endpoint_id = e.id OR c.dst_endpoint_id = e.id)
+        WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
+            AND (COALESCE(NULLIF(c.sub_protocol, ''), c.ip_header_protocol) = ?)
+            AND e.name IS NOT NULL AND e.name != ''
+        ORDER BY e.name";
+
+    let mut stmt = conn.prepare(query).expect("Failed to prepare statement");
+
+    let rows = stmt
+        .query_map(params![internal_minutes, protocol], |row| {
+            row.get::<_, String>(0)
+        })
+        .expect("Failed to execute query");
+
+    rows.filter_map(|row| row.ok()).collect()
+}
+
 fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String> {
     let conn = new_connection();
 
@@ -184,18 +207,17 @@ fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String
     }
 
     let placeholders = build_in_placeholders(endpoint_ids.len());
+    // Only get destination ports where endpoint is the destination (listening ports)
+    // Excludes ephemeral ports (49152-65535) which are just used for receiving responses
     let query = format!(
-        "SELECT DISTINCT
-            CASE
-                WHEN c.src_endpoint_id IN ({0}) THEN c.destination_port
-                WHEN c.dst_endpoint_id IN ({0}) THEN c.source_port
-            END as port
+        "SELECT DISTINCT c.destination_port as port
         FROM communications c
         LEFT JOIN endpoints AS src_endpoint ON c.src_endpoint_id = src_endpoint.id
         LEFT JOIN endpoints AS dst_endpoint ON c.dst_endpoint_id = dst_endpoint.id
         WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
-            AND (c.src_endpoint_id IN ({0}) OR c.dst_endpoint_id IN ({0}))
-            AND port IS NOT NULL
+            AND c.dst_endpoint_id IN ({0})
+            AND c.destination_port IS NOT NULL
+            AND c.destination_port < 49152
             AND src_endpoint.name != '' AND dst_endpoint.name != ''
             AND src_endpoint.name IS NOT NULL AND dst_endpoint.name IS NOT NULL
         ORDER BY CAST(port AS INTEGER)",
@@ -204,11 +226,9 @@ fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String
 
     let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
 
-    // Build parameters: internal_minutes + endpoint_ids (4 times for the 4 IN clauses)
+    // Build parameters: internal_minutes + endpoint_ids (1 time for the IN clause)
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(internal_minutes)];
-    for _ in 0..4 {
-        params.extend(box_i64_params(&endpoint_ids));
-    }
+    params.extend(box_i64_params(&endpoint_ids));
 
     let rows = stmt
         .query_map(params_to_refs(&params).as_slice(), |row| {
@@ -221,28 +241,23 @@ fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String
         .collect()
 }
 
-/// Extract ports from communications data (already filtered for graph)
-/// This ensures ports shown match what's visible in the graph
+/// Extract listening ports from communications data (already filtered for graph)
+/// Only shows destination ports where endpoint is the destination (ports it's listening on)
+/// Excludes ephemeral ports (49152-65535) which are just used for receiving responses
 fn get_ports_from_communications(communications: &[Node], selected_endpoint: &str) -> Vec<String> {
     let mut ports: std::collections::HashSet<i64> = std::collections::HashSet::new();
 
     for node in communications {
-        // Get port where selected endpoint is involved
-        if node.src_hostname == selected_endpoint
+        // Only get destination port when endpoint is the destination (listening port)
+        // Skip ephemeral ports (49152+)
+        if node.dst_hostname == selected_endpoint
             && let Some(ref port_str) = node.dst_port
         {
             for p in port_str.split(',') {
                 if let Ok(port) = p.trim().parse::<i64>() {
-                    ports.insert(port);
-                }
-            }
-        }
-        if node.dst_hostname == selected_endpoint
-            && let Some(ref port_str) = node.src_port
-        {
-            for p in port_str.split(',') {
-                if let Ok(port) = p.trim().parse::<i64>() {
-                    ports.insert(port);
+                    if port < 49152 {
+                        ports.insert(port);
+                    }
                 }
             }
         }
@@ -956,7 +971,8 @@ async fn get_endpoint_details(
         .map(|(_, v)| v.clone());
 
     // Get local hostname for comparison
-    let local_hostname = strip_local_suffix(&get_hostname().unwrap_or_else(|_| "Unknown".to_string()));
+    let local_hostname =
+        strip_local_suffix(&get_hostname().unwrap_or_else(|_| "Unknown".to_string()));
 
     let (device_type, is_manual_override) = if let Some(mt) = manual_type {
         (mt, true)
@@ -966,28 +982,25 @@ async fn get_endpoint_details(
     } else {
         // First check network-level classification (gateway, internet)
         let first_ip = ips.first().cloned();
-        if let Some(network_type) = EndPoint::classify_endpoint(first_ip.clone(), Some(endpoint_name.clone())) {
+        if let Some(network_type) =
+            EndPoint::classify_endpoint(first_ip.clone(), Some(endpoint_name.clone()))
+        {
             (network_type.to_string(), false)
         } else {
             // Use EndPoint::classify_device_type for device-specific detection
-            let auto_type = EndPoint::classify_device_type(
-                Some(&endpoint_name),
-                &ips,
-                &[],
-                &macs,
-            )
-            .unwrap_or_else(|| {
-                // Fallback: if on local network, classify as "local", otherwise "other"
-                if let Some(ref ip_str) = first_ip {
-                    if EndPoint::is_on_local_network(ip_str) {
-                        "local"
+            let auto_type = EndPoint::classify_device_type(Some(&endpoint_name), &ips, &[], &macs)
+                .unwrap_or_else(|| {
+                    // Fallback: if on local network, classify as "local", otherwise "other"
+                    if let Some(ref ip_str) = first_ip {
+                        if EndPoint::is_on_local_network(ip_str) {
+                            "local"
+                        } else {
+                            "other"
+                        }
                     } else {
                         "other"
                     }
-                } else {
-                    "other"
-                }
-            });
+                });
             (auto_type.to_string(), false)
         }
     };
@@ -999,8 +1012,16 @@ async fn get_endpoint_details(
 
     // Component vendors - these make chips/modules used by other manufacturers
     const COMPONENT_VENDORS: &[&str] = &[
-        "Espressif", "Tuya", "Realtek", "MediaTek", "Qualcomm",
-        "Broadcom", "Marvell", "USI", "Wisol", "Murata",
+        "Espressif",
+        "Tuya",
+        "Realtek",
+        "MediaTek",
+        "Qualcomm",
+        "Broadcom",
+        "Marvell",
+        "USI",
+        "Wisol",
+        "Murata",
     ];
 
     let device_vendor: String = match (hostname_vendor, mac_vendor) {
@@ -1012,7 +1033,8 @@ async fn get_endpoint_details(
         (None, Some(mv)) => mv,
         // No vendor identified
         (None, None) => "",
-    }.to_string();
+    }
+    .to_string();
 
     // Get DHCP vendor class for this endpoint (if available)
     let dhcp_vendor_class: Option<String> = conn
@@ -1072,6 +1094,28 @@ async fn get_endpoint_details(
     };
 
     HttpResponse::Ok().json(response)
+}
+
+#[derive(Serialize)]
+struct ProtocolEndpointsResponse {
+    protocol: String,
+    endpoints: Vec<String>,
+}
+
+#[get("/api/protocol/{protocol}/endpoints")]
+async fn get_protocol_endpoints(
+    path: actix_web::web::Path<String>,
+    query: actix_web::web::Query<NodeQuery>,
+) -> impl Responder {
+    let protocol = path.into_inner();
+    let internal_minutes = query.scan_interval.unwrap_or(60);
+
+    let endpoints = get_endpoints_for_protocol(&protocol, internal_minutes);
+
+    HttpResponse::Ok().json(ProtocolEndpointsResponse {
+        protocol,
+        endpoints,
+    })
 }
 
 fn get_bytes_for_endpoint(hostname: String, internal_minutes: u64) -> BytesStats {
@@ -1252,6 +1296,7 @@ pub fn start(preferred_port: u16) {
                         .service(get_dns_entries_api)
                         .service(probe_hostname)
                         .service(get_endpoint_details)
+                        .service(get_protocol_endpoints)
                         .service(get_device_capabilities)
                         .service(send_device_command)
                         .service(launch_device_app)
@@ -1365,9 +1410,18 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     // Hostname detection is more accurate for devices with generic WiFi chips
     // Component manufacturers that shouldn't be shown as device vendors
     let component_vendors = [
-        "Espressif", "Tuya", "Realtek", "MediaTek", "Qualcomm",
-        "Broadcom", "Marvell", "USI", "Wisol", "Murata",
-        "AzureWave", "Intel",
+        "Espressif",
+        "Tuya",
+        "Realtek",
+        "MediaTek",
+        "Qualcomm",
+        "Broadcom",
+        "Marvell",
+        "USI",
+        "Wisol",
+        "Murata",
+        "AzureWave",
+        "Intel",
     ];
     let endpoint_vendors: HashMap<String, String> = dropdown_endpoints
         .iter()
@@ -1470,8 +1524,16 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let hostname_vendor = get_hostname_vendor(&selected_endpoint);
 
     const COMPONENT_VENDORS: &[&str] = &[
-        "Espressif", "Tuya", "Realtek", "MediaTek", "Qualcomm",
-        "Broadcom", "Marvell", "USI", "Wisol", "Murata",
+        "Espressif",
+        "Tuya",
+        "Realtek",
+        "MediaTek",
+        "Qualcomm",
+        "Broadcom",
+        "Marvell",
+        "USI",
+        "Wisol",
+        "Murata",
     ];
 
     let device_vendor: String = match (hostname_vendor, mac_vendor) {
@@ -1479,7 +1541,8 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         (None, Some(mv)) if COMPONENT_VENDORS.contains(&mv) => "",
         (None, Some(mv)) => mv,
         (None, None) => "",
-    }.to_string();
+    }
+    .to_string();
     // Get model: hostname first, then MAC, then DHCP vendor class, then vendor+type fallback
     let device_model: String = get_model_from_hostname(&selected_endpoint)
         .or_else(|| macs.iter().find_map(|mac| get_model_from_mac(mac)))

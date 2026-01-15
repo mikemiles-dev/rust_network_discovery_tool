@@ -338,9 +338,9 @@ impl Communication {
             self.source_ip.clone(),
             self.sub_protocol.clone(),
             &[],
-            self.dhcp_client_id.clone(),    // Pass DHCP Client ID for source (client)
+            self.dhcp_client_id.clone(), // Pass DHCP Client ID for source (client)
             self.dhcp_vendor_class.clone(), // Pass DHCP Vendor Class for model identification
-            self.dhcp_hostname.clone(),     // Pass DHCP Hostname (Option 12) - device's actual name
+            self.dhcp_hostname.clone(),  // Pass DHCP Hostname (Option 12) - device's actual name
         ) {
             Ok(id) => id,
             Err(InsertEndpointError::BothMacAndIpNone) => {
