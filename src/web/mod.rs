@@ -87,13 +87,39 @@ fn get_interfaces() -> Vec<String> {
     interfaces.into_iter().map(|iface| iface.name).collect()
 }
 
+/// Check if a string looks like an IP address (IPv4 or IPv6)
+fn looks_like_ip(s: &str) -> bool {
+    // IPv6: contains colons
+    if s.contains(':') {
+        return true;
+    }
+    // IPv4: all parts are numeric when split by dots
+    let parts: Vec<&str> = s.split('.').collect();
+    if parts.len() == 4 && parts.iter().all(|p| p.parse::<u8>().is_ok()) {
+        return true;
+    }
+    false
+}
+
+/// Try to resolve an IP-like name using mDNS cache or reverse DNS lookup
+fn resolve_from_mdns_cache(name: &str) -> Option<String> {
+    if looks_like_ip(name) {
+        // probe_hostname checks cache first, then tries reverse DNS lookup
+        MDnsLookup::probe_hostname(name).map(|h| strip_local_suffix(&h))
+    } else {
+        None
+    }
+}
+
 fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
     let conn = new_connection();
     // Use JOIN instead of correlated subquery for better performance
     let mut stmt = conn
         .prepare(
             "
-            SELECT DISTINCT COALESCE(e.custom_name, e.name, ea_best.hostname) AS display_name
+            SELECT DISTINCT COALESCE(e.custom_name,
+                CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
+                ea_best.hostname) AS display_name
             FROM endpoints e
             INNER JOIN communications c
                 ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
@@ -118,7 +144,8 @@ fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
             if hostname.is_empty() {
                 None
             } else {
-                Some(hostname)
+                // If the hostname looks like an IP, try to resolve it from mDNS cache
+                Some(resolve_from_mdns_cache(&hostname).unwrap_or(hostname))
             }
         })
         .collect();
@@ -176,23 +203,91 @@ fn get_protocols_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<St
     rows.filter_map(|row| row.ok()).collect()
 }
 
-fn get_endpoints_for_protocol(protocol: &str, internal_minutes: u64) -> Vec<String> {
+/// Get endpoints using a protocol, optionally filtered to only those communicating with a specific endpoint
+fn get_endpoints_for_protocol(
+    protocol: &str,
+    internal_minutes: u64,
+    from_endpoint: Option<&str>,
+) -> Vec<String> {
     let conn = new_connection();
 
-    let query = "SELECT DISTINCT e.name
-        FROM endpoints e
-        INNER JOIN communications c ON (c.src_endpoint_id = e.id OR c.dst_endpoint_id = e.id)
+    match from_endpoint {
+        Some(endpoint) => {
+            // Get endpoints that communicated with the specified endpoint over this protocol
+            let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, endpoint);
+            if endpoint_ids.is_empty() {
+                return Vec::new();
+            }
+
+            let placeholders = build_in_placeholders(endpoint_ids.len());
+            let query = format!(
+                "SELECT DISTINCT e.name
+                FROM endpoints e
+                INNER JOIN communications c ON (c.src_endpoint_id = e.id OR c.dst_endpoint_id = e.id)
+                WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
+                    AND (COALESCE(NULLIF(c.sub_protocol, ''), c.ip_header_protocol) = ?)
+                    AND e.name IS NOT NULL AND e.name != ''
+                    AND (
+                        (c.src_endpoint_id IN ({0}) AND c.dst_endpoint_id = e.id)
+                        OR (c.dst_endpoint_id IN ({0}) AND c.src_endpoint_id = e.id)
+                    )
+                ORDER BY e.name",
+                placeholders
+            );
+
+            let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
+
+            let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![
+                Box::new(internal_minutes),
+                Box::new(protocol.to_string()),
+            ];
+            params_vec.extend(box_i64_params(&endpoint_ids));
+            params_vec.extend(box_i64_params(&endpoint_ids));
+
+            let rows = stmt
+                .query_map(params_to_refs(&params_vec).as_slice(), |row| {
+                    row.get::<_, String>(0)
+                })
+                .expect("Failed to execute query");
+
+            rows.filter_map(|row| row.ok()).collect()
+        }
+        None => {
+            // Get all endpoints using this protocol
+            let query = "SELECT DISTINCT e.name
+                FROM endpoints e
+                INNER JOIN communications c ON (c.src_endpoint_id = e.id OR c.dst_endpoint_id = e.id)
+                WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
+                    AND (COALESCE(NULLIF(c.sub_protocol, ''), c.ip_header_protocol) = ?)
+                    AND e.name IS NOT NULL AND e.name != ''
+                ORDER BY e.name";
+
+            let mut stmt = conn.prepare(query).expect("Failed to prepare statement");
+
+            let rows = stmt
+                .query_map(params![internal_minutes, protocol], |row| {
+                    row.get::<_, String>(0)
+                })
+                .expect("Failed to execute query");
+
+            rows.filter_map(|row| row.ok()).collect()
+        }
+    }
+}
+
+/// Get all protocols seen across all endpoints
+fn get_all_protocols(internal_minutes: u64) -> Vec<String> {
+    let conn = new_connection();
+
+    let query = "SELECT DISTINCT COALESCE(NULLIF(c.sub_protocol, ''), c.ip_header_protocol) as protocol
+        FROM communications c
         WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
-            AND (COALESCE(NULLIF(c.sub_protocol, ''), c.ip_header_protocol) = ?)
-            AND e.name IS NOT NULL AND e.name != ''
-        ORDER BY e.name";
+        ORDER BY protocol";
 
     let mut stmt = conn.prepare(query).expect("Failed to prepare statement");
 
     let rows = stmt
-        .query_map(params![internal_minutes, protocol], |row| {
-            row.get::<_, String>(0)
-        })
+        .query_map(params![internal_minutes], |row| row.get::<_, String>(0))
         .expect("Failed to execute query");
 
     rows.filter_map(|row| row.ok()).collect()
@@ -281,7 +376,8 @@ fn get_endpoint_ips_and_macs(endpoints: &[String]) -> HashMap<String, (Vec<Strin
     let mut stmt = conn
         .prepare(
             "SELECT
-                COALESCE(e.custom_name, e.name,
+                COALESCE(e.custom_name,
+                    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
                     (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
                      AND hostname IS NOT NULL AND hostname != '' LIMIT 1)) AS display_name,
                 ea.ip,
@@ -335,7 +431,8 @@ fn get_endpoint_vendor_classes(endpoints: &[String]) -> HashMap<String, String> 
     let mut stmt = conn
         .prepare(
             "SELECT
-                COALESCE(e.custom_name, e.name,
+                COALESCE(e.custom_name,
+                    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
                     (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
                      AND hostname IS NOT NULL AND hostname != '' LIMIT 1)) AS display_name,
                 ea.dhcp_vendor_class
@@ -494,7 +591,9 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
         WITH endpoint_info AS (
             SELECT
                 e.id,
-                COALESCE(e.custom_name, e.name, MIN(CASE WHEN ea.hostname IS NOT NULL AND ea.hostname != '' THEN ea.hostname END)) AS display_name,
+                COALESCE(e.custom_name,
+                    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
+                    MIN(CASE WHEN ea.hostname IS NOT NULL AND ea.hostname != '' THEN ea.hostname END)) AS display_name,
                 MIN(ea.ip) AS ip
             FROM endpoints e
             LEFT JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
@@ -650,9 +749,13 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
                     )
                 };
 
+                // Try to resolve IP-like hostnames from mDNS cache
+                let src_resolved = resolve_from_mdns_cache(&src).unwrap_or(src);
+                let dst_resolved = resolve_from_mdns_cache(&dst).unwrap_or(dst);
+
                 Node {
-                    src_hostname: src,
-                    dst_hostname: dst,
+                    src_hostname: src_resolved,
+                    dst_hostname: dst_resolved,
                     sub_protocol,
                     src_type,
                     dst_type,
@@ -1102,20 +1205,44 @@ struct ProtocolEndpointsResponse {
     endpoints: Vec<String>,
 }
 
+#[derive(Deserialize)]
+struct ProtocolQuery {
+    scan_interval: Option<u64>,
+    from_endpoint: Option<String>,
+}
+
 #[get("/api/protocol/{protocol}/endpoints")]
 async fn get_protocol_endpoints(
     path: actix_web::web::Path<String>,
-    query: actix_web::web::Query<NodeQuery>,
+    query: actix_web::web::Query<ProtocolQuery>,
 ) -> impl Responder {
     let protocol = path.into_inner();
     let internal_minutes = query.scan_interval.unwrap_or(60);
 
-    let endpoints = get_endpoints_for_protocol(&protocol, internal_minutes);
+    let endpoints = get_endpoints_for_protocol(
+        &protocol,
+        internal_minutes,
+        query.from_endpoint.as_deref(),
+    );
 
     HttpResponse::Ok().json(ProtocolEndpointsResponse {
         protocol,
         endpoints,
     })
+}
+
+#[derive(Serialize)]
+struct AllProtocolsResponse {
+    protocols: Vec<String>,
+}
+
+#[get("/api/protocols")]
+async fn get_all_protocols_api(
+    query: actix_web::web::Query<NodeQuery>,
+) -> impl Responder {
+    let internal_minutes = query.scan_interval.unwrap_or(60);
+    let protocols = get_all_protocols(internal_minutes);
+    HttpResponse::Ok().json(AllProtocolsResponse { protocols })
 }
 
 fn get_bytes_for_endpoint(hostname: String, internal_minutes: u64) -> BytesStats {
@@ -1171,7 +1298,8 @@ fn get_all_endpoints_bytes(endpoints: &[String], internal_minutes: u64) -> HashM
     let mut stmt = conn
         .prepare(
             "SELECT
-                COALESCE(e.custom_name, e.name,
+                COALESCE(e.custom_name,
+                    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
                     (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
                      AND hostname IS NOT NULL AND hostname != '' LIMIT 1)) AS display_name,
                 COALESCE(SUM(c.bytes), 0) as total_bytes
@@ -1216,7 +1344,8 @@ fn get_all_endpoints_last_seen(
     let mut stmt = conn
         .prepare(
             "SELECT
-                COALESCE(e.custom_name, e.name,
+                COALESCE(e.custom_name,
+                    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
                     (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
                      AND hostname IS NOT NULL AND hostname != '' LIMIT 1)) AS display_name,
                 MAX(c.last_seen_at) as last_seen
@@ -1297,6 +1426,7 @@ pub fn start(preferred_port: u16) {
                         .service(probe_hostname)
                         .service(get_endpoint_details)
                         .service(get_protocol_endpoints)
+                        .service(get_all_protocols_api)
                         .service(get_device_capabilities)
                         .service(send_device_command)
                         .service(launch_device_app)

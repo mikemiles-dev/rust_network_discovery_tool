@@ -1370,11 +1370,28 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
 const TV_SERVICES: &[&str] = &[
     "_googlecast._tcp",
     "_roku._tcp",
+    "_webos._tcp", // LG WebOS TVs
     // Note: _raop._tcp removed - too generic (MacBooks, iPhones, HomePods advertise it)
     // Note: _spotify-connect._tcp removed - too generic (phones, speakers, consoles all use it)
     // Note: _airplay._tcp removed - too generic (iPhones, MacBooks also advertise it)
 ];
 const PRINTER_SERVICES: &[&str] = &["_ipp._tcp", "_printer._tcp", "_pdl-datastream._tcp"];
+
+const PHONE_SERVICES: &[&str] = &[
+    "_apple-mobdev2._tcp", // Apple mobile device service (iPhones/iPads)
+    "_companion-link._tcp", // iOS companion link (AirDrop, Handoff)
+    "_rdlink._tcp",        // Remote desktop link (iOS)
+];
+
+const APPLIANCE_SERVICES: &[&str] = &[
+    "_lge._tcp",        // LG ThinQ appliances
+    "_xbcs._tcp",       // LG ThinQ appliances (dishwashers, etc.)
+    "_dyson_mqtt._tcp", // Dyson devices (fans, purifiers)
+];
+
+const SOUNDBAR_SERVICES: &[&str] = &[
+    "_sonos._tcp", // Sonos speakers/soundbars
+];
 
 /// Check if hostname matches any pattern in list
 fn matches_pattern(hostname: &str, patterns: &[&str]) -> bool {
@@ -2584,11 +2601,22 @@ fn is_lg_appliance(hostname: &str) -> bool {
 /// Check mDNS services for device type
 fn classify_by_services(services: &[String]) -> Option<&'static str> {
     for service in services {
-        if TV_SERVICES.contains(&service.as_str()) {
-            return Some(CLASSIFICATION_TV);
+        let s = service.as_str();
+        // Check more specific types first
+        if APPLIANCE_SERVICES.contains(&s) {
+            return Some(CLASSIFICATION_APPLIANCE);
         }
-        if PRINTER_SERVICES.contains(&service.as_str()) {
+        if PHONE_SERVICES.contains(&s) {
+            return Some(CLASSIFICATION_PHONE);
+        }
+        if SOUNDBAR_SERVICES.contains(&s) {
+            return Some(CLASSIFICATION_SOUNDBAR);
+        }
+        if PRINTER_SERVICES.contains(&s) {
             return Some(CLASSIFICATION_PRINTER);
+        }
+        if TV_SERVICES.contains(&s) {
+            return Some(CLASSIFICATION_TV);
         }
     }
     None
@@ -2685,14 +2713,39 @@ impl EndPoint {
         }
 
         // Check if hostname indicates a router/gateway
-        if let Some(ref hostname_str) = hostname
-            && Self::is_router_hostname(hostname_str)
-        {
-            return Some(CLASSIFICATION_GATEWAY);
+        if let Some(ref hostname_str) = hostname {
+            if Self::is_router_hostname(hostname_str) {
+                return Some(CLASSIFICATION_GATEWAY);
+            }
+
+            // Check if hostname looks like an internet domain (has TLD, not local)
+            if Self::is_internet_hostname(hostname_str) {
+                return Some(CLASSIFICATION_INTERNET);
+            }
         }
 
         // Local network device, no special classification
         None
+    }
+
+    /// Check if hostname looks like an internet domain
+    fn is_internet_hostname(hostname: &str) -> bool {
+        // Skip if it looks like an IP address
+        if hostname.contains(':') || hostname.chars().all(|c| c.is_ascii_digit() || c == '.') {
+            return false;
+        }
+        // Skip local hostnames
+        let lower = hostname.to_lowercase();
+        if lower.ends_with(".local")
+            || lower.ends_with(".lan")
+            || lower.ends_with(".home")
+            || lower.ends_with(".internal")
+            || !lower.contains('.')
+        {
+            return false;
+        }
+        // Has a dot and a TLD-like suffix - likely internet
+        true
     }
 
     /// Check if IP is a common router/gateway address

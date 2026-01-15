@@ -410,12 +410,18 @@
                 dropdown.style.top = (rect.top - dropdownRect.height - 4) + 'px';
             }
 
-            // Get scan interval from URL
+            // Get scan interval and current endpoint from URL
             var urlParams = new URLSearchParams(window.location.search);
             var scanInterval = urlParams.get('scan_interval') || '60';
+            var currentEndpoint = urlParams.get('node') || '';
 
-            // Fetch endpoints for this protocol
-            fetch('/api/protocol/' + encodeURIComponent(protocol) + '/endpoints?scan_interval=' + scanInterval)
+            // Fetch endpoints that THIS endpoint communicated with over this protocol
+            var apiUrl = '/api/protocol/' + encodeURIComponent(protocol) + '/endpoints?scan_interval=' + scanInterval;
+            if (currentEndpoint) {
+                apiUrl += '&from_endpoint=' + encodeURIComponent(currentEndpoint);
+            }
+
+            fetch(apiUrl)
                 .then(function(response) { return response.json(); })
                 .then(function(data) {
                     if (data.endpoints && data.endpoints.length > 0) {
@@ -462,6 +468,72 @@
 
             // Hide dropdown
             App.Filters.hideProtocolDropdown();
+        },
+
+        /**
+         * Load all protocols into the global protocol dropdown
+         */
+        loadGlobalProtocols: function() {
+            var select = document.getElementById('globalProtocolSelect');
+            if (!select) return;
+
+            var urlParams = new URLSearchParams(window.location.search);
+            var scanInterval = urlParams.get('scan_interval') || '60';
+
+            fetch('/api/protocols?scan_interval=' + scanInterval)
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    // Keep the first "All Protocols" option
+                    select.innerHTML = '<option value="">All Protocols</option>';
+
+                    if (data.protocols && data.protocols.length > 0) {
+                        data.protocols.forEach(function(protocol) {
+                            var option = document.createElement('option');
+                            option.value = protocol;
+                            option.textContent = protocol;
+                            select.appendChild(option);
+                        });
+                    }
+                })
+                .catch(function(err) {
+                    console.error('Failed to load protocols:', err);
+                });
+        },
+
+        /**
+         * Filter endpoints by global protocol selection
+         * Shows only endpoints that use the selected protocol
+         */
+        filterByGlobalProtocol: function(protocol) {
+            if (!protocol) {
+                // Clear filter - show all endpoints
+                App.Filters.apply();
+                return;
+            }
+
+            var urlParams = new URLSearchParams(window.location.search);
+            var scanInterval = urlParams.get('scan_interval') || '60';
+
+            // Fetch all endpoints using this protocol
+            fetch('/api/protocol/' + encodeURIComponent(protocol) + '/endpoints?scan_interval=' + scanInterval)
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    var protocolEndpoints = new Set(data.endpoints || []);
+
+                    // Filter the endpoint rows
+                    var rows = document.querySelectorAll('#endpoints-table tbody tr');
+                    rows.forEach(function(row) {
+                        var endpointName = row.dataset.endpointName;
+                        if (protocolEndpoints.has(endpointName)) {
+                            row.style.display = '';
+                        } else {
+                            row.style.display = 'none';
+                        }
+                    });
+                })
+                .catch(function(err) {
+                    console.error('Failed to filter by protocol:', err);
+                });
         },
 
         /**
@@ -535,7 +607,13 @@
     window.isLocalIP = App.Filters.isLocalIP;
     window.filterByProtocol = App.Filters.filterByProtocol;
     window.clearProtocolFilter = App.Filters.clearProtocolFilter;
+    window.filterByGlobalProtocol = App.Filters.filterByGlobalProtocol;
     window.filterByPort = App.Filters.filterByPort;
     window.clearPortFilter = App.Filters.clearPortFilter;
+
+    // Load global protocols on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        App.Filters.loadGlobalProtocols();
+    });
 
 })(window.App);

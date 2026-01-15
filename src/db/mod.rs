@@ -17,7 +17,15 @@ pub fn new_connection() -> Connection {
 pub fn new_connection_result() -> Result<Connection, rusqlite::Error> {
     let db_url = get_database_url();
     let db_path = db_url.strip_prefix("sqlite://").unwrap_or(&db_url);
-    let conn = Connection::open(db_path)?;
+    let conn = Connection::open(db_path).map_err(|e| {
+        eprintln!(
+            "Failed to open database at '{}': {} (cwd: {:?})",
+            db_path,
+            e,
+            std::env::current_dir()
+        );
+        e
+    })?;
 
     // Set busy timeout first (this doesn't require any locks)
     // 30 seconds to handle heavy contention during scanning
