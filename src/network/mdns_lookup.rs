@@ -1,53 +1,11 @@
 use dns_lookup::{get_hostname, lookup_addr};
 use mdns_sd::{ServiceDaemon, ServiceEvent};
 use pnet::datalink;
-use rusqlite::Connection;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::IpAddr;
-use std::sync::{Mutex, OnceLock, RwLock};
+use std::sync::{OnceLock, RwLock};
 use std::time::SystemTime;
 use tokio::task;
-
-// Shared connection for mDNS database updates to avoid too many open files
-static MDNS_DB_CONN: OnceLock<Mutex<Option<Connection>>> = OnceLock::new();
-
-/// Execute a database operation using the shared mDNS connection
-fn with_mdns_connection<F, T>(operation: F) -> Option<T>
-where
-    F: FnOnce(&Connection) -> Result<T, rusqlite::Error>,
-{
-    let mutex = MDNS_DB_CONN.get_or_init(|| Mutex::new(None));
-    let mut guard = mutex.lock().ok()?;
-
-    // Initialize connection if needed
-    if guard.is_none() {
-        match crate::db::new_connection_result() {
-            Ok(conn) => *guard = Some(conn),
-            Err(e) => {
-                eprintln!("Failed to create mDNS DB connection: {}", e);
-                return None;
-            }
-        }
-    }
-
-    // Execute the operation
-    if let Some(conn) = guard.as_ref() {
-        match operation(conn) {
-            Ok(result) => Some(result),
-            Err(e) => {
-                // If connection is broken, clear it so it gets recreated
-                if e.to_string().contains("database is locked")
-                    || e.to_string().contains("unable to open")
-                {
-                    *guard = None;
-                }
-                None
-            }
-        }
-    } else {
-        None
-    }
-}
 
 static MDNS_LOOKUPS: OnceLock<std::sync::RwLock<HashMap<String, String>>> = OnceLock::new();
 static MDNS_SERVICES: OnceLock<std::sync::RwLock<HashMap<String, HashSet<String>>>> =
@@ -197,28 +155,8 @@ impl MDnsLookup {
                                         lookups.insert(addr.to_string(), host.to_string());
                                     }
 
-                                    // Update existing endpoint name if it's currently just an IP or empty
-                                    // Strip .local suffix before saving
-                                    let clean_hostname =
-                                        crate::network::endpoint::strip_local_suffix(&host);
-                                    let addr_clone = addr.clone();
-                                    with_mdns_connection(|conn| {
-                                        // Update endpoint name if currently empty, null, or looks like an IP address
-                                        // This catches both IPv4 and IPv6 addresses regardless of which IP mDNS reports
-                                        conn.execute(
-                                            "UPDATE endpoints SET name = ?1
-                                             WHERE (name IS NULL OR name = '' OR name LIKE '%:%' OR name GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*')
-                                             AND id IN (SELECT endpoint_id FROM endpoint_attributes WHERE ip = ?2)",
-                                            rusqlite::params![&clean_hostname, &addr_clone],
-                                        )?;
-                                        // Also update hostname in endpoint_attributes if it's an IP
-                                        conn.execute(
-                                            "UPDATE endpoint_attributes SET hostname = ?1
-                                             WHERE ip = ?2 AND (hostname IS NULL OR hostname = '' OR hostname LIKE '%:%' OR hostname GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*')",
-                                            rusqlite::params![&clean_hostname, &addr_clone],
-                                        )?;
-                                        Ok(())
-                                    });
+                                    // Note: Database updates removed to avoid lock contention with SQLWriter
+                                    // Hostname resolution now uses in-memory MDNS_LOOKUPS cache via resolve_from_mdns_cache()
 
                                     // Store service type (always store for device classification)
                                     if let Ok(mut services) = MDNS_SERVICES
@@ -318,40 +256,16 @@ impl MDnsLookup {
         None
     }
 
-    /// Spawn a background task to probe for hostname and update endpoint if found
+    /// Spawn a background task to probe for hostname and cache it
     /// This is non-blocking and runs in the background
-    pub fn probe_hostname_async(ip: String, endpoint_id: i64) {
+    pub fn probe_hostname_async(ip: String, _endpoint_id: i64) {
         task::spawn_blocking(move || {
             // Small delay to avoid hammering the network
             std::thread::sleep(std::time::Duration::from_millis(100));
 
-            if let Some(hostname) = Self::probe_hostname(&ip) {
-                // Strip .local and other local suffixes before saving
-                let hostname = crate::network::endpoint::strip_local_suffix(&hostname);
-
-                // Update the endpoint with the discovered hostname using shared connection
-                with_mdns_connection(|conn| {
-                    // Update if name is NULL, empty, or looks like an IP address
-                    conn.execute(
-                        "UPDATE endpoints SET name = ?1
-                         WHERE id = ?2
-                         AND (name IS NULL OR name = '' OR name LIKE '%:%' OR name GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*')",
-                        rusqlite::params![&hostname, endpoint_id],
-                    )?;
-                    // Also add to endpoint_attributes if not already there
-                    conn.execute(
-                        "INSERT OR IGNORE INTO endpoint_attributes (created_at, endpoint_id, ip, hostname) VALUES (strftime('%s', 'now'), ?1, ?2, ?3)",
-                        rusqlite::params![endpoint_id, &ip, &hostname],
-                    )?;
-                    // Update hostname in endpoint_attributes if it's currently an IP
-                    conn.execute(
-                        "UPDATE endpoint_attributes SET hostname = ?1
-                         WHERE endpoint_id = ?2 AND (hostname IS NULL OR hostname = '' OR hostname LIKE '%:%' OR hostname GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*')",
-                        rusqlite::params![&hostname, endpoint_id],
-                    )?;
-                    Ok(())
-                });
-            }
+            // Just probe and cache - the result is stored in MDNS_LOOKUPS by probe_hostname()
+            // Database updates removed to avoid lock contention with SQLWriter
+            let _ = Self::probe_hostname(&ip);
         });
     }
 }

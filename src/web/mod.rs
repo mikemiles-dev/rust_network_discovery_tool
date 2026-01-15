@@ -127,6 +127,8 @@ fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
                 SELECT endpoint_id, MIN(hostname) AS hostname
                 FROM endpoint_attributes
                 WHERE hostname IS NOT NULL AND hostname != ''
+                  AND hostname NOT LIKE '%:%'
+                  AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'
                 GROUP BY endpoint_id
             ) ea_best ON ea_best.endpoint_id = e.id
             WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
@@ -379,7 +381,8 @@ fn get_endpoint_ips_and_macs(endpoints: &[String]) -> HashMap<String, (Vec<Strin
                 COALESCE(e.custom_name,
                     CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
                     (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
-                     AND hostname IS NOT NULL AND hostname != '' LIMIT 1)) AS display_name,
+                     AND hostname IS NOT NULL AND hostname != ''
+                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
                 ea.ip,
                 ea.mac
              FROM endpoints e
@@ -434,7 +437,8 @@ fn get_endpoint_vendor_classes(endpoints: &[String]) -> HashMap<String, String> 
                 COALESCE(e.custom_name,
                     CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
                     (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
-                     AND hostname IS NOT NULL AND hostname != '' LIMIT 1)) AS display_name,
+                     AND hostname IS NOT NULL AND hostname != ''
+                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
                 ea.dhcp_vendor_class
              FROM endpoints e
              INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
@@ -817,9 +821,11 @@ fn get_all_endpoint_types(
         let mut stmt = conn
             .prepare(
                 "SELECT
-                    COALESCE(e.custom_name, e.name,
+                    COALESCE(e.custom_name,
+                        CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
                         (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
-                         AND hostname IS NOT NULL AND hostname != '' LIMIT 1)) AS display_name,
+                         AND hostname IS NOT NULL AND hostname != ''
+                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
                     ea.ip
                  FROM endpoints e
                  INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
@@ -846,9 +852,11 @@ fn get_all_endpoint_types(
         let mut stmt = conn
             .prepare(
                 "SELECT
-                    COALESCE(e.custom_name, e.name,
+                    COALESCE(e.custom_name,
+                        CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
                         (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
-                         AND hostname IS NOT NULL AND hostname != '' LIMIT 1)) AS display_name,
+                         AND hostname IS NOT NULL AND hostname != ''
+                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
                     ea.mac
                  FROM endpoints e
                  INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
@@ -875,9 +883,11 @@ fn get_all_endpoint_types(
         let mut stmt = conn
             .prepare(
                 "SELECT
-                    COALESCE(e.custom_name, e.name,
+                    COALESCE(e.custom_name,
+                        CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
                         (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
-                         AND hostname IS NOT NULL AND hostname != '' LIMIT 1)) AS display_name,
+                         AND hostname IS NOT NULL AND hostname != ''
+                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
                     COALESCE(c.source_port, c.destination_port) as port
                  FROM endpoints e
                  INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
@@ -1301,7 +1311,8 @@ fn get_all_endpoints_bytes(endpoints: &[String], internal_minutes: u64) -> HashM
                 COALESCE(e.custom_name,
                     CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
                     (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
-                     AND hostname IS NOT NULL AND hostname != '' LIMIT 1)) AS display_name,
+                     AND hostname IS NOT NULL AND hostname != ''
+                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
                 COALESCE(SUM(c.bytes), 0) as total_bytes
              FROM endpoints e
              INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
@@ -1347,7 +1358,8 @@ fn get_all_endpoints_last_seen(
                 COALESCE(e.custom_name,
                     CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
                     (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
-                     AND hostname IS NOT NULL AND hostname != '' LIMIT 1)) AS display_name,
+                     AND hostname IS NOT NULL AND hostname != ''
+                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
                 MAX(c.last_seen_at) as last_seen
              FROM endpoints e
              INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id

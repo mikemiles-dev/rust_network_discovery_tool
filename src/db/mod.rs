@@ -41,59 +41,6 @@ pub fn new_connection_result() -> Result<Connection, rusqlite::Error> {
     Ok(conn)
 }
 
-/// Execute a database operation with retry logic for handling lock contention.
-/// Returns the result of the operation or the last error after all retries.
-pub fn execute_with_retry<F, T>(mut operation: F) -> Result<T, rusqlite::Error>
-where
-    F: FnMut() -> Result<T, rusqlite::Error>,
-{
-    const MAX_RETRIES: u32 = 5;
-    const BASE_DELAY_MS: u64 = 50;
-    const MAX_DELAY_MS: u64 = 2000;
-
-    let mut last_error = None;
-
-    for attempt in 0..MAX_RETRIES {
-        match operation() {
-            Ok(result) => return Ok(result),
-            Err(e) => {
-                let is_lock_error = match &e {
-                    rusqlite::Error::SqliteFailure(err, _)
-                        if err.code == rusqlite::ErrorCode::DatabaseBusy
-                            || err.code == rusqlite::ErrorCode::DatabaseLocked =>
-                    {
-                        true
-                    }
-                    _ => e.to_string().contains("database is locked"),
-                };
-
-                if is_lock_error && attempt < MAX_RETRIES - 1 {
-                    // Exponential backoff with jitter
-                    let base_delay = BASE_DELAY_MS * (1 << attempt.min(5));
-                    let delay = base_delay.min(MAX_DELAY_MS);
-                    let nanos = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.subsec_nanos())
-                        .unwrap_or(0) as u64;
-                    let jitter = (nanos % (delay / 2 + 1)).min(delay / 2);
-                    std::thread::sleep(std::time::Duration::from_millis(delay + jitter));
-                    last_error = Some(e);
-                    continue;
-                }
-
-                return Err(e);
-            }
-        }
-    }
-
-    Err(last_error.unwrap_or_else(|| {
-        rusqlite::Error::SqliteFailure(
-            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
-            Some("Database busy after retries".to_string()),
-        )
-    }))
-}
-
 #[cfg(test)]
 pub fn new_test_connection() -> Connection {
     let conn = Connection::open_in_memory().expect("Failed to create in-memory database");
@@ -197,8 +144,8 @@ impl SQLWriter {
             )
             .expect("Failed to create open_ports table");
 
-            const BATCH_SIZE: usize = 500;
-            const BATCH_TIMEOUT_MS: u64 = 1000; // Flush every 1 second
+            const BATCH_SIZE: usize = 100; // Smaller batches to reduce lock time
+            const BATCH_TIMEOUT_MS: u64 = 500; // Flush every 0.5 seconds
             let mut batch = Vec::with_capacity(BATCH_SIZE);
             let mut last_flush = std::time::Instant::now();
 
@@ -267,7 +214,8 @@ impl SQLWriter {
 
         for attempt in 1..=MAX_BATCH_RETRIES {
             // Try to process the entire batch in a transaction
-            let tx = match conn.transaction() {
+            // Use IMMEDIATE to acquire write lock upfront and fail fast if busy
+            let tx = match conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) {
                 Ok(tx) => tx,
                 Err(e) => {
                     if attempt < MAX_BATCH_RETRIES {
