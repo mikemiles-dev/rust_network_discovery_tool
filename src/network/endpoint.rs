@@ -3035,6 +3035,7 @@ impl EndPoint {
         Self::get_or_insert_endpoint_with_dhcp(conn, mac, ip, protocol, payload, None, None, None)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn get_or_insert_endpoint_with_dhcp(
         conn: &Connection,
         mac: Option<String>,
