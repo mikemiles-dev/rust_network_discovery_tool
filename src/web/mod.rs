@@ -28,8 +28,22 @@ use tokio::sync::mpsc;
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
-// SQL Helper Functions
+// SQL Helper Functions and Constants
 // ============================================================================
+
+/// SQL fragment for computing a consistent display_name for endpoints.
+/// IMPORTANT: All queries that need display_name must use this exact pattern
+/// to ensure consistent lookups across HashMaps with lowercase keys.
+///
+/// Priority: custom_name > valid name > MIN(hostname) > MIN(ip) > name
+const DISPLAY_NAME_SQL: &str = "COALESCE(e.custom_name,
+    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
+    (SELECT MIN(hostname) FROM endpoint_attributes WHERE endpoint_id = e.id
+     AND hostname IS NOT NULL AND hostname != ''
+     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'),
+    (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
+     AND ip IS NOT NULL AND ip != ''),
+    e.name)";
 
 /// Build a SQL IN clause placeholder string for a given number of parameters
 fn build_in_placeholders(count: usize) -> String {
@@ -383,23 +397,12 @@ fn get_endpoint_ips_and_macs(endpoints: &[String]) -> HashMap<String, (Vec<Strin
     }
 
     // Single batch query to get all IPs and MACs with their display names
-    // IMPORTANT: display_name computation must match dropdown_endpoints() exactly
     let mut stmt = conn
-        .prepare(
-            "SELECT
-                COALESCE(e.custom_name,
-                    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
-                    (SELECT MIN(hostname) FROM endpoint_attributes WHERE endpoint_id = e.id
-                     AND hostname IS NOT NULL AND hostname != ''
-                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'),
-                    (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
-                     AND ip IS NOT NULL AND ip != ''),
-                    e.name) AS display_name,
-                ea.ip,
-                ea.mac
+        .prepare(&format!(
+            "SELECT {DISPLAY_NAME_SQL} AS display_name, ea.ip, ea.mac
              FROM endpoints e
-             INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id",
-        )
+             INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id"
+        ))
         .expect("Failed to prepare batch IPs/MACs statement");
 
     let rows = stmt
@@ -447,23 +450,13 @@ fn get_endpoint_vendor_classes(endpoints: &[String]) -> HashMap<String, String> 
     // Build lowercase set for case-insensitive matching
     let endpoints_lower: HashSet<String> = endpoints.iter().map(|e| e.to_lowercase()).collect();
 
-    // IMPORTANT: display_name computation must match dropdown_endpoints() exactly
     let mut stmt = conn
-        .prepare(
-            "SELECT
-                COALESCE(e.custom_name,
-                    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
-                    (SELECT MIN(hostname) FROM endpoint_attributes WHERE endpoint_id = e.id
-                     AND hostname IS NOT NULL AND hostname != ''
-                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'),
-                    (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
-                     AND ip IS NOT NULL AND ip != ''),
-                    e.name) AS display_name,
-                ea.dhcp_vendor_class
+        .prepare(&format!(
+            "SELECT {DISPLAY_NAME_SQL} AS display_name, ea.dhcp_vendor_class
              FROM endpoints e
              INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
-             WHERE ea.dhcp_vendor_class IS NOT NULL AND ea.dhcp_vendor_class != ''",
-        )
+             WHERE ea.dhcp_vendor_class IS NOT NULL AND ea.dhcp_vendor_class != ''"
+        ))
         .expect("Failed to prepare vendor class statement");
 
     let rows = stmt
@@ -837,25 +830,15 @@ fn get_all_endpoint_types(
         .collect();
 
     // Batch fetch all IPs for all endpoints in one query
-    // IMPORTANT: display_name computation must match dropdown_endpoints() exactly
     let mut all_ips: HashMap<String, Vec<String>> = HashMap::new();
     {
         let mut stmt = conn
-            .prepare(
-                "SELECT
-                    COALESCE(e.custom_name,
-                        CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
-                        (SELECT MIN(hostname) FROM endpoint_attributes WHERE endpoint_id = e.id
-                         AND hostname IS NOT NULL AND hostname != ''
-                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'),
-                        (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
-                         AND ip IS NOT NULL AND ip != ''),
-                        e.name) AS display_name,
-                    ea.ip
+            .prepare(&format!(
+                "SELECT {DISPLAY_NAME_SQL} AS display_name, ea.ip
                  FROM endpoints e
                  INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
-                 WHERE ea.ip IS NOT NULL",
-            )
+                 WHERE ea.ip IS NOT NULL"
+            ))
             .expect("Failed to prepare IP batch statement");
 
         let rows = stmt
@@ -873,25 +856,15 @@ fn get_all_endpoint_types(
     }
 
     // Batch fetch all MACs for all endpoints in one query
-    // IMPORTANT: display_name computation must match dropdown_endpoints() exactly
     let mut all_macs: HashMap<String, Vec<String>> = HashMap::new();
     {
         let mut stmt = conn
-            .prepare(
-                "SELECT
-                    COALESCE(e.custom_name,
-                        CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
-                        (SELECT MIN(hostname) FROM endpoint_attributes WHERE endpoint_id = e.id
-                         AND hostname IS NOT NULL AND hostname != ''
-                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'),
-                        (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
-                         AND ip IS NOT NULL AND ip != ''),
-                        e.name) AS display_name,
-                    ea.mac
+            .prepare(&format!(
+                "SELECT {DISPLAY_NAME_SQL} AS display_name, ea.mac
                  FROM endpoints e
                  INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
-                 WHERE ea.mac IS NOT NULL",
-            )
+                 WHERE ea.mac IS NOT NULL"
+            ))
             .expect("Failed to prepare MAC batch statement");
 
         let rows = stmt
@@ -915,25 +888,15 @@ fn get_all_endpoint_types(
     // Only use ports that are actually LISTENING on the device (from open_ports table)
     // NOT communication ports, which would include traffic the device initiates
     // (e.g., a computer sending to port 9100 would incorrectly be classified as a printer)
-    // IMPORTANT: display_name computation must match dropdown_endpoints() exactly
     let mut all_ports: HashMap<String, Vec<u16>> = HashMap::new();
     {
         let mut stmt = conn
-            .prepare(
-                "SELECT
-                    COALESCE(e.custom_name,
-                        CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
-                        (SELECT MIN(hostname) FROM endpoint_attributes WHERE endpoint_id = e.id
-                         AND hostname IS NOT NULL AND hostname != ''
-                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'),
-                        (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
-                         AND ip IS NOT NULL AND ip != ''),
-                        e.name) AS display_name,
-                    op.port
+            .prepare(&format!(
+                "SELECT {DISPLAY_NAME_SQL} AS display_name, op.port
                  FROM endpoints e
                  INNER JOIN open_ports op ON e.id = op.endpoint_id
-                 GROUP BY e.id, op.port",
-            )
+                 GROUP BY e.id, op.port"
+            ))
             .expect("Failed to prepare port batch statement");
 
         let rows = stmt
@@ -1363,24 +1326,14 @@ fn get_all_endpoints_bytes(endpoints: &[String], internal_minutes: u64) -> HashM
     }
 
     // Single query to get all bytes data at once
-    // IMPORTANT: display_name computation must match dropdown_endpoints() exactly
     let mut stmt = conn
-        .prepare(
-            "SELECT
-                COALESCE(e.custom_name,
-                    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
-                    (SELECT MIN(hostname) FROM endpoint_attributes WHERE endpoint_id = e.id
-                     AND hostname IS NOT NULL AND hostname != ''
-                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'),
-                    (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
-                     AND ip IS NOT NULL AND ip != ''),
-                    e.name) AS display_name,
-                COALESCE(SUM(c.bytes), 0) as total_bytes
+        .prepare(&format!(
+            "SELECT {DISPLAY_NAME_SQL} AS display_name, COALESCE(SUM(c.bytes), 0) as total_bytes
              FROM endpoints e
              INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
              WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
-             GROUP BY e.id",
-        )
+             GROUP BY e.id"
+        ))
         .expect("Failed to prepare statement");
 
     let rows = stmt
@@ -1415,24 +1368,17 @@ fn get_all_endpoints_last_seen(
     }
 
     // Single query to get last_seen_at for each endpoint
-    // IMPORTANT: display_name computation must match dropdown_endpoints() exactly
+    // Uses DISPLAY_NAME_SQL constant for consistency with other queries
     let mut stmt = conn
-        .prepare(
+        .prepare(&format!(
             "SELECT
-                COALESCE(e.custom_name,
-                    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
-                    (SELECT MIN(hostname) FROM endpoint_attributes WHERE endpoint_id = e.id
-                     AND hostname IS NOT NULL AND hostname != ''
-                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'),
-                    (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
-                     AND ip IS NOT NULL AND ip != ''),
-                    e.name) AS display_name,
+                {DISPLAY_NAME_SQL} AS display_name,
                 MAX(c.last_seen_at) as last_seen
              FROM endpoints e
              INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
              WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
-             GROUP BY e.id",
-        )
+             GROUP BY e.id"
+        ))
         .expect("Failed to prepare statement");
 
     let rows = stmt
@@ -2395,4 +2341,112 @@ async fn set_scan_config(body: Json<ScanConfig>) -> impl Responder {
         success: true,
         message: "Config updated".to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_looks_like_ip_ipv4() {
+        assert!(looks_like_ip("192.168.1.1"));
+        assert!(looks_like_ip("10.0.0.1"));
+        assert!(looks_like_ip("255.255.255.255"));
+        assert!(looks_like_ip("0.0.0.0"));
+    }
+
+    #[test]
+    fn test_looks_like_ip_ipv6() {
+        assert!(looks_like_ip("::1"));
+        assert!(looks_like_ip("fe80::1"));
+        assert!(looks_like_ip("2001:db8::1"));
+        assert!(looks_like_ip("::ffff:192.168.1.1"));
+    }
+
+    #[test]
+    fn test_looks_like_ip_hostnames() {
+        assert!(!looks_like_ip("my-macbook.local"));
+        assert!(!looks_like_ip("router"));
+        assert!(!looks_like_ip("nintendo-switch"));
+        assert!(!looks_like_ip("LG-Dishwasher"));
+        assert!(!looks_like_ip("host.domain.com"));
+    }
+
+    #[test]
+    fn test_looks_like_ip_edge_cases() {
+        // Not quite an IP - wrong number of octets
+        assert!(!looks_like_ip("192.168.1"));
+        assert!(!looks_like_ip("192.168.1.1.1"));
+        // Contains numbers but is a hostname
+        assert!(!looks_like_ip("host123"));
+        assert!(!looks_like_ip("192host"));
+    }
+
+    #[test]
+    fn test_case_insensitive_hashmap_pattern() {
+        // This tests the pattern used throughout the codebase for case-insensitive lookups
+        let mut map: HashMap<String, String> = HashMap::new();
+
+        // Insert with lowercase key
+        map.insert("my-macbook.local".to_lowercase(), "value1".to_string());
+        map.insert("nintendo-switch".to_lowercase(), "value2".to_string());
+
+        // Lookup should work regardless of case
+        assert_eq!(
+            map.get(&"My-MacBook.local".to_lowercase()),
+            Some(&"value1".to_string())
+        );
+        assert_eq!(
+            map.get(&"MY-MACBOOK.LOCAL".to_lowercase()),
+            Some(&"value1".to_string())
+        );
+        assert_eq!(
+            map.get(&"Nintendo-Switch".to_lowercase()),
+            Some(&"value2".to_string())
+        );
+        assert_eq!(
+            map.get(&"NINTENDO-SWITCH".to_lowercase()),
+            Some(&"value2".to_string())
+        );
+    }
+
+    #[test]
+    fn test_case_insensitive_hashset_contains() {
+        // Test HashSet pattern used for endpoint lookups
+        let endpoints = vec![
+            "My-MacBook.local".to_string(),
+            "Nintendo-Switch".to_string(),
+            "LG-Dishwasher".to_string(),
+        ];
+
+        let endpoints_lower: HashSet<String> =
+            endpoints.iter().map(|e| e.to_lowercase()).collect();
+
+        // All case variations should be found
+        assert!(endpoints_lower.contains(&"my-macbook.local".to_string()));
+        assert!(endpoints_lower.contains(&"MY-MACBOOK.LOCAL".to_lowercase()));
+        assert!(endpoints_lower.contains(&"nintendo-switch".to_string()));
+        assert!(endpoints_lower.contains(&"NINTENDO-SWITCH".to_lowercase()));
+    }
+
+    #[test]
+    fn test_build_in_placeholders() {
+        assert_eq!(build_in_placeholders(0), "");
+        assert_eq!(build_in_placeholders(1), "?");
+        assert_eq!(build_in_placeholders(3), "?,?,?");
+        assert_eq!(build_in_placeholders(5), "?,?,?,?,?");
+    }
+
+    #[test]
+    fn test_display_name_sql_constant_format() {
+        // Verify the DISPLAY_NAME_SQL constant has expected structure
+        assert!(DISPLAY_NAME_SQL.contains("COALESCE"));
+        assert!(DISPLAY_NAME_SQL.contains("e.custom_name"));
+        assert!(DISPLAY_NAME_SQL.contains("e.name"));
+        assert!(DISPLAY_NAME_SQL.contains("MIN(hostname)"));
+        assert!(DISPLAY_NAME_SQL.contains("MIN(ip)"));
+        // Verify it filters out IP-like values
+        assert!(DISPLAY_NAME_SQL.contains("NOT LIKE '%:%'")); // IPv6 filter
+        assert!(DISPLAY_NAME_SQL.contains("NOT GLOB")); // IPv4 filter
+    }
 }

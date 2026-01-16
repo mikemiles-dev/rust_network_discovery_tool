@@ -223,11 +223,18 @@
                                          endpointModel.includes(searchTerm);
                 }
 
-                row.style.display = (shouldShowByType && shouldShowBySearch) ? '' : 'none';
+                // Set filtered-out attribute for pagination to use
+                var isFilteredOut = !(shouldShowByType && shouldShowBySearch);
+                row.dataset.filteredOut = isFilteredOut ? 'true' : 'false';
             });
 
             // Remove filters-pending class to show rows (prevents flash of unfiltered content)
             document.body.classList.remove('filters-pending');
+
+            // Update pagination after filtering
+            if (App.Pagination) {
+                App.Pagination.resetToFirstPage('endpoints');
+            }
 
             // Filter IPs in endpoint details based on internet filter
             if (!showInternet) {

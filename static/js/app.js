@@ -161,11 +161,39 @@
         // Initialize table sorting
         App.initTableSorting();
 
+        // Initialize pagination for both tables
+        if (App.Pagination) {
+            App.Pagination.init('endpoints');
+            App.Pagination.init('mdns');
+        }
+
         // Initialize refresh interval
         if (App.Refresh) {
             App.Refresh.init();
         }
     });
+
+    /**
+     * Parse "last seen" text into seconds for sorting
+     * @param {string} text - Text like "Just now", "5 min ago", "2 hours ago"
+     * @returns {number} Seconds ago (lower = more recent)
+     */
+    function parseLastSeen(text) {
+        if (!text || text === '-') return Infinity;
+        text = text.trim().toLowerCase();
+        if (text === 'just now') return 0;
+
+        var match = text.match(/(\d+)\s*(min|hour|day|sec)/);
+        if (match) {
+            var num = parseInt(match[1], 10);
+            var unit = match[2];
+            if (unit.startsWith('sec')) return num;
+            if (unit.startsWith('min')) return num * 60;
+            if (unit.startsWith('hour')) return num * 3600;
+            if (unit.startsWith('day')) return num * 86400;
+        }
+        return Infinity;
+    }
 
     // Table sorting functionality
     App.initTableSorting = function() {
@@ -224,6 +252,11 @@
                     aVal = parseInt(a.dataset.endpointBytes, 10) || 0;
                     bVal = parseInt(b.dataset.endpointBytes, 10) || 0;
                     return ascending ? aVal - bVal : bVal - aVal;
+                case 'last_seen':
+                    // Parse "Just now", "X min ago", "X hours ago" etc
+                    aVal = parseLastSeen(a.querySelector('.last-seen-cell')?.textContent || '');
+                    bVal = parseLastSeen(b.querySelector('.last-seen-cell')?.textContent || '');
+                    return ascending ? aVal - bVal : bVal - aVal;
                 default:
                     aVal = '';
                     bVal = '';
@@ -237,6 +270,11 @@
         rows.forEach(function(row) {
             tbody.appendChild(row);
         });
+
+        // Reset pagination to first page after sorting
+        if (App.Pagination) {
+            App.Pagination.resetToFirstPage('endpoints');
+        }
     };
 
 })(window.App);
