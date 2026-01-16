@@ -1268,6 +1268,8 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("f8:d0:ac", "Samsung"),
     ("fc:a1:3e", "Samsung"),
     ("fc:f1:36", "Samsung"),
+    // Samjin (SmartThings sensors, IoT devices for Samsung)
+    ("28:6d:97", "Samjin"),
     // Roku
     ("08:05:81", "Roku"),
     ("10:59:32", "Roku"),
@@ -2449,6 +2451,7 @@ pub fn get_model_from_mac(mac: &str) -> Option<String> {
         "TCL" => Some("TCL TV".to_string()),
         "Hisense" => Some("Hisense TV".to_string()),
         "Texas Instruments" => Some("TI IoT Device".to_string()),
+        "Samjin" => Some("SmartThings Sensor".to_string()),
         _ => None,
     }
 }
