@@ -23,8 +23,15 @@ use crate::network::protocol::ProtocolPort;
 use crate::scanner::manager::{ScanConfig, ScanManager};
 use crate::scanner::{ScanResult, ScanType, check_scan_privileges};
 use rusqlite::{Connection, OptionalExtension, params};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use tokio::sync::mpsc;
+
+// Track endpoints currently being probed to prevent duplicate probes
+static PROBING_ENDPOINTS: OnceLock<Mutex<HashSet<i64>>> = OnceLock::new();
+
+fn get_probing_endpoints() -> &'static Mutex<HashSet<i64>> {
+    PROBING_ENDPOINTS.get_or_init(|| Mutex::new(HashSet::new()))
+}
 
 use serde::{Deserialize, Serialize};
 
@@ -1384,12 +1391,16 @@ async fn get_endpoint_details(
         .unwrap_or((None, None));
 
     // Check if device has SSDP info (for context-aware model detection)
-    let has_ssdp = ssdp_model.is_some();
+    // Check for non-empty string, not just Some()
+    let has_ssdp = ssdp_model.as_ref().is_some_and(|m| !m.is_empty());
 
     // Auto-probe HP devices without a model
+    // Check for None OR empty string since database might have either
+    let needs_model = custom_model.as_ref().is_none_or(|m| m.is_empty())
+        && ssdp_model.as_ref().is_none_or(|m| m.is_empty());
+
     if device_vendor == "HP"
-        && custom_model.is_none()
-        && ssdp_model.is_none()
+        && needs_model
         && let Some(ip) = ips.first().cloned()
         && let Ok(endpoint_id) = conn.query_row(
             "SELECT e.id FROM endpoints e WHERE LOWER(e.name) = LOWER(?1) OR LOWER(e.custom_name) = LOWER(?1) LIMIT 1",
@@ -1397,10 +1408,26 @@ async fn get_endpoint_details(
             |row| row.get::<_, i64>(0),
         )
     {
-        eprintln!("Auto-probing HP device at {} (endpoint {})", ip, endpoint_id);
-        tokio::spawn(async move {
-            probe_and_save_hp_printer_model(&ip, endpoint_id).await;
-        });
+        // Check if already probing this endpoint to prevent duplicate probes
+        let should_probe = {
+            let mut probing = get_probing_endpoints().lock().unwrap();
+            if probing.contains(&endpoint_id) {
+                false
+            } else {
+                probing.insert(endpoint_id);
+                true
+            }
+        };
+
+        if should_probe {
+            eprintln!("Auto-probing HP device at {} (endpoint {})", ip, endpoint_id);
+            tokio::spawn(async move {
+                probe_and_save_hp_printer_model(&ip, endpoint_id).await;
+                // Remove from probing set when done
+                let mut probing = get_probing_endpoints().lock().unwrap();
+                probing.remove(&endpoint_id);
+            });
+        }
     }
 
     // Get device model: custom_model first, then SSDP (with normalization), hostname, MAC, DHCP vendor class, vendor+type fallback

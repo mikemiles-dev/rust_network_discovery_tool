@@ -18,7 +18,7 @@
 
             currentPollingEndpoint = endpointName;
             var pollCount = 0;
-            var maxPolls = 30; // Poll for max 30 seconds (every 1 second)
+            var maxPolls = 20; // Poll for max 10 seconds (every 500ms)
 
             modelPollIntervalId = setInterval(function() {
                 pollCount++;
@@ -64,7 +64,7 @@
                     .catch(function() {
                         // Ignore errors during polling
                     });
-            }, 1000); // Poll every 1 second
+            }, 500); // Poll every 500ms for faster updates
         },
 
         /**
@@ -154,9 +154,12 @@
 
             // Start polling for model updates if this looks like a device being probed
             // (HP Device, Amazon Device, etc. are generic fallbacks that may be updated)
-            var genericModels = ['HP Device', 'Amazon Device', 'Amazon Echo', 'Google Device'];
-            if (data.device_model && genericModels.indexOf(data.device_model) !== -1) {
-                App.Endpoints.startModelPolling(data.endpoint_name, data.device_model);
+            // Also poll for HP vendor with no/empty model
+            var genericModels = ['HP Device', 'Amazon Device', 'Amazon Echo', 'Google Device', ''];
+            var isGenericModel = !data.device_model || genericModels.indexOf(data.device_model) !== -1;
+            var isHpDevice = data.device_vendor === 'HP';
+            if (isGenericModel && isHpDevice) {
+                App.Endpoints.startModelPolling(data.endpoint_name, data.device_model || '');
             } else {
                 // Stop any existing polling if we have a specific model
                 App.Endpoints.stopModelPolling();
