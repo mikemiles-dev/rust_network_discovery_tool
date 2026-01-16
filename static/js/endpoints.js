@@ -4,7 +4,79 @@
 (function(App) {
     'use strict';
 
+    // Model polling state
+    var modelPollIntervalId = null;
+    var currentPollingEndpoint = null;
+
     App.Endpoints = {
+        /**
+         * Start polling for model updates (for devices being probed)
+         */
+        startModelPolling: function(endpointName, currentModel) {
+            // Stop any existing polling
+            App.Endpoints.stopModelPolling();
+
+            currentPollingEndpoint = endpointName;
+            var pollCount = 0;
+            var maxPolls = 30; // Poll for max 30 seconds (every 1 second)
+
+            modelPollIntervalId = setInterval(function() {
+                pollCount++;
+
+                // Stop polling after max attempts
+                if (pollCount >= maxPolls) {
+                    App.Endpoints.stopModelPolling();
+                    return;
+                }
+
+                // Fetch updated endpoint details
+                fetch('/api/endpoint/' + encodeURIComponent(endpointName) + '/details')
+                    .then(function(response) { return response.json(); })
+                    .then(function(data) {
+                        // Check if model has changed
+                        if (data.device_model && data.device_model !== currentModel) {
+                            // Update the model badge
+                            var modelBadge = document.getElementById('device-model-badge');
+                            if (modelBadge) {
+                                modelBadge.textContent = data.device_model;
+                                modelBadge.style.display = '';
+                                // Add a brief highlight animation
+                                modelBadge.style.transition = 'background-color 0.3s';
+                                modelBadge.style.backgroundColor = 'rgba(139, 92, 246, 0.4)';
+                                setTimeout(function() {
+                                    modelBadge.style.backgroundColor = '';
+                                }, 500);
+                            }
+
+                            // Also update the table row if visible
+                            var tableRow = document.querySelector('.endpoint-row[data-endpoint="' + endpointName + '"]');
+                            if (tableRow) {
+                                var modelCell = tableRow.querySelector('.model-cell');
+                                if (modelCell) {
+                                    modelCell.textContent = data.device_model;
+                                }
+                            }
+
+                            // Stop polling - we got the updated model
+                            App.Endpoints.stopModelPolling();
+                        }
+                    })
+                    .catch(function() {
+                        // Ignore errors during polling
+                    });
+            }, 1000); // Poll every 1 second
+        },
+
+        /**
+         * Stop model polling
+         */
+        stopModelPolling: function() {
+            if (modelPollIntervalId) {
+                clearInterval(modelPollIntervalId);
+                modelPollIntervalId = null;
+            }
+            currentPollingEndpoint = null;
+        },
         /**
          * Get device type emoji and label
          */
@@ -78,6 +150,16 @@
                 } else {
                     modelBadge.style.display = 'none';
                 }
+            }
+
+            // Start polling for model updates if this looks like a device being probed
+            // (HP Device, Amazon Device, etc. are generic fallbacks that may be updated)
+            var genericModels = ['HP Device', 'Amazon Device', 'Amazon Echo', 'Google Device'];
+            if (data.device_model && genericModels.indexOf(data.device_model) !== -1) {
+                App.Endpoints.startModelPolling(data.endpoint_name, data.device_model);
+            } else {
+                // Stop any existing polling if we have a specific model
+                App.Endpoints.stopModelPolling();
             }
 
             // Update stat badges
@@ -221,6 +303,9 @@
                 currentRow.classList.add('selected');
             }
 
+            // Stop any existing model polling
+            App.Endpoints.stopModelPolling();
+
             // Show loading state immediately to avoid showing stale data
             App.Endpoints.showLoading(nodeId);
 
@@ -241,6 +326,9 @@
          * Unselect node and update URL
          */
         unselectNode: function() {
+            // Stop any existing model polling
+            App.Endpoints.stopModelPolling();
+
             var url = new URL(window.location.href);
             url.searchParams.delete('node');
             history.pushState({}, '', url.toString());

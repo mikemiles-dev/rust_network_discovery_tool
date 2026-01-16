@@ -62,6 +62,11 @@ sudo rust_network_discovery_tool
 - **Device Remote Control**: Control smart devices directly from the UI
   - **TVs**: Roku, Samsung, LG webOS (volume, playback, power, apps)
   - **LG ThinQ Appliances**: Dishwashers, washers, dryers, refrigerators, ACs (via cloud API)
+- **Automatic Device Model Detection**: Identifies device models from multiple sources
+  - **SSDP/UPnP**: Fetches model info from device description XML
+  - **HP Printers**: Probes web interface to detect LaserJet, OfficeJet, DeskJet models
+  - **Smart TVs**: Normalizes model numbers (e.g., QN43LS03TAFXZA → "Samsung The Frame")
+  - **Heuristic Detection**: Infers models from MAC vendor + network behavior (Amazon Echo, Fire TV, etc.)
 - **DNS Caching**: Prevents slow lookups with DNS cache
 - **High Performance**: Optimized with database indexes, transaction batching, and connection pooling
 

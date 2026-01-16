@@ -39,9 +39,13 @@
   - Google/Nest devices: Chromecast, Nest/Google speakers
   - Uses MAC vendor + network behavior to identify devices
 - **Automatic HP Printer Model Detection** - Probes HP printer web interfaces for model info
-  - Triggers automatically when HP device detected via ARP scan
+  - Triggers automatically when viewing HP device details or via ARP scan
   - Extracts model from web page title (LaserJet, OfficeJet, DeskJet, ENVY)
-  - Saves model to database for display in UI
+  - UI auto-polls and updates when model is discovered (no manual refresh needed)
+  - Manual probe via `/api/endpoint/probe` endpoint
+- **Tab Persistence** - Selected tab preserved across page refreshes
+  - Tab state saved to URL query parameter
+  - Switching between Network, mDNS, and Scanner tabs now persists
 
 ### Fixed
 - **MacBook Classified as Phone** - Mac computers advertising `_companion-link._tcp` (Handoff/AirDrop) were incorrectly classified as phones

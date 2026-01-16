@@ -27,6 +27,16 @@
             // Update active tab state
             App.state.activeTab = tabName;
 
+            // Save tab to URL for persistence across refresh
+            var url = new URL(window.location.href);
+            if (tabName === 'network') {
+                // Remove tab param for default tab
+                url.searchParams.delete('tab');
+            } else {
+                url.searchParams.set('tab', tabName);
+            }
+            window.history.replaceState({}, '', url.toString());
+
             // If switching to DNS tab, do an immediate refresh of DNS entries
             if (tabName === 'dns') {
                 App.Tabs.refreshDnsEntries();

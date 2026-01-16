@@ -150,12 +150,16 @@ async fn probe_hp_printer_model(ip: &str) -> Option<String> {
         Err(_) => return None,
     };
 
+    // Convert to lowercase for case-insensitive tag matching
+    let html_lower = html.to_lowercase();
+
     // Try to extract model from HTML title tag
     // HP printers typically have titles like "HP Color LaserJet MFP M283fdw"
-    if let Some(start) = html.find("<title>") {
-        let after_title = &html[start + 7..];
-        if let Some(end) = after_title.find("</title>") {
-            let title = after_title[..end].trim();
+    if let Some(start) = html_lower.find("<title>") {
+        let title_start = start + 7;
+        if let Some(end_offset) = html_lower[title_start..].find("</title>") {
+            // Use original case HTML for the actual content
+            let title = html[title_start..title_start + end_offset].trim();
             // Clean up the title - remove IP address and extra whitespace
             let model = title
                 .split("&nbsp;")
@@ -167,22 +171,26 @@ async fn probe_hp_printer_model(ip: &str) -> Option<String> {
                 .trim();
 
             // Only return if it looks like an HP model
-            if model.to_lowercase().contains("hp ") ||
-               model.to_lowercase().contains("laserjet") ||
-               model.to_lowercase().contains("officejet") ||
-               model.to_lowercase().contains("deskjet") ||
-               model.to_lowercase().contains("envy") {
+            let model_lower = model.to_lowercase();
+            if model_lower.contains("hp ")
+                || model_lower.starts_with("hp")
+                || model_lower.contains("laserjet")
+                || model_lower.contains("officejet")
+                || model_lower.contains("deskjet")
+                || model_lower.contains("envy")
+            {
                 return Some(model.to_string());
             }
         }
     }
 
     // Try to extract from <h1> tag (common in HP printer pages)
-    if let Some(start) = html.find("<h1>") {
-        let after_h1 = &html[start + 4..];
-        if let Some(end) = after_h1.find("</h1>") {
-            let h1_content = after_h1[..end].trim();
-            if h1_content.to_lowercase().contains("hp ") {
+    if let Some(start) = html_lower.find("<h1>") {
+        let h1_start = start + 4;
+        if let Some(end_offset) = html_lower[h1_start..].find("</h1>") {
+            let h1_content = html[h1_start..h1_start + end_offset].trim();
+            let h1_lower = h1_content.to_lowercase();
+            if h1_lower.contains("hp ") || h1_lower.starts_with("hp") {
                 return Some(h1_content.to_string());
             }
         }
@@ -196,10 +204,13 @@ async fn probe_and_save_hp_printer_model(ip: &str, endpoint_id: i64) {
     if let Some(model) = probe_hp_printer_model(ip).await {
         // Save the model to the database
         if let Ok(conn) = new_connection_result() {
-            let _ = conn.execute(
+            match conn.execute(
                 "UPDATE endpoints SET ssdp_model = ?1 WHERE id = ?2 AND (ssdp_model IS NULL OR ssdp_model = '')",
                 params![model, endpoint_id],
-            );
+            ) {
+                Ok(rows) => eprintln!("HP probe updated {} rows for endpoint {}", rows, endpoint_id),
+                Err(e) => eprintln!("HP probe DB error: {}", e),
+            }
         }
     }
 }
@@ -591,7 +602,9 @@ fn get_endpoint_ssdp_models(endpoints: &[String]) -> HashMap<String, EndpointMod
     for row in rows.flatten() {
         let (name, custom_model, ssdp_model, friendly_name) = row;
         let name_lower = name.to_lowercase();
-        if endpoints_lower.contains(&name_lower) && (custom_model.is_some() || ssdp_model.is_some() || friendly_name.is_some()) {
+        if endpoints_lower.contains(&name_lower)
+            && (custom_model.is_some() || ssdp_model.is_some() || friendly_name.is_some())
+        {
             result.insert(name_lower, (custom_model, ssdp_model, friendly_name));
         }
     }
@@ -1110,9 +1123,13 @@ fn get_all_endpoint_types(
             EndPoint::classify_endpoint(first_ip.clone(), Some(endpoint.clone()))
         {
             types.insert(endpoint.clone(), endpoint_type);
-        } else if let Some(device_type) =
-            EndPoint::classify_device_type(Some(endpoint), &ips, &ports, &macs, ssdp_model.map(|s| s.as_str()))
-        {
+        } else if let Some(device_type) = EndPoint::classify_device_type(
+            Some(endpoint),
+            &ips,
+            &ports,
+            &macs,
+            ssdp_model.map(|s| s.as_str()),
+        ) {
             types.insert(endpoint.clone(), device_type);
         } else if let Some(ref ip_str) = first_ip {
             // Only classify as local if the IP is actually on the local network
@@ -1125,8 +1142,7 @@ fn get_all_endpoint_types(
     (types, manual_overrides)
 }
 
-#[derive(Serialize)]
-#[derive(Default)]
+#[derive(Serialize, Default)]
 struct BytesStats {
     bytes_in: i64,
     bytes_out: i64,
@@ -1287,19 +1303,25 @@ async fn get_endpoint_details(
             (network_type.to_string(), false)
         } else {
             // Use EndPoint::classify_device_type for device-specific detection
-            let auto_type = EndPoint::classify_device_type(Some(&endpoint_name), &ips, &[], &macs, ssdp_model.as_deref())
-                .unwrap_or_else(|| {
-                    // Fallback: if on local network, classify as "local", otherwise "other"
-                    if let Some(ref ip_str) = first_ip {
-                        if EndPoint::is_on_local_network(ip_str) {
-                            "local"
-                        } else {
-                            "other"
-                        }
+            let auto_type = EndPoint::classify_device_type(
+                Some(&endpoint_name),
+                &ips,
+                &[],
+                &macs,
+                ssdp_model.as_deref(),
+            )
+            .unwrap_or_else(|| {
+                // Fallback: if on local network, classify as "local", otherwise "other"
+                if let Some(ref ip_str) = first_ip {
+                    if EndPoint::is_on_local_network(ip_str) {
+                        "local"
                     } else {
                         "other"
                     }
-                });
+                } else {
+                    "other"
+                }
+            });
             (auto_type.to_string(), false)
         }
     };
@@ -1364,12 +1386,33 @@ async fn get_endpoint_details(
     // Check if device has SSDP info (for context-aware model detection)
     let has_ssdp = ssdp_model.is_some();
 
+    // Auto-probe HP devices without a model
+    if device_vendor == "HP"
+        && custom_model.is_none()
+        && ssdp_model.is_none()
+        && let Some(ip) = ips.first().cloned()
+        && let Ok(endpoint_id) = conn.query_row(
+            "SELECT e.id FROM endpoints e WHERE LOWER(e.name) = LOWER(?1) OR LOWER(e.custom_name) = LOWER(?1) LIMIT 1",
+            rusqlite::params![&endpoint_name],
+            |row| row.get::<_, i64>(0),
+        )
+    {
+        eprintln!("Auto-probing HP device at {} (endpoint {})", ip, endpoint_id);
+        tokio::spawn(async move {
+            probe_and_save_hp_printer_model(&ip, endpoint_id).await;
+        });
+    }
+
     // Get device model: custom_model first, then SSDP (with normalization), hostname, MAC, DHCP vendor class, vendor+type fallback
     let device_model: String = custom_model
         .or_else(|| {
             ssdp_model.as_ref().and_then(|model| {
                 // Try to normalize the SSDP model (e.g., QN43LS03TAFXZA -> Samsung The Frame)
-                let vendor_ref = if device_vendor.is_empty() { None } else { Some(device_vendor.as_str()) };
+                let vendor_ref = if device_vendor.is_empty() {
+                    None
+                } else {
+                    Some(device_vendor.as_str())
+                };
                 normalize_model_name(model, vendor_ref).or_else(|| Some(model.clone()))
             })
         })
@@ -1637,6 +1680,7 @@ pub fn start(preferred_port: u16) {
                         .service(set_endpoint_type)
                         .service(rename_endpoint)
                         .service(set_endpoint_model)
+                        .service(probe_endpoint_model)
                         .service(get_dns_entries_api)
                         .service(probe_hostname)
                         .service(get_endpoint_details)
@@ -1737,10 +1781,8 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
 
     // Phase 1: Run independent queries in parallel
     let query_node_1 = query.node.clone();
-    let nodes_future =
-        tokio::task::spawn_blocking(move || get_nodes(query_node_1, scan_interval));
-    let dropdown_future =
-        tokio::task::spawn_blocking(move || dropdown_endpoints(scan_interval));
+    let nodes_future = tokio::task::spawn_blocking(move || get_nodes(query_node_1, scan_interval));
+    let dropdown_future = tokio::task::spawn_blocking(move || dropdown_endpoints(scan_interval));
     let interfaces_future = tokio::task::spawn_blocking(get_interfaces);
 
     let (communications_result, dropdown_result, interfaces_result) =
@@ -1773,24 +1815,32 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         tokio::task::spawn_blocking(move || get_endpoint_ips_and_macs(&dropdown_for_ips));
     let vendor_classes_future =
         tokio::task::spawn_blocking(move || get_endpoint_vendor_classes(&dropdown_for_vendor));
-    let bytes_future =
-        tokio::task::spawn_blocking(move || get_all_endpoints_bytes(&dropdown_for_bytes, scan_interval));
-    let last_seen_future =
-        tokio::task::spawn_blocking(move || get_all_endpoints_last_seen(&dropdown_for_seen, scan_interval));
+    let bytes_future = tokio::task::spawn_blocking(move || {
+        get_all_endpoints_bytes(&dropdown_for_bytes, scan_interval)
+    });
+    let last_seen_future = tokio::task::spawn_blocking(move || {
+        get_all_endpoints_last_seen(&dropdown_for_seen, scan_interval)
+    });
     let all_types_future =
         tokio::task::spawn_blocking(move || get_all_endpoint_types(&dropdown_for_types));
     let ssdp_models_future =
         tokio::task::spawn_blocking(move || get_endpoint_ssdp_models(&dropdown_for_ssdp));
 
-    let (ips_macs_result, vendor_classes_result, bytes_result, last_seen_result, all_types_result, ssdp_models_result) =
-        tokio::join!(
-            ips_macs_future,
-            vendor_classes_future,
-            bytes_future,
-            last_seen_future,
-            all_types_future,
-            ssdp_models_future
-        );
+    let (
+        ips_macs_result,
+        vendor_classes_result,
+        bytes_result,
+        last_seen_result,
+        all_types_result,
+        ssdp_models_result,
+    ) = tokio::join!(
+        ips_macs_future,
+        vendor_classes_future,
+        bytes_future,
+        last_seen_future,
+        all_types_future,
+        ssdp_models_future
+    );
 
     let endpoint_ips_macs = ips_macs_result.unwrap_or_default();
     let endpoint_dhcp_vendor_classes = vendor_classes_result.unwrap_or_default();
@@ -1875,12 +1925,14 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
             // Fall back to context-aware MAC-based detection (for Amazon devices etc.)
             if let Some((_, macs)) = endpoint_ips_macs.get(&endpoint_lower) {
                 // Check if device has SSDP info (indicates it's not a "silent" device like Echo)
-                let has_ssdp = endpoint_ssdp_models.get(&endpoint_lower)
+                let has_ssdp = endpoint_ssdp_models
+                    .get(&endpoint_lower)
                     .is_some_and(|(_, ssdp, friendly)| ssdp.is_some() || friendly.is_some());
                 // Note: We don't have open ports data here, so pass empty slice
                 // Full context-aware detection happens in get_endpoint_details
                 for mac in macs {
-                    if let Some(model) = infer_model_with_context(mac, has_ssdp, false, false, &[]) {
+                    if let Some(model) = infer_model_with_context(mac, has_ssdp, false, false, &[])
+                    {
                         return Some((endpoint_lower.clone(), model));
                     }
                     if let Some(model) = get_model_from_mac(mac) {
@@ -1965,13 +2017,12 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         })
     };
 
-    let (ips_macs_hostnames_result, protocols_result, bytes_stats_result, ports_result) =
-        tokio::join!(
-            ips_macs_hostnames_future,
-            protocols_future,
-            bytes_stats_future,
-            ports_future
-        );
+    let (ips_macs_hostnames_result, protocols_result, bytes_stats_result, ports_result) = tokio::join!(
+        ips_macs_hostnames_future,
+        protocols_future,
+        bytes_stats_future,
+        ports_future
+    );
 
     let (ips, macs, hostnames) = ips_macs_hostnames_result.unwrap_or_default();
     let protocols = protocols_result.unwrap_or_default();
@@ -2021,14 +2072,19 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
             models_data
                 .and_then(|(_, ssdp_model_opt, _)| ssdp_model_opt.as_ref())
                 .and_then(|model| {
-                    let vendor_ref = if device_vendor.is_empty() { None } else { Some(device_vendor.as_str()) };
+                    let vendor_ref = if device_vendor.is_empty() {
+                        None
+                    } else {
+                        Some(device_vendor.as_str())
+                    };
                     normalize_model_name(model, vendor_ref).or_else(|| Some(model.clone()))
                 })
         })
         .or_else(|| get_model_from_hostname(&selected_endpoint))
         .or_else(|| {
             // Context-aware MAC detection for Amazon devices etc.
-            let has_ssdp = models_data.is_some_and(|(_, ssdp, friendly)| ssdp.is_some() || friendly.is_some());
+            let has_ssdp =
+                models_data.is_some_and(|(_, ssdp, friendly)| ssdp.is_some() || friendly.is_some());
             macs.iter().find_map(|mac| {
                 infer_model_with_context(mac, has_ssdp, false, false, &[])
                     .or_else(|| get_model_from_mac(mac))
@@ -2255,6 +2311,66 @@ async fn set_endpoint_model(body: Json<SetModelRequest>) -> impl Responder {
             success: false,
             message: format!("Database error: {}", e),
         }),
+    }
+}
+
+#[derive(Deserialize)]
+struct ProbeModelRequest {
+    ip: String,
+}
+
+#[derive(Serialize)]
+struct ProbeModelResponse {
+    success: bool,
+    message: String,
+    model: Option<String>,
+}
+
+/// Probe a device's web interface to detect its model
+#[post("/api/endpoint/probe")]
+async fn probe_endpoint_model(body: Json<ProbeModelRequest>) -> impl Responder {
+    let ip = body.ip.clone();
+
+    // Try to probe the device for its model
+    if let Some(model) = probe_hp_printer_model(&ip).await {
+        // Find the endpoint and save the model
+        let conn = match new_connection_result() {
+            Ok(c) => c,
+            Err(e) => {
+                return HttpResponse::InternalServerError().json(ProbeModelResponse {
+                    success: false,
+                    message: format!("Database error: {}", e),
+                    model: None,
+                });
+            }
+        };
+
+        // Find endpoint by IP and update the ssdp_model
+        let update_result = conn.execute(
+            "UPDATE endpoints SET ssdp_model = ?1
+             WHERE id IN (SELECT endpoint_id FROM endpoint_attributes WHERE ip = ?2)
+             AND (ssdp_model IS NULL OR ssdp_model = '')",
+            params![model, ip],
+        );
+
+        match update_result {
+            Ok(rows) => HttpResponse::Ok().json(ProbeModelResponse {
+                success: true,
+                message: format!("Found model '{}', updated {} endpoint(s)", model, rows),
+                model: Some(model),
+            }),
+            Err(e) => HttpResponse::InternalServerError().json(ProbeModelResponse {
+                success: false,
+                message: format!("Found model '{}' but failed to save: {}", model, e),
+                model: Some(model),
+            }),
+        }
+    } else {
+        HttpResponse::Ok().json(ProbeModelResponse {
+            success: false,
+            message: "Could not detect model from device web interface".to_string(),
+            model: None,
+        })
     }
 }
 
@@ -2493,23 +2609,6 @@ fn get_scan_manager() -> std::sync::Arc<ScanManager> {
                     if let Err(e) = process_scan_result(&result) {
                         eprintln!("Error processing scan result: {}", e);
                     }
-
-                    // Check if this is an ARP result for an HP device and probe for model
-                    if let ScanResult::Arp(arp) = &result {
-                        let mac_str = arp.mac.to_string();
-                        if get_mac_vendor(&mac_str).is_some_and(|v| v == "HP") {
-                            let ip = arp.ip.to_string();
-                            // Spawn async task to probe HP printer model
-                            tokio::spawn(async move {
-                                // Find the endpoint_id for this IP
-                                if let Ok(conn) = new_connection_result()
-                                    && let Some(endpoint_id) = find_existing_endpoint_by_ip(&conn, &ip)
-                                {
-                                    probe_and_save_hp_printer_model(&ip, endpoint_id).await;
-                                }
-                            });
-                        }
-                    }
                 }
             });
 
@@ -2545,9 +2644,13 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
         ScanResult::Arp(arp) => {
             let ip_str = arp.ip.to_string();
             let mac_str = arp.mac.to_string();
-            if let Ok(endpoint_id) =
-                EndPoint::get_or_insert_endpoint(&conn, Some(mac_str), Some(ip_str), None, &[])
-            {
+            if let Ok(endpoint_id) = EndPoint::get_or_insert_endpoint(
+                &conn,
+                Some(mac_str.clone()),
+                Some(ip_str.clone()),
+                None,
+                &[],
+            ) {
                 insert_scan_result(
                     &conn,
                     endpoint_id,
@@ -2555,6 +2658,14 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
                     Some(arp.response_time_ms as i64),
                     None,
                 )?;
+
+                // If this is an HP device, probe for printer model
+                if get_mac_vendor(&mac_str).is_some_and(|v| v == "HP") {
+                    let ip_for_probe = ip_str.clone();
+                    tokio::spawn(async move {
+                        probe_and_save_hp_printer_model(&ip_for_probe, endpoint_id).await;
+                    });
+                }
             }
         }
         ScanResult::Icmp(icmp) => {
@@ -2833,8 +2944,7 @@ mod tests {
             "LG-Dishwasher".to_string(),
         ];
 
-        let endpoints_lower: HashSet<String> =
-            endpoints.iter().map(|e| e.to_lowercase()).collect();
+        let endpoints_lower: HashSet<String> = endpoints.iter().map(|e| e.to_lowercase()).collect();
 
         // All case variations should be found
         assert!(endpoints_lower.contains(&"my-macbook.local".to_string()));
