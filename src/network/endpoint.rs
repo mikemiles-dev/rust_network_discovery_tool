@@ -2713,6 +2713,18 @@ pub fn is_locally_administered_mac(mac: &str) -> bool {
     matches!(chars[1], '2' | '6' | 'a' | 'e')
 }
 
+/// Check if an IP address is an IPv6 link-local address (fe80::)
+pub fn is_ipv6_link_local(ip: &str) -> bool {
+    use std::net::Ipv6Addr;
+    if let Ok(addr) = ip.parse::<Ipv6Addr>() {
+        // Link-local addresses start with fe80::/10
+        let segments = addr.segments();
+        (segments[0] & 0xffc0) == 0xfe80
+    } else {
+        false
+    }
+}
+
 /// Extract MAC address from IPv6 EUI-64 interface identifier
 /// Works with link-local (fe80::) and other IPv6 addresses that use EUI-64 format
 /// The EUI-64 format inserts ff:fe in the middle of the MAC and flips the 7th bit
@@ -3136,6 +3148,15 @@ impl EndPoint {
         dhcp_vendor_class: Option<String>,
         dhcp_hostname: Option<String>,
     ) -> Result<i64, InsertEndpointError> {
+        // Filter out IPv6 link-local addresses without EUI-64 format (privacy addresses)
+        // These can't be reliably matched to a device and create duplicate endpoints
+        if let Some(ref ip_str) = ip
+            && is_ipv6_link_local(ip_str)
+            && extract_mac_from_ipv6_eui64(ip_str).is_none()
+        {
+            return Err(InsertEndpointError::BothMacAndIpNone);
+        }
+
         // Try to extract MAC from IPv6 EUI-64 address if no MAC provided
         let mac = mac.or_else(|| {
             ip.as_ref().and_then(|ip_str| extract_mac_from_ipv6_eui64(ip_str))
