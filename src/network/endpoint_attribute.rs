@@ -56,6 +56,21 @@ impl EndPointAttribute {
             "CREATE INDEX IF NOT EXISTS idx_endpoint_attributes_dhcp_vendor_class ON endpoint_attributes (dhcp_vendor_class);",
             [],
         )?;
+        // Clean up any existing duplicates before creating the unique index
+        // Keep only the most recent row for each unique combination
+        let _ = conn.execute(
+            "DELETE FROM endpoint_attributes WHERE id NOT IN (
+                SELECT MAX(id) FROM endpoint_attributes
+                GROUP BY endpoint_id, COALESCE(mac, ''), ip, COALESCE(hostname, '')
+            )",
+            [],
+        );
+        // Create unique index that handles NULLs properly using COALESCE
+        // This prevents duplicate rows even when mac or hostname is NULL
+        let _ = conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_endpoint_attributes_unique_combo ON endpoint_attributes (endpoint_id, COALESCE(mac, ''), ip, COALESCE(hostname, ''));",
+            [],
+        );
         Ok(())
     }
 
@@ -220,8 +235,9 @@ impl EndPointAttribute {
     ) -> Result<()> {
         // Strip local suffixes like .local, .lan, .home
         let hostname = strip_local_suffix(&hostname);
+        // Use INSERT OR IGNORE to skip duplicates (UNIQUE constraint may not catch NULLs)
         conn.execute(
-            "INSERT INTO endpoint_attributes (created_at, endpoint_id, mac, ip, hostname, dhcp_client_id, dhcp_vendor_class) VALUES (strftime('%s', 'now'), ?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT OR IGNORE INTO endpoint_attributes (created_at, endpoint_id, mac, ip, hostname, dhcp_client_id, dhcp_vendor_class) VALUES (strftime('%s', 'now'), ?1, ?2, ?3, ?4, ?5, ?6)",
             params![endpoint_id, mac, ip, hostname, dhcp_client_id, dhcp_vendor_class],
         )?;
         Ok(())

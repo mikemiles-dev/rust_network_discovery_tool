@@ -148,15 +148,37 @@ impl MDnsLookup {
                                     let addr = addr.to_ip_addr().to_string();
 
                                     // Store hostname lookup (always store for name resolution)
-                                    if let Ok(mut lookups) = MDNS_LOOKUPS
+                                    let is_new_hostname = if let Ok(mut lookups) = MDNS_LOOKUPS
                                         .get_or_init(|| RwLock::new(HashMap::new()))
                                         .write()
                                     {
+                                        let existing = lookups.get(&addr);
+                                        let is_new = existing.map(|e| e != &host).unwrap_or(true);
                                         lookups.insert(addr.to_string(), host.to_string());
-                                    }
+                                        is_new
+                                    } else {
+                                        false
+                                    };
 
-                                    // Note: Database updates removed to avoid lock contention with SQLWriter
-                                    // Hostname resolution now uses in-memory MDNS_LOOKUPS cache via resolve_from_mdns_cache()
+                                    // Persist hostname to database if it's a new discovery
+                                    // Only update if hostname doesn't look like an IP address
+                                    if is_new_hostname
+                                        && !host.contains(':')
+                                        && !host.chars().all(|c| c.is_ascii_digit() || c == '.')
+                                    {
+                                        let addr_clone = addr.clone();
+                                        let host_clone = host.clone();
+                                        std::thread::spawn(move || {
+                                            if let Ok(conn) = crate::db::new_connection_result() {
+                                                let _ = conn.execute(
+                                                    "UPDATE endpoint_attributes SET hostname = ?1
+                                                     WHERE ip = ?2 AND (hostname IS NULL OR hostname = ?2
+                                                     OR hostname LIKE '%:%' OR hostname GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*')",
+                                                    rusqlite::params![host_clone, addr_clone],
+                                                );
+                                            }
+                                        });
+                                    }
 
                                     // Store service type (always store for device classification)
                                     if let Ok(mut services) = MDNS_SERVICES

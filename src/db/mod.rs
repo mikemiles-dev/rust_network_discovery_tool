@@ -183,11 +183,12 @@ impl SQLWriter {
             }
         });
 
-        // Spawn separate cleanup task that runs every hour
+        // Spawn separate cleanup task that runs at startup, then every hour
         task::spawn(async {
-            loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await; // 1 hour
+            // Run cleanup immediately at startup (with small delay to let tables be created)
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
+            loop {
                 let result = task::spawn_blocking(|| {
                     let conn = new_connection();
                     Self::cleanup_old_data(&conn)
@@ -197,6 +198,9 @@ impl SQLWriter {
                 if let Ok(Err(e)) = result {
                     eprintln!("Failed to cleanup old data: {}", e);
                 }
+
+                // Wait 1 hour before next cleanup
+                tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
             }
         });
 
@@ -349,12 +353,101 @@ impl SQLWriter {
             [retention_seconds],
         )?;
 
+        // Deduplicate endpoint_attributes - keep only most recent row per (endpoint_id, ip, hostname) combo
+        let deduped = conn.execute(
+            "DELETE FROM endpoint_attributes WHERE id NOT IN (
+                SELECT MAX(id) FROM endpoint_attributes
+                GROUP BY endpoint_id, COALESCE(mac, ''), ip, COALESCE(hostname, '')
+            )",
+            [],
+        )?;
+
+        if deduped > 0 {
+            println!("Removed {} duplicate endpoint_attribute rows", deduped);
+        }
+
+        // Merge duplicate endpoints with same hostname (case-insensitive)
+        // This handles cases where mDNS discovered the same device with different hostname cases
+        let merged = Self::merge_duplicate_endpoints_by_hostname(conn)?;
+        if merged > 0 {
+            println!("Merged {} duplicate endpoints by hostname", merged);
+        }
+
         // Vacuum database occasionally to reclaim space
-        if deleted > 1000 {
+        if deleted > 1000 || deduped > 1000 || merged > 0 {
             println!("Running VACUUM to reclaim disk space...");
             conn.execute("VACUUM", [])?;
         }
 
         Ok(())
+    }
+
+    /// Merge duplicate endpoints that have the same hostname (case-insensitive)
+    fn merge_duplicate_endpoints_by_hostname(conn: &Connection) -> rusqlite::Result<usize> {
+        let mut merged_count = 0;
+
+        // Find hostnames that have multiple endpoint IDs (case-insensitive duplicates)
+        let mut stmt = conn.prepare(
+            "SELECT LOWER(name) as lower_name, GROUP_CONCAT(id) as ids, COUNT(*) as cnt
+             FROM endpoints
+             WHERE name IS NOT NULL AND name != ''
+             GROUP BY LOWER(name)
+             HAVING cnt > 1",
+        )?;
+
+        let duplicates: Vec<(String, String)> = stmt
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        for (_hostname, ids_str) in duplicates {
+            let ids: Vec<i64> = ids_str
+                .split(',')
+                .filter_map(|s| s.parse().ok())
+                .collect();
+
+            if ids.len() < 2 {
+                continue;
+            }
+
+            // Keep the first (lowest) ID, merge others into it
+            let keep_id = ids[0];
+            let merge_ids: Vec<i64> = ids[1..].to_vec();
+
+            for merge_id in merge_ids {
+                // Move endpoint_attributes (ignore duplicates)
+                conn.execute(
+                    "UPDATE OR IGNORE endpoint_attributes SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+                    rusqlite::params![keep_id, merge_id],
+                )?;
+                // Delete any that couldn't be moved (duplicates)
+                conn.execute(
+                    "DELETE FROM endpoint_attributes WHERE endpoint_id = ?1",
+                    [merge_id],
+                )?;
+
+                // Move communications (ignore duplicates that would violate unique constraint)
+                conn.execute(
+                    "UPDATE OR IGNORE communications SET src_endpoint_id = ?1 WHERE src_endpoint_id = ?2",
+                    rusqlite::params![keep_id, merge_id],
+                )?;
+                conn.execute(
+                    "UPDATE OR IGNORE communications SET dst_endpoint_id = ?1 WHERE dst_endpoint_id = ?2",
+                    rusqlite::params![keep_id, merge_id],
+                )?;
+                // Delete any that couldn't be moved (duplicates)
+                conn.execute(
+                    "DELETE FROM communications WHERE src_endpoint_id = ?1 OR dst_endpoint_id = ?1",
+                    [merge_id],
+                )?;
+
+                // Delete the duplicate endpoint
+                conn.execute("DELETE FROM endpoints WHERE id = ?1", [merge_id])?;
+
+                merged_count += 1;
+            }
+        }
+
+        Ok(merged_count)
     }
 }

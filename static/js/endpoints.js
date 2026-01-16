@@ -156,6 +156,48 @@
         },
 
         /**
+         * Show loading state in the details panel
+         */
+        showLoading: function(nodeName) {
+            // Update endpoint name to show we're loading
+            var nameDisplay = document.getElementById('endpoint-name-display');
+            if (nameDisplay) {
+                var nameSpan = nameDisplay.querySelector('span');
+                if (nameSpan) nameSpan.textContent = nodeName || 'Loading...';
+            }
+
+            // Clear device type while loading
+            var currentDeviceType = document.getElementById('current-device-type');
+            if (currentDeviceType) currentDeviceType.textContent = '';
+
+            // Hide vendor/model badges
+            var vendorBadge = document.getElementById('device-vendor-badge');
+            if (vendorBadge) vendorBadge.style.display = 'none';
+            var modelBadge = document.getElementById('device-model-badge');
+            if (modelBadge) modelBadge.style.display = 'none';
+
+            // Reset stats to show loading
+            document.querySelectorAll('.stats .stat-number').forEach(function(el) {
+                el.textContent = '-';
+            });
+
+            // Show loading in all containers
+            var containers = ['protocols-container', 'ports-container', 'hostnames-container', 'ips-container', 'macs-container'];
+            containers.forEach(function(containerId) {
+                var container = document.getElementById(containerId);
+                if (container) {
+                    container.innerHTML = '<div class="empty-state">Loading...</div>';
+                }
+            });
+
+            // Reset bytes display
+            var bytesIn = document.getElementById('bytes-in');
+            var bytesOut = document.getElementById('bytes-out');
+            if (bytesIn) bytesIn.textContent = '-';
+            if (bytesOut) bytesOut.textContent = '-';
+        },
+
+        /**
          * Select a node and update URL
          */
         selectNode: function(nodeId) {
@@ -178,6 +220,9 @@
             if (currentRow) {
                 currentRow.classList.add('selected');
             }
+
+            // Show loading state immediately to avoid showing stale data
+            App.Endpoints.showLoading(nodeId);
 
             // Fetch endpoint details and update panel
             fetch('/api/endpoint/' + encodeURIComponent(nodeId) + '/details')

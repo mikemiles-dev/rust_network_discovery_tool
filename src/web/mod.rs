@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use tera::{Context, Tera};
 use tokio::task;
 
-use crate::db::new_connection;
+use crate::db::{new_connection, new_connection_result};
 use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::device_control::DeviceController;
 use crate::network::endpoint::{
@@ -114,12 +114,15 @@ fn resolve_from_mdns_cache(name: &str) -> Option<String> {
 fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
     let conn = new_connection();
     // Use JOIN instead of correlated subquery for better performance
+    // Fall back to IP address if no valid hostname exists (will be resolved via mDNS)
     let mut stmt = conn
         .prepare(
             "
             SELECT DISTINCT COALESCE(e.custom_name,
                 CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
-                ea_best.hostname) AS display_name
+                ea_best.hostname,
+                ea_ip.ip,
+                e.name) AS display_name
             FROM endpoints e
             INNER JOIN communications c
                 ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
@@ -131,6 +134,12 @@ fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
                   AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'
                 GROUP BY endpoint_id
             ) ea_best ON ea_best.endpoint_id = e.id
+            LEFT JOIN (
+                SELECT endpoint_id, MIN(ip) AS ip
+                FROM endpoint_attributes
+                WHERE ip IS NOT NULL AND ip != ''
+                GROUP BY endpoint_id
+            ) ea_ip ON ea_ip.endpoint_id = e.id
             WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
         ",
         )
@@ -815,6 +824,7 @@ fn get_all_endpoint_types(
         .collect();
 
     // Batch fetch all IPs for all endpoints in one query
+    // Fall back to IP address if no valid hostname exists (matching dropdown_endpoints behavior)
     let mut all_ips: HashMap<String, Vec<String>> = HashMap::new();
     {
         let mut stmt = conn
@@ -824,7 +834,10 @@ fn get_all_endpoint_types(
                         CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
                         (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
                          AND hostname IS NOT NULL AND hostname != ''
-                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
+                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1),
+                        (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
+                         AND ip IS NOT NULL AND ip != ''),
+                        e.name) AS display_name,
                     ea.ip
                  FROM endpoints e
                  INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
@@ -846,6 +859,7 @@ fn get_all_endpoint_types(
     }
 
     // Batch fetch all MACs for all endpoints in one query
+    // Fall back to IP address if no valid hostname exists (matching dropdown_endpoints behavior)
     let mut all_macs: HashMap<String, Vec<String>> = HashMap::new();
     {
         let mut stmt = conn
@@ -855,7 +869,10 @@ fn get_all_endpoint_types(
                         CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
                         (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
                          AND hostname IS NOT NULL AND hostname != ''
-                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
+                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1),
+                        (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
+                         AND ip IS NOT NULL AND ip != ''),
+                        e.name) AS display_name,
                     ea.mac
                  FROM endpoints e
                  INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
@@ -877,6 +894,7 @@ fn get_all_endpoint_types(
     }
 
     // Batch fetch all ports for all endpoints in one query
+    // Fall back to IP address if no valid hostname exists (matching dropdown_endpoints behavior)
     let mut all_ports: HashMap<String, Vec<u16>> = HashMap::new();
     {
         let mut stmt = conn
@@ -886,7 +904,10 @@ fn get_all_endpoint_types(
                         CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
                         (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
                          AND hostname IS NOT NULL AND hostname != ''
-                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
+                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1),
+                        (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
+                         AND ip IS NOT NULL AND ip != ''),
+                        e.name) AS display_name,
                     COALESCE(c.source_port, c.destination_port) as port
                  FROM endpoints e
                  INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
@@ -1045,11 +1066,30 @@ struct ProbeResponse {
 }
 
 /// Probe a device for its hostname using reverse DNS/mDNS lookup
+/// Also persists the hostname to the database if found
 #[post("/api/probe-hostname")]
 async fn probe_hostname(body: Json<ProbeRequest>) -> impl Responder {
     use crate::network::mdns_lookup::MDnsLookup;
 
     let hostname = MDnsLookup::probe_hostname(&body.ip);
+
+    // If we found a real hostname (not just the IP back), save it to the database
+    if let Some(ref h) = hostname {
+        if !looks_like_ip(h) {
+            let ip_clone = body.ip.clone();
+            let hostname_clone = h.clone();
+            // Spawn a blocking task to update the database
+            tokio::task::spawn_blocking(move || {
+                if let Ok(conn) = new_connection_result() {
+                    // Update hostname in endpoint_attributes where ip matches
+                    let _ = conn.execute(
+                        "UPDATE endpoint_attributes SET hostname = ?1 WHERE ip = ?2 AND (hostname IS NULL OR hostname = ?2 OR hostname LIKE '%:%' OR hostname GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*')",
+                        rusqlite::params![hostname_clone, ip_clone],
+                    );
+                }
+            });
+        }
+    }
 
     HttpResponse::Ok().json(ProbeResponse {
         ip: body.ip.clone(),

@@ -189,6 +189,14 @@ const APPLIANCE_PATTERNS: &[&str] = &[
     "nest-",
     "google-home",
     "homepod",
+    // Smart home hubs
+    "smartthings",
+    "hubv2",
+    "hubv3",
+    "hue-bridge",
+    "homebridge",
+    "home-assistant",
+    "homeassistant",
 ];
 const LG_APPLIANCE_PREFIXES: &[&str] = &["lma", "lmw", "ldf", "ldt", "ldp", "dle", "dlex", "lrmv"];
 
