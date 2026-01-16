@@ -2578,10 +2578,35 @@ fn is_apple_mac(macs: &[String]) -> bool {
 
 /// Check if device is likely a phone based on MAC and services
 /// Apple devices that don't advertise file sharing services are likely iPhones/iPads
-fn is_phone_mac(macs: &[String], ips: &[String]) -> bool {
+/// Check if hostname indicates a Mac computer (not a phone)
+fn is_mac_computer_hostname(hostname: &str) -> bool {
+    let mac_patterns = [
+        "macbook",
+        "mac-book",
+        "imac",
+        "i-mac",
+        "mac-mini",
+        "macmini",
+        "mac-pro",
+        "macpro",
+        "mac-studio",
+        "macstudio",
+    ];
+    mac_patterns.iter().any(|p| hostname.contains(p))
+}
+
+fn is_phone_mac(macs: &[String], ips: &[String], hostname: Option<&str>) -> bool {
     // Only applies to Apple devices (iPhones/iPads)
     if !is_apple_mac(macs) {
         return false;
+    }
+
+    // Never classify Mac computers as phones based on hostname
+    if let Some(h) = hostname {
+        let lower = h.to_lowercase();
+        if is_mac_computer_hostname(&lower) {
+            return false;
+        }
     }
 
     // Check if device advertises any desktop/Mac services
@@ -2615,14 +2640,20 @@ fn is_lg_appliance(hostname: &str) -> bool {
 }
 
 /// Check mDNS services for device type
-fn classify_by_services(services: &[String]) -> Option<&'static str> {
+fn classify_by_services(services: &[String], hostname: Option<&str>) -> Option<&'static str> {
     for service in services {
         let s = service.as_str();
         // Check more specific types first
         if APPLIANCE_SERVICES.contains(&s) {
             return Some(CLASSIFICATION_APPLIANCE);
         }
+        // Skip phone classification for Mac computers (they also advertise _companion-link._tcp)
         if PHONE_SERVICES.contains(&s) {
+            if let Some(h) = hostname {
+                if is_mac_computer_hostname(h) {
+                    continue;
+                }
+            }
             return Some(CLASSIFICATION_PHONE);
         }
         if SOUNDBAR_SERVICES.contains(&s) {
@@ -2856,14 +2887,14 @@ impl EndPoint {
         // This catches smart devices that don't have distinctive hostnames
         for ip_str in ips {
             let services = crate::network::mdns_lookup::MDnsLookup::get_services(ip_str);
-            if let Some(classification) = classify_by_services(&services) {
+            if let Some(classification) = classify_by_services(&services, lower) {
                 return Some(classification);
             }
         }
 
         // MAC-based detection (identifies devices by vendor OUI)
         // Check phone first - Apple devices without desktop services are likely iPhones/iPads
-        if is_phone_mac(macs, ips) {
+        if is_phone_mac(macs, ips, lower) {
             return Some(CLASSIFICATION_PHONE);
         }
         if is_gaming_mac(macs) {

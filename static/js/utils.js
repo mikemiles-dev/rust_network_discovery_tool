@@ -11,6 +11,7 @@
             activeTab: 'network',
             selectedProtocol: null,
             selectedPort: null,
+            selectedVendor: null,
             refreshIntervalId: null,
             savedRefreshInterval: null,
             currentDeviceIp: null,

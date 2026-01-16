@@ -163,6 +163,21 @@
                 url.searchParams.delete('search');
             }
 
+            // Save scroll positions before reload
+            sessionStorage.setItem('scrollPosition', window.scrollY.toString());
+
+            // Also save table container scroll if it exists
+            var tableWrapper = document.querySelector('.endpoints-table-wrapper');
+            if (tableWrapper) {
+                sessionStorage.setItem('tableScrollPosition', tableWrapper.scrollTop.toString());
+            }
+
+            // Save endpoint details pane scroll if it exists
+            var detailsPane = document.querySelector('.protocols-overlay');
+            if (detailsPane) {
+                sessionStorage.setItem('detailsScrollPosition', detailsPane.scrollTop.toString());
+            }
+
             // Navigate to URL with state
             window.location.href = url.toString();
         },

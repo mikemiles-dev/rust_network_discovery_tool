@@ -223,8 +223,15 @@
                                          endpointModel.includes(searchTerm);
                 }
 
+                // Apply vendor filter if selected
+                var shouldShowByVendor = true;
+                if (App.state.selectedVendor) {
+                    var rowVendor = (row.dataset.endpointVendor || '').toLowerCase();
+                    shouldShowByVendor = rowVendor === App.state.selectedVendor.toLowerCase();
+                }
+
                 // Set filtered-out attribute for pagination to use
-                var isFilteredOut = !(shouldShowByType && shouldShowBySearch);
+                var isFilteredOut = !(shouldShowByType && shouldShowBySearch && shouldShowByVendor);
                 row.dataset.filteredOut = isFilteredOut ? 'true' : 'false';
             });
 
@@ -512,6 +519,17 @@
          * Shows only endpoints that use the selected protocol
          */
         filterByGlobalProtocol: function(protocol) {
+            App.state.selectedProtocol = protocol || null;
+
+            // Save protocol to URL
+            var url = new URL(window.location.href);
+            if (protocol) {
+                url.searchParams.set('filter_protocol', protocol);
+            } else {
+                url.searchParams.delete('filter_protocol');
+            }
+            window.history.replaceState({}, '', url);
+
             if (!protocol) {
                 // Clear filter - show all endpoints
                 App.Filters.apply();
@@ -596,6 +614,25 @@
             commRows.forEach(function(row) {
                 row.style.display = '';
             });
+        },
+
+        /**
+         * Filter endpoints by vendor
+         */
+        filterByVendor: function(vendor) {
+            App.state.selectedVendor = vendor || null;
+
+            // Save vendor to URL
+            var url = new URL(window.location.href);
+            if (vendor) {
+                url.searchParams.set('filter_vendor', vendor);
+            } else {
+                url.searchParams.delete('filter_vendor');
+            }
+            window.history.replaceState({}, '', url);
+
+            // Apply filters with vendor constraint
+            App.Filters.apply();
         }
     };
 
@@ -617,6 +654,7 @@
     window.filterByGlobalProtocol = App.Filters.filterByGlobalProtocol;
     window.filterByPort = App.Filters.filterByPort;
     window.clearPortFilter = App.Filters.clearPortFilter;
+    window.filterByVendor = App.Filters.filterByVendor;
 
     // Load global protocols on page load
     document.addEventListener('DOMContentLoaded', function() {

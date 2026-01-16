@@ -1643,6 +1643,15 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         })
         .collect();
 
+    // Extract unique vendor names for the vendor dropdown filter
+    let mut unique_vendors: Vec<String> = endpoint_vendors
+        .values()
+        .cloned()
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    unique_vendors.sort();
+
     // Build model lookup for all endpoints (hostname first, then MAC, then DHCP vendor class)
     let endpoint_models: HashMap<String, String> = dropdown_endpoints
         .iter()
@@ -1814,6 +1823,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     context.insert("dropdown_endpoints", &dropdown_endpoints);
     context.insert("endpoint_ips_macs", &endpoint_ips_macs);
     context.insert("endpoint_vendors", &endpoint_vendors);
+    context.insert("unique_vendors", &unique_vendors);
     context.insert("endpoint_models", &endpoint_models);
     context.insert("endpoint_bytes", &endpoint_bytes);
     context.insert("endpoint_last_seen", &endpoint_last_seen);

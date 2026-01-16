@@ -154,8 +154,9 @@
          * Go to a specific page
          * @param {string} tableType - 'endpoints' or 'mdns'
          * @param {number} page - Page number to go to
+         * @param {Object} options - Optional settings (skipScroll: true to prevent scroll reset)
          */
-        goToPage: function(tableType, page) {
+        goToPage: function(tableType, page, options) {
             var pageState = state[tableType];
             var totalPages = pageState.pageSize === 'all' ? 1 :
                 Math.ceil(pageState.visibleRows / pageState.pageSize);
@@ -165,12 +166,14 @@
             pageState.currentPage = page;
             this.update(tableType);
 
-            // Scroll table to top
-            var config = getTableConfig(tableType);
-            if (config) {
-                var container = document.querySelector(config.containerSelector);
-                if (container) {
-                    container.scrollTop = 0;
+            // Scroll table to top (unless skipScroll is set during state restoration)
+            if (!options || !options.skipScroll) {
+                var config = getTableConfig(tableType);
+                if (config) {
+                    var container = document.querySelector(config.containerSelector);
+                    if (container) {
+                        container.scrollTop = 0;
+                    }
                 }
             }
         },

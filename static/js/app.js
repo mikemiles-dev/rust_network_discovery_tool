@@ -166,6 +166,33 @@
             }
         }
 
+        // Restore vendor filter from URL
+        var filterVendorValue = urlParams.get('filter_vendor');
+        if (filterVendorValue) {
+            App.state.selectedVendor = filterVendorValue;
+            var vendorSelect = document.getElementById('globalVendorSelect');
+            if (vendorSelect) {
+                vendorSelect.value = filterVendorValue;
+            }
+        }
+
+        // Restore protocol filter from URL
+        var filterProtocolValue = urlParams.get('filter_protocol');
+        if (filterProtocolValue) {
+            App.state.selectedProtocol = filterProtocolValue;
+            var protocolSelect = document.getElementById('globalProtocolSelect');
+            if (protocolSelect) {
+                // Protocol options are loaded async, so set value after a short delay
+                setTimeout(function() {
+                    protocolSelect.value = filterProtocolValue;
+                    // Apply the protocol filter
+                    if (App.Filters) {
+                        App.Filters.filterByGlobalProtocol(filterProtocolValue);
+                    }
+                }, 100);
+            }
+        }
+
         // Apply filters on page load
         if (App.Filters) {
             App.Filters.apply(true);
@@ -189,6 +216,34 @@
         // Initialize refresh interval
         if (App.Refresh) {
             App.Refresh.init();
+        }
+
+        // Restore scroll positions after refresh
+        var savedScroll = sessionStorage.getItem('scrollPosition');
+        var savedTableScroll = sessionStorage.getItem('tableScrollPosition');
+        var savedDetailsScroll = sessionStorage.getItem('detailsScrollPosition');
+        if (savedScroll || savedTableScroll || savedDetailsScroll) {
+            sessionStorage.removeItem('scrollPosition');
+            sessionStorage.removeItem('tableScrollPosition');
+            sessionStorage.removeItem('detailsScrollPosition');
+            // Delay to ensure DOM is fully rendered and all other init is complete
+            setTimeout(function() {
+                if (savedScroll) {
+                    window.scrollTo(0, parseInt(savedScroll, 10));
+                }
+                if (savedTableScroll) {
+                    var tableWrapper = document.querySelector('.endpoints-table-wrapper');
+                    if (tableWrapper) {
+                        tableWrapper.scrollTop = parseInt(savedTableScroll, 10);
+                    }
+                }
+                if (savedDetailsScroll) {
+                    var detailsPane = document.querySelector('.protocols-overlay');
+                    if (detailsPane) {
+                        detailsPane.scrollTop = parseInt(savedDetailsScroll, 10);
+                    }
+                }
+            }, 150);
         }
     });
 
@@ -349,7 +404,7 @@
         if (page && App.Pagination) {
             var pageNum = parseInt(page, 10);
             if (pageNum > 1) {
-                App.Pagination.goToPage('endpoints', pageNum);
+                App.Pagination.goToPage('endpoints', pageNum, { skipScroll: true });
             }
         }
     };
