@@ -15,7 +15,8 @@ use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::device_control::DeviceController;
 use crate::network::endpoint::{
     EndPoint, get_hostname_vendor, get_mac_vendor, get_model_from_hostname, get_model_from_mac,
-    get_model_from_vendor_and_type, normalize_model_name, strip_local_suffix,
+    get_model_from_vendor_and_type, infer_model_with_context, normalize_model_name,
+    strip_local_suffix,
 };
 use crate::network::mdns_lookup::MDnsLookup;
 use crate::network::protocol::ProtocolPort;
@@ -479,36 +480,41 @@ fn get_endpoint_vendor_classes(endpoints: &[String]) -> HashMap<String, String> 
     result
 }
 
-/// Get SSDP model and friendly name for all endpoints (from UPnP discovery)
-fn get_endpoint_ssdp_models(endpoints: &[String]) -> HashMap<String, (Option<String>, Option<String>)> {
+/// Model data tuple: (custom_model, ssdp_model, ssdp_friendly_name)
+type EndpointModelData = (Option<String>, Option<String>, Option<String>);
+
+/// Get SSDP model, friendly name, and custom model for all endpoints
+/// Returns: (custom_model, ssdp_model, ssdp_friendly_name)
+fn get_endpoint_ssdp_models(endpoints: &[String]) -> HashMap<String, EndpointModelData> {
     let conn = new_connection();
-    let mut result: HashMap<String, (Option<String>, Option<String>)> = HashMap::new();
+    let mut result: HashMap<String, EndpointModelData> = HashMap::new();
 
     // Build lowercase set for case-insensitive matching
     let endpoints_lower: HashSet<String> = endpoints.iter().map(|e| e.to_lowercase()).collect();
 
     let mut stmt = conn
         .prepare(&format!(
-            "SELECT {DISPLAY_NAME_SQL} AS display_name, e.ssdp_model, e.ssdp_friendly_name
+            "SELECT {DISPLAY_NAME_SQL} AS display_name, e.custom_model, e.ssdp_model, e.ssdp_friendly_name
              FROM endpoints e
-             WHERE e.ssdp_model IS NOT NULL OR e.ssdp_friendly_name IS NOT NULL"
+             WHERE e.custom_model IS NOT NULL OR e.ssdp_model IS NOT NULL OR e.ssdp_friendly_name IS NOT NULL"
         ))
         .expect("Failed to prepare SSDP models statement");
 
     let rows = stmt
         .query_map([], |row| {
             let name: String = row.get(0)?;
-            let model: Option<String> = row.get(1)?;
-            let friendly_name: Option<String> = row.get(2)?;
-            Ok((name, model, friendly_name))
+            let custom_model: Option<String> = row.get(1)?;
+            let ssdp_model: Option<String> = row.get(2)?;
+            let friendly_name: Option<String> = row.get(3)?;
+            Ok((name, custom_model, ssdp_model, friendly_name))
         })
         .expect("Failed to execute SSDP models query");
 
     for row in rows.flatten() {
-        let (name, model, friendly_name) = row;
+        let (name, custom_model, ssdp_model, friendly_name) = row;
         let name_lower = name.to_lowercase();
-        if endpoints_lower.contains(&name_lower) && (model.is_some() || friendly_name.is_some()) {
-            result.insert(name_lower, (model, friendly_name));
+        if endpoints_lower.contains(&name_lower) && (custom_model.is_some() || ssdp_model.is_some() || friendly_name.is_some()) {
+            result.insert(name_lower, (custom_model, ssdp_model, friendly_name));
         }
     }
 
@@ -1265,9 +1271,38 @@ async fn get_endpoint_details(
         )
         .ok();
 
-    // Get device model: hostname first, then MAC, then DHCP vendor class, then vendor+type fallback
-    let device_model: String = get_model_from_hostname(&endpoint_name)
-        .or_else(|| macs.iter().find_map(|mac| get_model_from_mac(mac)))
+    // Get custom_model and SSDP model for this endpoint
+    let (custom_model, ssdp_model): (Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT e.custom_model, e.ssdp_model
+         FROM endpoints e
+         WHERE (LOWER(e.name) = LOWER(?1) OR LOWER(e.custom_name) = LOWER(?1))
+         LIMIT 1",
+            rusqlite::params![&endpoint_name],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap_or((None, None));
+
+    // Check if device has SSDP info (for context-aware model detection)
+    let has_ssdp = ssdp_model.is_some();
+
+    // Get device model: custom_model first, then SSDP (with normalization), hostname, MAC, DHCP vendor class, vendor+type fallback
+    let device_model: String = custom_model
+        .or_else(|| {
+            ssdp_model.as_ref().and_then(|model| {
+                // Try to normalize the SSDP model (e.g., QN43LS03TAFXZA -> Samsung The Frame)
+                let vendor_ref = if device_vendor.is_empty() { None } else { Some(device_vendor.as_str()) };
+                normalize_model_name(model, vendor_ref).or_else(|| Some(model.clone()))
+            })
+        })
+        .or_else(|| get_model_from_hostname(&endpoint_name))
+        .or_else(|| {
+            // Context-aware MAC detection for Amazon devices etc.
+            macs.iter().find_map(|mac| {
+                infer_model_with_context(mac, has_ssdp, false, false, &[])
+                    .or_else(|| get_model_from_mac(mac))
+            })
+        })
         .or_else(|| {
             // Try DHCP vendor class (e.g., "samsung:SM-G998B")
             dhcp_vendor_class
@@ -1523,6 +1558,7 @@ pub fn start(preferred_port: u16) {
                         .service(index)
                         .service(set_endpoint_type)
                         .service(rename_endpoint)
+                        .service(set_endpoint_model)
                         .service(get_dns_entries_api)
                         .service(probe_hostname)
                         .service(get_endpoint_details)
@@ -1731,33 +1767,50 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         .collect();
     unique_vendors.sort();
 
-    // Build model lookup for all endpoints (SSDP first, then hostname, MAC, DHCP vendor class)
+    // Build model lookup for all endpoints (custom_model first, then SSDP, hostname, MAC, DHCP vendor class)
     let endpoint_models: HashMap<String, String> = dropdown_endpoints
         .iter()
         .filter_map(|endpoint| {
             let endpoint_lower = endpoint.to_lowercase();
             // Get vendor for this endpoint (used for model normalization)
             let vendor = endpoint_vendors.get(&endpoint_lower).map(|v| v.as_str());
-            // Try SSDP/UPnP model first (most accurate for TVs and media devices)
-            if let Some((Some(model), _friendly)) = endpoint_ssdp_models.get(&endpoint_lower) {
+
+            // Check custom_model first (user-set model takes priority)
+            if let Some((Some(custom_model), _, _)) = endpoint_ssdp_models.get(&endpoint_lower) {
+                return Some((endpoint_lower.clone(), custom_model.clone()));
+            }
+
+            // Try SSDP/UPnP model (most accurate for TVs and media devices)
+            if let Some((_, Some(ssdp_model), _)) = endpoint_ssdp_models.get(&endpoint_lower) {
                 // Try to normalize the model name (e.g., QN43LS03TAFXZA -> Samsung The Frame)
-                if let Some(normalized) = normalize_model_name(model, vendor) {
+                if let Some(normalized) = normalize_model_name(ssdp_model, vendor) {
                     return Some((endpoint_lower.clone(), normalized));
                 }
-                return Some((endpoint_lower.clone(), model.clone()));
+                return Some((endpoint_lower.clone(), ssdp_model.clone()));
             }
+
             // Try hostname-based detection
             if let Some(model) = get_model_from_hostname(endpoint) {
                 return Some((endpoint_lower.clone(), model));
             }
-            // Fall back to MAC-based detection (use lowercase for case-insensitive lookup)
+
+            // Fall back to context-aware MAC-based detection (for Amazon devices etc.)
             if let Some((_, macs)) = endpoint_ips_macs.get(&endpoint_lower) {
+                // Check if device has SSDP info (indicates it's not a "silent" device like Echo)
+                let has_ssdp = endpoint_ssdp_models.get(&endpoint_lower)
+                    .is_some_and(|(_, ssdp, friendly)| ssdp.is_some() || friendly.is_some());
+                // Note: We don't have open ports data here, so pass empty slice
+                // Full context-aware detection happens in get_endpoint_details
                 for mac in macs {
+                    if let Some(model) = infer_model_with_context(mac, has_ssdp, false, false, &[]) {
+                        return Some((endpoint_lower.clone(), model));
+                    }
                     if let Some(model) = get_model_from_mac(mac) {
                         return Some((endpoint_lower.clone(), model));
                     }
                 }
             }
+
             // Fall back to DHCP vendor class (e.g., "samsung:SM-G998B" -> "SM-G998B")
             if let Some(vendor_class) = endpoint_dhcp_vendor_classes.get(&endpoint_lower)
                 && let Some(model) = extract_model_from_vendor_class(vendor_class)
@@ -1877,9 +1930,32 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         (None, None) => "",
     }
     .to_string();
-    // Get model: hostname first, then MAC, then DHCP vendor class, then vendor+type fallback
-    let device_model: String = get_model_from_hostname(&selected_endpoint)
-        .or_else(|| macs.iter().find_map(|mac| get_model_from_mac(mac)))
+
+    // Get model: custom_model first, then SSDP (with normalization), hostname, MAC, DHCP vendor class, vendor+type fallback
+    let selected_lower = selected_endpoint.to_lowercase();
+    let models_data = endpoint_ssdp_models.get(&selected_lower);
+
+    // Check custom_model first (user-set model takes priority)
+    let device_model: String = models_data
+        .and_then(|(custom_model_opt, _, _)| custom_model_opt.clone())
+        .or_else(|| {
+            // Try SSDP model with normalization
+            models_data
+                .and_then(|(_, ssdp_model_opt, _)| ssdp_model_opt.as_ref())
+                .and_then(|model| {
+                    let vendor_ref = if device_vendor.is_empty() { None } else { Some(device_vendor.as_str()) };
+                    normalize_model_name(model, vendor_ref).or_else(|| Some(model.clone()))
+                })
+        })
+        .or_else(|| get_model_from_hostname(&selected_endpoint))
+        .or_else(|| {
+            // Context-aware MAC detection for Amazon devices etc.
+            let has_ssdp = models_data.is_some_and(|(_, ssdp, friendly)| ssdp.is_some() || friendly.is_some());
+            macs.iter().find_map(|mac| {
+                infer_model_with_context(mac, has_ssdp, false, false, &[])
+                    .or_else(|| get_model_from_mac(mac))
+            })
+        })
         .or_else(|| {
             // Try DHCP vendor class (e.g., "samsung:SM-G998B")
             endpoint_dhcp_vendor_classes
@@ -2050,6 +2126,56 @@ async fn rename_endpoint(body: Json<RenameRequest>) -> impl Responder {
             success: false,
             message: format!("Database error: {}", e),
             original_name: None,
+        }),
+    }
+}
+
+#[derive(Deserialize)]
+struct SetModelRequest {
+    endpoint_name: String,
+    model: Option<String>,
+}
+
+#[derive(Serialize)]
+struct SetModelResponse {
+    success: bool,
+    message: String,
+}
+
+#[post("/api/endpoint/model")]
+async fn set_endpoint_model(body: Json<SetModelRequest>) -> impl Responder {
+    let conn = new_connection();
+
+    // If model is "auto" or empty, clear the custom model
+    let model = match &body.model {
+        Some(m) if m == "auto" || m.is_empty() => None,
+        Some(m) => Some(m.as_str()),
+        None => None,
+    };
+
+    match EndPoint::set_custom_model(&conn, &body.endpoint_name, model) {
+        Ok(rows_updated) => {
+            if rows_updated > 0 {
+                HttpResponse::Ok().json(SetModelResponse {
+                    success: true,
+                    message: format!(
+                        "Model {} for {}",
+                        model
+                            .map(|m| format!("set to '{}'", m))
+                            .unwrap_or_else(|| "cleared".to_string()),
+                        body.endpoint_name
+                    ),
+                })
+            } else {
+                HttpResponse::NotFound().json(SetModelResponse {
+                    success: false,
+                    message: format!("Endpoint '{}' not found", body.endpoint_name),
+                })
+            }
+        }
+        Err(e) => HttpResponse::InternalServerError().json(SetModelResponse {
+            success: false,
+            message: format!("Database error: {}", e),
         }),
     }
 }

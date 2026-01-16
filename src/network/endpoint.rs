@@ -2603,6 +2603,54 @@ pub fn get_model_from_hostname(hostname: &str) -> Option<String> {
     None
 }
 
+/// Infer model from MAC vendor with additional context about discovery
+/// This allows more specific model identification based on what protocols found (or didn't find) the device
+pub fn infer_model_with_context(
+    mac: &str,
+    has_ssdp: bool,
+    has_mdns: bool,
+    has_open_ports: bool,
+    open_ports: &[u16],
+) -> Option<String> {
+    let vendor = get_mac_vendor(mac)?;
+
+    match vendor {
+        "Amazon" => {
+            // Fire TV: typically has ADB port 5555 when developer mode enabled, or port 8008/8443
+            if open_ports.contains(&5555) {
+                return Some("Amazon Fire TV".to_string());
+            }
+            if open_ports.contains(&8008) || open_ports.contains(&8443) {
+                return Some("Amazon Fire TV".to_string());
+            }
+            // Ring devices: usually have SSDP or mDNS
+            if has_ssdp || has_mdns {
+                // Could be Ring, Fire TV, or other
+                return Some("Amazon Device".to_string());
+            }
+            // Amazon MAC + no SSDP + no mDNS + no open ports = likely Echo
+            // Echo devices communicate only with Amazon cloud, no local services
+            if !has_ssdp && !has_mdns && !has_open_ports {
+                return Some("Amazon Echo".to_string());
+            }
+            Some("Amazon Device".to_string())
+        }
+        "Ring" => Some("Ring Device".to_string()),
+        "Google" | "Nest" => {
+            // Chromecast has port 8008/8443
+            if open_ports.contains(&8008) || open_ports.contains(&8443) {
+                return Some("Chromecast".to_string());
+            }
+            // Google Home/Nest speakers respond to mDNS _googlecast
+            if has_mdns {
+                return Some("Google/Nest Speaker".to_string());
+            }
+            Some("Google Device".to_string())
+        }
+        _ => None,
+    }
+}
+
 /// Infer model from MAC vendor when hostname detection fails
 pub fn get_model_from_mac(mac: &str) -> Option<String> {
     let vendor = get_mac_vendor(mac)?;
@@ -3237,6 +3285,18 @@ impl EndPoint {
             )?;
         }
 
+        // Migration: Add custom_model column for manual model override
+        let has_custom_model: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_table_info('endpoints') WHERE name = 'custom_model'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !has_custom_model {
+            conn.execute("ALTER TABLE endpoints ADD COLUMN custom_model TEXT", [])?;
+        }
+
         Ok(())
     }
 
@@ -3273,6 +3333,27 @@ impl EndPoint {
                     OR LOWER(ea.ip) = LOWER(?2)
              )",
             params![custom_name, endpoint_name],
+        )
+    }
+
+    /// Set a custom model for an endpoint by name, custom_name, or hostname in endpoint_attributes
+    /// Pass None to clear the custom model and revert to auto-detected model
+    pub fn set_custom_model(
+        conn: &Connection,
+        endpoint_name: &str,
+        custom_model: Option<&str>,
+    ) -> Result<usize> {
+        conn.execute(
+            "UPDATE endpoints SET custom_model = ?1
+             WHERE id IN (
+                 SELECT DISTINCT e.id FROM endpoints e
+                 LEFT JOIN endpoint_attributes ea ON e.id = ea.endpoint_id
+                 WHERE LOWER(e.name) = LOWER(?2)
+                    OR LOWER(e.custom_name) = LOWER(?2)
+                    OR LOWER(ea.hostname) = LOWER(?2)
+                    OR LOWER(ea.ip) = LOWER(?2)
+             )",
+            params![custom_model, endpoint_name],
         )
     }
 
