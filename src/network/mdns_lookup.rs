@@ -10,6 +10,9 @@ use tokio::task;
 static MDNS_LOOKUPS: OnceLock<std::sync::RwLock<HashMap<String, String>>> = OnceLock::new();
 static MDNS_SERVICES: OnceLock<std::sync::RwLock<HashMap<String, HashSet<String>>>> =
     OnceLock::new();
+// Keep the ServiceDaemon alive for the lifetime of the application
+// If dropped, all mDNS browses stop receiving events
+static MDNS_DAEMON: OnceLock<ServiceDaemon> = OnceLock::new();
 
 /// Get the local machine's hostname (cached)
 fn get_local_hostname() -> Option<String> {
@@ -75,7 +78,9 @@ pub struct MDnsLookup;
 
 impl MDnsLookup {
     pub fn start_daemon() {
-        let mdns = ServiceDaemon::new().expect("Failed to create mDNS daemon");
+        // Store the daemon in a static to keep it alive - dropping it stops all browses
+        let mdns =
+            MDNS_DAEMON.get_or_init(|| ServiceDaemon::new().expect("Failed to create mDNS daemon"));
 
         let services_to_browse = [
             "_afpovertcp._tcp.local.",

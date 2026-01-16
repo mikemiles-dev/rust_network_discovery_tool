@@ -1456,26 +1456,27 @@
           </thead>
           <tbody>
             {% for node in dropdown_endpoints %}
+            {% set node_lower = node | lower %}
             <tr class="endpoint-row {% if node == selected_node %}selected{% endif %}"
                 onclick="selectNode('{{ node | safe }}')"
                 data-endpoint="{{ node | safe }}"
                 data-endpoint-name="{{ node | safe }}"
-                data-endpoint-vendor="{{ endpoint_vendors[node] | default(value='') }}"
-                data-endpoint-model="{{ endpoint_models[node] | default(value='') }}"
+                data-endpoint-vendor="{{ endpoint_vendors[node_lower] | default(value='') }}"
+                data-endpoint-model="{{ endpoint_models[node_lower] | default(value='') }}"
                 data-endpoint-type="{% if node == hostname %}local{% elif endpoint_types[node] == "gateway" %}gateway{% elif endpoint_types[node] == "internet" %}internet{% elif endpoint_types[node] == "printer" %}printer{% elif endpoint_types[node] == "tv" %}tv{% elif endpoint_types[node] == "gaming" %}gaming{% elif endpoint_types[node] == "phone" %}phone{% elif endpoint_types[node] == "virtualization" %}virtualization{% elif endpoint_types[node] == "soundbar" %}soundbar{% elif endpoint_types[node] == "appliance" %}appliance{% elif endpoint_types[node] %}local{% else %}other{% endif %}"
-                data-endpoint-bytes="{{ endpoint_bytes[node] | default(value=0) }}">
+                data-endpoint-bytes="{{ endpoint_bytes[node_lower] | default(value=0) }}">
               <td class="endpoint-type-cell">{% if node == hostname %}🖥️{% elif endpoint_types[node] == "gateway" %}🌐{% elif endpoint_types[node] == "internet" %}🌍{% elif endpoint_types[node] == "printer" %}🖨️{% elif endpoint_types[node] == "tv" %}📺{% elif endpoint_types[node] == "gaming" %}🎮{% elif endpoint_types[node] == "phone" %}📱{% elif endpoint_types[node] == "virtualization" %}🖥{% elif endpoint_types[node] == "soundbar" %}🔊{% elif endpoint_types[node] == "appliance" %}🏠{% elif endpoint_types[node] %}💻{% else %}❓{% endif %}</td>
               <td class="endpoint-name-cell">{{ node | safe }}</td>
-              <td class="vendor-cell" title="{{ endpoint_vendors[node] | default(value='Unknown') }}">{{ endpoint_vendors[node] | default(value='-') }}</td>
-              <td class="model-cell" title="{{ endpoint_models[node] | default(value='') }}">{{ endpoint_models[node] | default(value='-') }}</td>
-              <td class="bandwidth-cell" data-bytes="{{ endpoint_bytes[node] | default(value=0) }}">
-                {% if endpoint_bytes[node] and endpoint_bytes[node] > 0 %}
-                  <span class="bandwidth-value">{{ endpoint_bytes[node] }}</span>
+              <td class="vendor-cell" title="{{ endpoint_vendors[node_lower] | default(value='Unknown') }}">{{ endpoint_vendors[node_lower] | default(value='-') }}</td>
+              <td class="model-cell" title="{{ endpoint_models[node_lower] | default(value='') }}">{{ endpoint_models[node_lower] | default(value='-') }}</td>
+              <td class="bandwidth-cell" data-bytes="{{ endpoint_bytes[node_lower] | default(value=0) }}">
+                {% if endpoint_bytes[node_lower] and endpoint_bytes[node_lower] > 0 %}
+                  <span class="bandwidth-value">{{ endpoint_bytes[node_lower] }}</span>
                 {% else %}
                   <span class="no-data">-</span>
                 {% endif %}
               </td>
-              <td class="last-seen-cell">{{ endpoint_last_seen[node] | default(value='-') }}</td>
+              <td class="last-seen-cell">{{ endpoint_last_seen[node_lower] | default(value='-') }}</td>
             </tr>
             {% endfor %}
           </tbody>

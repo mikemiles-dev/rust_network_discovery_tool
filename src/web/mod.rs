@@ -377,20 +377,24 @@ fn get_endpoint_ips_and_macs(endpoints: &[String]) -> HashMap<String, (Vec<Strin
     let conn = new_connection();
     let mut result: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
 
-    // Initialize all endpoints with empty vectors
+    // Initialize all endpoints with empty vectors (use lowercase keys for case-insensitive matching)
     for endpoint in endpoints {
-        result.insert(endpoint.clone(), (Vec::new(), Vec::new()));
+        result.insert(endpoint.to_lowercase(), (Vec::new(), Vec::new()));
     }
 
     // Single batch query to get all IPs and MACs with their display names
+    // IMPORTANT: display_name computation must match dropdown_endpoints() exactly
     let mut stmt = conn
         .prepare(
             "SELECT
                 COALESCE(e.custom_name,
                     CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
-                    (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
+                    (SELECT MIN(hostname) FROM endpoint_attributes WHERE endpoint_id = e.id
                      AND hostname IS NOT NULL AND hostname != ''
-                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
+                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'),
+                    (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
+                     AND ip IS NOT NULL AND ip != ''),
+                    e.name) AS display_name,
                 ea.ip,
                 ea.mac
              FROM endpoints e
@@ -409,7 +413,8 @@ fn get_endpoint_ips_and_macs(endpoints: &[String]) -> HashMap<String, (Vec<Strin
 
     for row in rows.flatten() {
         let (name, ip, mac) = row;
-        if let Some((ips, macs)) = result.get_mut(&name) {
+        // Use lowercase for case-insensitive matching
+        if let Some((ips, macs)) = result.get_mut(&name.to_lowercase()) {
             if let Some(ip_str) = ip
                 && !ip_str.is_empty()
                 && !ips.contains(&ip_str)
@@ -439,14 +444,21 @@ fn get_endpoint_vendor_classes(endpoints: &[String]) -> HashMap<String, String> 
     let conn = new_connection();
     let mut result: HashMap<String, String> = HashMap::new();
 
+    // Build lowercase set for case-insensitive matching
+    let endpoints_lower: HashSet<String> = endpoints.iter().map(|e| e.to_lowercase()).collect();
+
+    // IMPORTANT: display_name computation must match dropdown_endpoints() exactly
     let mut stmt = conn
         .prepare(
             "SELECT
                 COALESCE(e.custom_name,
                     CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
-                    (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
+                    (SELECT MIN(hostname) FROM endpoint_attributes WHERE endpoint_id = e.id
                      AND hostname IS NOT NULL AND hostname != ''
-                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
+                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'),
+                    (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
+                     AND ip IS NOT NULL AND ip != ''),
+                    e.name) AS display_name,
                 ea.dhcp_vendor_class
              FROM endpoints e
              INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
@@ -464,9 +476,10 @@ fn get_endpoint_vendor_classes(endpoints: &[String]) -> HashMap<String, String> 
 
     for row in rows.flatten() {
         let (name, vendor_class) = row;
-        // Only store for endpoints we care about, and prefer first non-empty value
-        if endpoints.contains(&name) && !result.contains_key(&name) {
-            result.insert(name, vendor_class);
+        let name_lower = name.to_lowercase();
+        // Only store for endpoints we care about (case-insensitive), and prefer first non-empty value
+        if endpoints_lower.contains(&name_lower) && !result.contains_key(&name_lower) {
+            result.insert(name_lower, vendor_class);
         }
     }
 
@@ -824,7 +837,7 @@ fn get_all_endpoint_types(
         .collect();
 
     // Batch fetch all IPs for all endpoints in one query
-    // Fall back to IP address if no valid hostname exists (matching dropdown_endpoints behavior)
+    // IMPORTANT: display_name computation must match dropdown_endpoints() exactly
     let mut all_ips: HashMap<String, Vec<String>> = HashMap::new();
     {
         let mut stmt = conn
@@ -832,9 +845,9 @@ fn get_all_endpoint_types(
                 "SELECT
                     COALESCE(e.custom_name,
                         CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
-                        (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
+                        (SELECT MIN(hostname) FROM endpoint_attributes WHERE endpoint_id = e.id
                          AND hostname IS NOT NULL AND hostname != ''
-                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1),
+                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'),
                         (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
                          AND ip IS NOT NULL AND ip != ''),
                         e.name) AS display_name,
@@ -854,12 +867,13 @@ fn get_all_endpoint_types(
             .expect("Failed to execute IP batch query");
 
         for row in rows.flatten() {
-            all_ips.entry(row.0).or_default().push(row.1);
+            // Use lowercase keys for case-insensitive lookups
+            all_ips.entry(row.0.to_lowercase()).or_default().push(row.1);
         }
     }
 
     // Batch fetch all MACs for all endpoints in one query
-    // Fall back to IP address if no valid hostname exists (matching dropdown_endpoints behavior)
+    // IMPORTANT: display_name computation must match dropdown_endpoints() exactly
     let mut all_macs: HashMap<String, Vec<String>> = HashMap::new();
     {
         let mut stmt = conn
@@ -867,9 +881,9 @@ fn get_all_endpoint_types(
                 "SELECT
                     COALESCE(e.custom_name,
                         CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
-                        (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
+                        (SELECT MIN(hostname) FROM endpoint_attributes WHERE endpoint_id = e.id
                          AND hostname IS NOT NULL AND hostname != ''
-                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1),
+                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'),
                         (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
                          AND ip IS NOT NULL AND ip != ''),
                         e.name) AS display_name,
@@ -889,12 +903,19 @@ fn get_all_endpoint_types(
             .expect("Failed to execute MAC batch query");
 
         for row in rows.flatten() {
-            all_macs.entry(row.0).or_default().push(row.1);
+            // Use lowercase keys for case-insensitive lookups
+            all_macs
+                .entry(row.0.to_lowercase())
+                .or_default()
+                .push(row.1);
         }
     }
 
-    // Batch fetch all ports for all endpoints in one query
-    // Fall back to IP address if no valid hostname exists (matching dropdown_endpoints behavior)
+    // Batch fetch all OPEN ports for all endpoints from port scanner results
+    // Only use ports that are actually LISTENING on the device (from open_ports table)
+    // NOT communication ports, which would include traffic the device initiates
+    // (e.g., a computer sending to port 9100 would incorrectly be classified as a printer)
+    // IMPORTANT: display_name computation must match dropdown_endpoints() exactly
     let mut all_ports: HashMap<String, Vec<u16>> = HashMap::new();
     {
         let mut stmt = conn
@@ -902,17 +923,16 @@ fn get_all_endpoint_types(
                 "SELECT
                     COALESCE(e.custom_name,
                         CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
-                        (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
+                        (SELECT MIN(hostname) FROM endpoint_attributes WHERE endpoint_id = e.id
                          AND hostname IS NOT NULL AND hostname != ''
-                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1),
+                         AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'),
                         (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
                          AND ip IS NOT NULL AND ip != ''),
                         e.name) AS display_name,
-                    COALESCE(c.source_port, c.destination_port) as port
+                    op.port
                  FROM endpoints e
-                 INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
-                 WHERE c.source_port IS NOT NULL OR c.destination_port IS NOT NULL
-                 GROUP BY e.id, port",
+                 INNER JOIN open_ports op ON e.id = op.endpoint_id
+                 GROUP BY e.id, op.port",
             )
             .expect("Failed to prepare port batch statement");
 
@@ -926,7 +946,11 @@ fn get_all_endpoint_types(
 
         for row in rows.flatten() {
             if let Ok(port) = u16::try_from(row.1) {
-                all_ports.entry(row.0).or_default().push(port);
+                // Use lowercase keys for case-insensitive lookups
+                all_ports
+                    .entry(row.0.to_lowercase())
+                    .or_default()
+                    .push(port);
             }
         }
     }
@@ -953,8 +977,9 @@ fn get_all_endpoint_types(
             continue;
         }
 
-        // Get IPs from batch data, or try to extract from hostname
-        let mut ips = all_ips.get(endpoint).cloned().unwrap_or_default();
+        // Get IPs from batch data (case-insensitive), or try to extract from hostname
+        let endpoint_lower = endpoint.to_lowercase();
+        let mut ips = all_ips.get(&endpoint_lower).cloned().unwrap_or_default();
         if ips.is_empty() {
             // Try to parse IP from hostname pattern: xxx-xxx-xxx-xxx.domain
             let parts: Vec<&str> = endpoint.split('.').collect();
@@ -966,8 +991,8 @@ fn get_all_endpoint_types(
             }
         }
 
-        let macs = all_macs.get(endpoint).cloned().unwrap_or_default();
-        let ports = all_ports.get(endpoint).cloned().unwrap_or_default();
+        let macs = all_macs.get(&endpoint_lower).cloned().unwrap_or_default();
+        let ports = all_ports.get(&endpoint_lower).cloned().unwrap_or_default();
 
         // First check network-level classification (gateway, internet)
         // Use first IP for network-level classification
@@ -1074,21 +1099,21 @@ async fn probe_hostname(body: Json<ProbeRequest>) -> impl Responder {
     let hostname = MDnsLookup::probe_hostname(&body.ip);
 
     // If we found a real hostname (not just the IP back), save it to the database
-    if let Some(ref h) = hostname {
-        if !looks_like_ip(h) {
-            let ip_clone = body.ip.clone();
-            let hostname_clone = h.clone();
-            // Spawn a blocking task to update the database
-            tokio::task::spawn_blocking(move || {
-                if let Ok(conn) = new_connection_result() {
-                    // Update hostname in endpoint_attributes where ip matches
-                    let _ = conn.execute(
-                        "UPDATE endpoint_attributes SET hostname = ?1 WHERE ip = ?2 AND (hostname IS NULL OR hostname = ?2 OR hostname LIKE '%:%' OR hostname GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*')",
-                        rusqlite::params![hostname_clone, ip_clone],
-                    );
-                }
-            });
-        }
+    if let Some(ref h) = hostname
+        && !looks_like_ip(h)
+    {
+        let ip_clone = body.ip.clone();
+        let hostname_clone = h.clone();
+        // Spawn a blocking task to update the database
+        tokio::task::spawn_blocking(move || {
+            if let Ok(conn) = new_connection_result() {
+                // Update hostname in endpoint_attributes where ip matches
+                let _ = conn.execute(
+                    "UPDATE endpoint_attributes SET hostname = ?1 WHERE ip = ?2 AND (hostname IS NULL OR hostname = ?2 OR hostname LIKE '%:%' OR hostname GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*')",
+                    rusqlite::params![hostname_clone, ip_clone],
+                );
+            }
+        });
     }
 
     HttpResponse::Ok().json(ProbeResponse {
@@ -1332,21 +1357,24 @@ fn get_all_endpoints_bytes(endpoints: &[String], internal_minutes: u64) -> HashM
     let conn = new_connection();
     let mut result: HashMap<String, i64> = HashMap::new();
 
-    // Initialize all endpoints with 0 bytes
+    // Initialize all endpoints with 0 bytes (use lowercase keys for case-insensitive matching)
     for endpoint in endpoints {
-        result.insert(endpoint.clone(), 0);
+        result.insert(endpoint.to_lowercase(), 0);
     }
 
     // Single query to get all bytes data at once
-    // Get display_name for each endpoint and sum bytes
+    // IMPORTANT: display_name computation must match dropdown_endpoints() exactly
     let mut stmt = conn
         .prepare(
             "SELECT
                 COALESCE(e.custom_name,
                     CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
-                    (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
+                    (SELECT MIN(hostname) FROM endpoint_attributes WHERE endpoint_id = e.id
                      AND hostname IS NOT NULL AND hostname != ''
-                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
+                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'),
+                    (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
+                     AND ip IS NOT NULL AND ip != ''),
+                    e.name) AS display_name,
                 COALESCE(SUM(c.bytes), 0) as total_bytes
              FROM endpoints e
              INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
@@ -1365,7 +1393,8 @@ fn get_all_endpoints_bytes(endpoints: &[String], internal_minutes: u64) -> HashM
 
     for row in rows.flatten() {
         let (name, bytes) = row;
-        if let Some(existing) = result.get_mut(&name) {
+        // Use lowercase for case-insensitive matching
+        if let Some(existing) = result.get_mut(&name.to_lowercase()) {
             *existing = bytes;
         }
     }
@@ -1380,20 +1409,24 @@ fn get_all_endpoints_last_seen(
     let conn = new_connection();
     let mut result: HashMap<String, String> = HashMap::new();
 
-    // Initialize all endpoints with empty string (never seen)
+    // Initialize all endpoints with empty string (use lowercase keys for case-insensitive matching)
     for endpoint in endpoints {
-        result.insert(endpoint.clone(), String::new());
+        result.insert(endpoint.to_lowercase(), String::new());
     }
 
     // Single query to get last_seen_at for each endpoint
+    // IMPORTANT: display_name computation must match dropdown_endpoints() exactly
     let mut stmt = conn
         .prepare(
             "SELECT
                 COALESCE(e.custom_name,
                     CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
-                    (SELECT hostname FROM endpoint_attributes WHERE endpoint_id = e.id
+                    (SELECT MIN(hostname) FROM endpoint_attributes WHERE endpoint_id = e.id
                      AND hostname IS NOT NULL AND hostname != ''
-                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' LIMIT 1)) AS display_name,
+                     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'),
+                    (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
+                     AND ip IS NOT NULL AND ip != ''),
+                    e.name) AS display_name,
                 MAX(c.last_seen_at) as last_seen
              FROM endpoints e
              INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
@@ -1414,7 +1447,8 @@ fn get_all_endpoints_last_seen(
 
     for row in rows.flatten() {
         let (name, last_seen) = row;
-        if let Some(existing) = result.get_mut(&name) {
+        // Use lowercase for case-insensitive matching
+        if let Some(existing) = result.get_mut(&name.to_lowercase()) {
             // Format as relative time
             let seconds_ago = now - last_seen;
             let formatted = if seconds_ago < 60 {
@@ -1603,14 +1637,19 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         .filter_map(|endpoint| {
             // Try hostname-based detection first (catches PS4, Xbox, etc.)
             if let Some(vendor) = get_hostname_vendor(endpoint) {
-                return Some((endpoint.clone(), vendor.to_string()));
+                return Some((endpoint.to_lowercase(), vendor.to_string()));
             }
             // Fall back to MAC-based detection, but filter out component manufacturers
-            let mac_vendor = endpoint_ips_macs.get(endpoint).and_then(|(_, macs)| {
-                macs.iter()
-                    .find_map(|mac| get_mac_vendor(mac).filter(|v| !component_vendors.contains(v)))
-            });
-            mac_vendor.map(|v| (endpoint.clone(), v.to_string()))
+            // Use lowercase for case-insensitive lookup
+            let mac_vendor =
+                endpoint_ips_macs
+                    .get(&endpoint.to_lowercase())
+                    .and_then(|(_, macs)| {
+                        macs.iter().find_map(|mac| {
+                            get_mac_vendor(mac).filter(|v| !component_vendors.contains(v))
+                        })
+                    });
+            mac_vendor.map(|v| (endpoint.to_lowercase(), v.to_string()))
         })
         .collect();
 
@@ -1621,23 +1660,24 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let endpoint_models: HashMap<String, String> = dropdown_endpoints
         .iter()
         .filter_map(|endpoint| {
+            let endpoint_lower = endpoint.to_lowercase();
             // Try hostname-based detection first
             if let Some(model) = get_model_from_hostname(endpoint) {
-                return Some((endpoint.clone(), model));
+                return Some((endpoint_lower.clone(), model));
             }
-            // Fall back to MAC-based detection
-            if let Some((_, macs)) = endpoint_ips_macs.get(endpoint) {
+            // Fall back to MAC-based detection (use lowercase for case-insensitive lookup)
+            if let Some((_, macs)) = endpoint_ips_macs.get(&endpoint_lower) {
                 for mac in macs {
                     if let Some(model) = get_model_from_mac(mac) {
-                        return Some((endpoint.clone(), model));
+                        return Some((endpoint_lower.clone(), model));
                     }
                 }
             }
             // Fall back to DHCP vendor class (e.g., "samsung:SM-G998B" -> "SM-G998B")
-            if let Some(vendor_class) = endpoint_dhcp_vendor_classes.get(endpoint)
+            if let Some(vendor_class) = endpoint_dhcp_vendor_classes.get(&endpoint_lower)
                 && let Some(model) = extract_model_from_vendor_class(vendor_class)
             {
-                return Some((endpoint.clone(), model));
+                return Some((endpoint_lower, model));
             }
             None
         })
@@ -1673,11 +1713,13 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     // Second pass: enhance models using vendor + device type for endpoints without models
     let mut endpoint_models = endpoint_models;
     for (endpoint, device_type) in &endpoint_types {
-        if !endpoint_models.contains_key(endpoint)
-            && let Some(vendor) = endpoint_vendors.get(endpoint)
+        let endpoint_lower = endpoint.to_lowercase();
+        // Use lowercase for case-insensitive lookups
+        if !endpoint_models.contains_key(&endpoint_lower)
+            && let Some(vendor) = endpoint_vendors.get(&endpoint_lower)
             && let Some(model) = get_model_from_vendor_and_type(vendor, device_type)
         {
-            endpoint_models.insert(endpoint.clone(), model);
+            endpoint_models.insert(endpoint_lower, model);
         }
     }
 

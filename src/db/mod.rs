@@ -396,15 +396,14 @@ impl SQLWriter {
         )?;
 
         let duplicates: Vec<(String, String)> = stmt
-            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
             .filter_map(|r| r.ok())
             .collect();
 
         for (_hostname, ids_str) in duplicates {
-            let ids: Vec<i64> = ids_str
-                .split(',')
-                .filter_map(|s| s.parse().ok())
-                .collect();
+            let ids: Vec<i64> = ids_str.split(',').filter_map(|s| s.parse().ok()).collect();
 
             if ids.len() < 2 {
                 continue;
