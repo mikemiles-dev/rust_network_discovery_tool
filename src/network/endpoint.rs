@@ -2649,10 +2649,10 @@ fn classify_by_services(services: &[String], hostname: Option<&str>) -> Option<&
         }
         // Skip phone classification for Mac computers (they also advertise _companion-link._tcp)
         if PHONE_SERVICES.contains(&s) {
-            if let Some(h) = hostname {
-                if is_mac_computer_hostname(h) {
-                    continue;
-                }
+            if let Some(h) = hostname
+                && is_mac_computer_hostname(h)
+            {
+                continue;
             }
             return Some(CLASSIFICATION_PHONE);
         }
@@ -2711,6 +2711,51 @@ pub fn is_locally_administered_mac(mac: &str) -> bool {
     // The second hex digit determines if it's locally administered
     // 2, 6, A, E have the second-least-significant bit set
     matches!(chars[1], '2' | '6' | 'a' | 'e')
+}
+
+/// Extract MAC address from IPv6 EUI-64 interface identifier
+/// Works with link-local (fe80::) and other IPv6 addresses that use EUI-64 format
+/// The EUI-64 format inserts ff:fe in the middle of the MAC and flips the 7th bit
+/// Example: fe80::d48f:2ff:fefb:b5 -> d6:8f:02:fb:00:b5
+pub fn extract_mac_from_ipv6_eui64(ip: &str) -> Option<String> {
+    use std::net::Ipv6Addr;
+
+    let addr: Ipv6Addr = ip.parse().ok()?;
+    let segments = addr.segments();
+
+    // Interface identifier is the last 4 segments (64 bits)
+    // EUI-64 format has ff:fe in the middle (bytes 3-4 of the interface ID)
+    // segments[4]:segments[5]:segments[6]:segments[7]
+    // In bytes: [4h][4l]:[5h][5l]:[6h][6l]:[7h][7l]
+    // EUI-64:   [mac0][mac1]:[mac2][ff]:[fe][mac3]:[mac4][mac5]
+
+    let seg5 = segments[5];
+    let seg6 = segments[6];
+
+    // Check for ff:fe pattern: low byte of seg5 should be 0xff, high byte of seg6 should be 0xfe
+    let byte3 = (seg5 & 0x00ff) as u8; // Low byte of segments[5]
+    let byte4 = (seg6 >> 8) as u8; // High byte of segments[6]
+
+    if byte3 != 0xff || byte4 != 0xfe {
+        return None; // Not EUI-64 format
+    }
+
+    // Extract MAC bytes
+    let mac0 = (segments[4] >> 8) as u8;
+    let mac1 = (segments[4] & 0x00ff) as u8;
+    let mac2 = (seg5 >> 8) as u8;
+    // bytes 3-4 are ff:fe, skip them
+    let mac3 = (seg6 & 0x00ff) as u8;
+    let mac4 = (segments[7] >> 8) as u8;
+    let mac5 = (segments[7] & 0x00ff) as u8;
+
+    // Flip the 7th bit (Universal/Local bit) of the first byte
+    let mac0_flipped = mac0 ^ 0x02;
+
+    Some(format!(
+        "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+        mac0_flipped, mac1, mac2, mac3, mac4, mac5
+    ))
 }
 
 #[derive(Debug)]
@@ -3091,6 +3136,11 @@ impl EndPoint {
         dhcp_vendor_class: Option<String>,
         dhcp_hostname: Option<String>,
     ) -> Result<i64, InsertEndpointError> {
+        // Try to extract MAC from IPv6 EUI-64 address if no MAC provided
+        let mac = mac.or_else(|| {
+            ip.as_ref().and_then(|ip_str| extract_mac_from_ipv6_eui64(ip_str))
+        });
+
         // Filter out broadcast/multicast MACs - these aren't real endpoints
         if let Some(ref mac_addr) = mac
             && Self::is_broadcast_or_multicast_mac(mac_addr)
@@ -4013,5 +4063,43 @@ mod tests {
             ),
             Some("printer")
         );
+    }
+
+    #[test]
+    fn test_extract_mac_from_ipv6_eui64() {
+        use super::*;
+
+        // Standard EUI-64 link-local address
+        assert_eq!(
+            extract_mac_from_ipv6_eui64("fe80::d48f:2ff:fefb:b5"),
+            Some("d6:8f:02:fb:00:b5".to_string())
+        );
+
+        // Another example with different MAC
+        assert_eq!(
+            extract_mac_from_ipv6_eui64("fe80::1234:56ff:fe78:9abc"),
+            Some("10:34:56:78:9a:bc".to_string())
+        );
+
+        // Full form address (no ::)
+        assert_eq!(
+            extract_mac_from_ipv6_eui64("fe80:0000:0000:0000:0211:22ff:fe33:4455"),
+            Some("00:11:22:33:44:55".to_string())
+        );
+
+        // Non-EUI-64 address (no ff:fe pattern) should return None
+        assert_eq!(extract_mac_from_ipv6_eui64("fe80::1"), None);
+
+        // Global IPv6 with EUI-64 should also work
+        assert_eq!(
+            extract_mac_from_ipv6_eui64("2001:db8::0211:22ff:fe33:4455"),
+            Some("00:11:22:33:44:55".to_string())
+        );
+
+        // Invalid IP should return None
+        assert_eq!(extract_mac_from_ipv6_eui64("not-an-ip"), None);
+
+        // IPv4 should return None
+        assert_eq!(extract_mac_from_ipv6_eui64("192.168.1.1"), None);
     }
 }

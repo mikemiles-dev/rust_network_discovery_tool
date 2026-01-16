@@ -1,6 +1,7 @@
 pub mod arp;
 pub mod icmp;
 pub mod manager;
+pub mod ndp;
 pub mod port;
 pub mod ssdp;
 
@@ -15,6 +16,7 @@ use serde::{Deserialize, Serialize};
 pub enum ScanType {
     Arp,
     Icmp,
+    Ndp,
     Port,
     Ssdp,
 }
@@ -24,6 +26,7 @@ impl std::fmt::Display for ScanType {
         match self {
             ScanType::Arp => write!(f, "arp"),
             ScanType::Icmp => write!(f, "icmp"),
+            ScanType::Ndp => write!(f, "ndp"),
             ScanType::Port => write!(f, "port"),
             ScanType::Ssdp => write!(f, "ssdp"),
         }
@@ -35,6 +38,7 @@ impl std::fmt::Display for ScanType {
 pub enum ScanResult {
     Arp(ArpResult),
     Icmp(IcmpResult),
+    Ndp(NdpResult),
     Port(PortResult),
     Ssdp(SsdpResult),
 }
@@ -42,6 +46,14 @@ pub enum ScanResult {
 /// ARP scan result
 #[derive(Debug, Clone)]
 pub struct ArpResult {
+    pub ip: IpAddr,
+    pub mac: MacAddr,
+    pub response_time_ms: u64,
+}
+
+/// NDP (IPv6 Neighbor Discovery) scan result
+#[derive(Debug, Clone)]
+pub struct NdpResult {
     pub ip: IpAddr,
     pub mac: MacAddr,
     pub response_time_ms: u64,
@@ -81,6 +93,7 @@ pub struct SsdpResult {
 pub struct ScanCapabilities {
     pub can_arp: bool,
     pub can_icmp: bool,
+    pub can_ndp: bool,
     pub can_port: bool,
     pub can_ssdp: bool,
 }
@@ -92,8 +105,9 @@ pub fn check_scan_privileges() -> ScanCapabilities {
     ScanCapabilities {
         can_arp: can_raw_socket,
         can_icmp: can_raw_socket,
-        can_port: true, // TCP connect always works
-        can_ssdp: true, // UDP multicast always works
+        can_ndp: can_raw_socket, // NDP also requires raw sockets
+        can_port: true,          // TCP connect always works
+        can_ssdp: true,          // UDP multicast always works
     }
 }
 

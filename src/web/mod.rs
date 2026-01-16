@@ -2288,6 +2288,21 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
                 insert_scan_result(&conn, endpoint_id, "ssdp", None, Some(&details.to_string()))?;
             }
         }
+        ScanResult::Ndp(ndp) => {
+            let ip_str = ndp.ip.to_string();
+            let mac_str = ndp.mac.to_string();
+            if let Ok(endpoint_id) =
+                EndPoint::get_or_insert_endpoint(&conn, Some(mac_str), Some(ip_str), None, &[])
+            {
+                insert_scan_result(
+                    &conn,
+                    endpoint_id,
+                    "ndp",
+                    Some(ndp.response_time_ms as i64),
+                    None,
+                )?;
+            }
+        }
     }
 
     Ok(())

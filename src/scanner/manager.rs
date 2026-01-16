@@ -11,6 +11,7 @@ use tokio::time::interval;
 
 use super::arp::ArpScanner;
 use super::icmp::IcmpScanner;
+use super::ndp::NdpScanner;
 use super::port::{DEFAULT_PORTS, PortScanner};
 use super::ssdp::SsdpScanner;
 use super::{ScanCapabilities, ScanResult, ScanType, check_scan_privileges};
@@ -39,6 +40,7 @@ impl Default for ScanConfig {
     fn default() -> Self {
         let mut enabled = HashSet::new();
         enabled.insert(ScanType::Arp);
+        enabled.insert(ScanType::Ndp); // IPv6 neighbor discovery
         enabled.insert(ScanType::Ssdp);
 
         Self {
@@ -204,6 +206,15 @@ impl ScanManager {
                             .await
                             .into_iter()
                             .map(ScanResult::Port)
+                            .collect()
+                    }
+                    ScanType::Ndp if capabilities.can_ndp => {
+                        let scanner = NdpScanner::new().with_timeout(cfg.timeout_ms);
+                        scanner
+                            .scan()
+                            .await
+                            .into_iter()
+                            .map(ScanResult::Ndp)
                             .collect()
                     }
                     ScanType::Ssdp => {
