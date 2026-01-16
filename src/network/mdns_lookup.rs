@@ -150,7 +150,14 @@ impl MDnsLookup {
                                     .to_string();
 
                                 for addr in service_info.get_addresses() {
-                                    let addr = addr.to_ip_addr().to_string();
+                                    let ip_addr = addr.to_ip_addr();
+
+                                    // Skip invalid/unspecified addresses (0.0.0.0, ::, etc.)
+                                    if ip_addr.is_unspecified() {
+                                        continue;
+                                    }
+
+                                    let addr = ip_addr.to_string();
 
                                     // Store hostname lookup (always store for name resolution)
                                     let is_new_hostname = if let Ok(mut lookups) = MDNS_LOOKUPS
@@ -175,10 +182,24 @@ impl MDnsLookup {
                                         let host_clone = host.clone();
                                         std::thread::spawn(move || {
                                             if let Ok(conn) = crate::db::new_connection_result() {
+                                                // Update hostname in endpoint_attributes
                                                 let _ = conn.execute(
                                                     "UPDATE endpoint_attributes SET hostname = ?1
                                                      WHERE ip = ?2 AND (hostname IS NULL OR hostname = ?2
                                                      OR hostname LIKE '%:%' OR hostname GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*')",
+                                                    rusqlite::params![host_clone, addr_clone],
+                                                );
+
+                                                // Also update endpoints.name if it's currently just an IP
+                                                // This ensures the friendly name shows in the UI
+                                                let _ = conn.execute(
+                                                    "UPDATE endpoints SET name = ?1
+                                                     WHERE id IN (
+                                                         SELECT endpoint_id FROM endpoint_attributes WHERE ip = ?2
+                                                     )
+                                                     AND (name IS NULL OR name = ?2 OR name LIKE '%:%'
+                                                          OR name GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*')
+                                                     AND custom_name IS NULL",
                                                     rusqlite::params![host_clone, addr_clone],
                                                 );
                                             }
