@@ -89,9 +89,13 @@
                         scanPollInterval = null;
                         App.Scanner.resetButton();
 
-                        // Refresh the page to show new endpoints
+                        // Refresh the page to show new endpoints, preserving scanner tab
                         if (status.discovered_count > 0) {
-                            setTimeout(function() { location.reload(); }, 500);
+                            setTimeout(function() {
+                                var url = new URL(window.location.href);
+                                url.searchParams.set('tab', 'scanner');
+                                window.location.href = url.toString();
+                            }, 500);
                         }
                     }
                 })

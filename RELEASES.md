@@ -1,5 +1,56 @@
 # Release Notes
 
+## [0.4.0]
+
+### Added
+- **Pagination** - Both endpoints table and mDNS entries table now have pagination
+  - Configurable page sizes (10, 25, 50, 100 items per page)
+  - Page navigation controls with current/total page display
+  - Pagination state preserved in URL for bookmarking
+- **Sticky Table Headers** - Endpoints table headers stay visible while scrolling
+  - Column headers and pagination controls always visible
+  - Improved usability for large endpoint lists
+- **Sort & Selection Persistence** - Auto-refresh now preserves UI state
+  - Sort column and direction saved to URL before refresh
+  - Current page number preserved across refreshes
+  - No more losing your place when the page auto-refreshes
+- **New MAC Vendors**
+  - Texas Instruments (28:ec:9a) - IoT devices
+  - Samjin (28:6d:97) - SmartThings sensors
+  - Intel device detection improvements
+- **Expanded mDNS Service Discovery** - Now browsing 50+ service types including:
+  - Gaming consoles: Xbox, PlayStation, Nintendo
+  - Media servers/speakers: Sonos, Plex, iTunes/DAAP
+  - Smart home: Philips Hue, Nanoleaf, Wemo, TP-Link Kasa/Tapo, Tuya, Ecobee, Ring
+  - NAS devices: Synology, QNAP, Apple Time Machine
+  - Network equipment: Ubiquiti
+  - Remote access: VNC/RFB
+  - Apple services: AirDrop, Continuity
+  - Android: ADB (when debugging enabled)
+  - Samsung: Smart View screen mirroring
+
+### Changed
+- **Filter Bar Reorganization**
+  - Quick filter buttons (All, Local, Home, None) moved above filter checkboxes
+  - Time Range dropdown moved from header to filter bar (next to All Protocols)
+  - Cleaner, more compact layout
+- **Header Layout**
+  - Tabs now on the left, aligned with bottom border
+  - Logo moved to right side of header
+  - More compact header design
+
+### Fixed
+- **mDNS Invalid IP Bug** - mDNS no longer creates entries with 0.0.0.0 or :: addresses
+  - Added `is_unspecified()` check to skip invalid addresses from mdns-sd library
+  - Prevents ghost devices with invalid IPs appearing in the database
+- **mDNS Hostname Propagation** - Discovered hostnames now update the UI properly
+  - Previously only updated `endpoint_attributes.hostname`
+  - Now also updates `endpoints.name` so friendly names appear in the endpoints list
+  - Only updates if current name is an IP address and no custom name is set
+- **UI Scrolling Issues** - Fixed various layout issues with table scrolling and sticky positioning
+
+---
+
 ## [0.3.6]
 
 ### Added

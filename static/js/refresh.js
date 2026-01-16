@@ -4,7 +4,50 @@
 (function(App) {
     'use strict';
 
+    var pauseTimeoutId = null;
+    var pausedInterval = null;
+
     App.Refresh = {
+        /**
+         * Temporarily pause auto-refresh for a specified duration
+         * Used when user is typing to prevent page reload mid-typing
+         */
+        pauseTemporarily: function(durationMs) {
+            durationMs = durationMs || 5000; // Default 5 seconds
+
+            var refreshSelect = document.getElementById('refreshInterval');
+            var currentInterval = refreshSelect ? parseInt(refreshSelect.value, 10) : 0;
+
+            // Only pause if auto-refresh is active
+            if (currentInterval === 0) {
+                return;
+            }
+
+            // Clear any existing pause timeout
+            if (pauseTimeoutId) {
+                clearTimeout(pauseTimeoutId);
+            }
+
+            // If not already paused, save the interval and stop refresh
+            if (!pausedInterval) {
+                pausedInterval = currentInterval;
+                // Clear the interval without changing UI state
+                if (App.state.refreshIntervalId) {
+                    clearInterval(App.state.refreshIntervalId);
+                    App.state.refreshIntervalId = null;
+                }
+            }
+
+            // Set timeout to resume
+            pauseTimeoutId = setTimeout(function() {
+                if (pausedInterval) {
+                    App.Refresh.updateInterval(pausedInterval);
+                    pausedInterval = null;
+                }
+                pauseTimeoutId = null;
+            }, durationMs);
+        },
+
         /**
          * Update refresh interval
          */
@@ -112,6 +155,14 @@
                 }
             }
 
+            // Save endpoint search value
+            var searchInput = document.getElementById('endpointSearch');
+            if (searchInput && searchInput.value.trim()) {
+                url.searchParams.set('search', searchInput.value.trim());
+            } else {
+                url.searchParams.delete('search');
+            }
+
             // Navigate to URL with state
             window.location.href = url.toString();
         },
@@ -133,5 +184,6 @@
     window.updateRefreshInterval = App.Refresh.updateInterval;
     window.toggleRefresh = App.Refresh.toggle;
     window.manualRefresh = App.Refresh.manual;
+    window.pauseRefreshTemporarily = App.Refresh.pauseTemporarily;
 
 })(window.App);

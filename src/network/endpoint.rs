@@ -3112,12 +3112,12 @@ impl EndPoint {
         if is_local_ip && !has_identifier {
             return Err(InsertEndpointError::BothMacAndIpNone);
         }
-        // Strip .local and other local suffixes from hostnames to prevent duplicates
+        // Strip .local and other local suffixes from hostnames and normalize to lowercase
         // Prefer DHCP hostname (Option 12) when available - this is the device's actual name
         let hostname = dhcp_hostname
             .clone()
             .or_else(|| Self::lookup_hostname(ip.clone(), mac.clone(), protocol.clone(), payload))
-            .map(|h| strip_local_suffix(&h));
+            .map(|h| strip_local_suffix(&h).to_lowercase());
         let endpoint_id = match EndPointAttribute::find_existing_endpoint_id_with_dhcp(
             conn,
             lookup_mac.clone(),
@@ -3201,8 +3201,8 @@ impl EndPoint {
         if hostname.is_empty() {
             return Ok(());
         }
-        // Strip local suffixes like .local, .lan, .home
-        let hostname = strip_local_suffix(&hostname);
+        // Strip local suffixes like .local, .lan, .home and normalize to lowercase
+        let hostname = strip_local_suffix(&hostname).to_lowercase();
 
         // Check if endpoint exists with null hostname
         if conn.query_row(

@@ -170,6 +170,11 @@ impl MDnsLookup {
                                 if host.ends_with('.') {
                                     host.pop();
                                 }
+                                // Strip .local suffix and normalize to lowercase
+                                host = host
+                                    .strip_suffix(".local")
+                                    .unwrap_or(&host)
+                                    .to_lowercase();
 
                                 // Extract service name (e.g., "_googlecast._tcp.local.")
                                 let service_name = service_type

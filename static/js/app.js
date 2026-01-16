@@ -42,6 +42,17 @@
 
     // DOMContentLoaded handler
     document.addEventListener('DOMContentLoaded', function() {
+        // Restore tab from URL parameter
+        var urlParams = new URLSearchParams(window.location.search);
+        var tabParam = urlParams.get('tab');
+        if (tabParam && App.Tabs) {
+            // Find the tab button and simulate click
+            var tabBtn = document.querySelector('.tab-btn[onclick*="' + tabParam + '"]');
+            if (tabBtn) {
+                App.Tabs.switchTab(tabParam, { target: tabBtn });
+            }
+        }
+
         // Format byte displays
         var bytesInElem = document.getElementById('bytes-in');
         var bytesOutElem = document.getElementById('bytes-out');
@@ -106,13 +117,15 @@
             }
         }
 
-        // Restore endpoint search from URL
+        // Restore endpoint search from URL and autofocus
         var searchValue = urlParams.get('search');
-        if (searchValue) {
-            var searchInput = document.getElementById('endpointSearch');
-            if (searchInput) {
+        var searchInput = document.getElementById('endpointSearch');
+        if (searchInput) {
+            if (searchValue) {
                 searchInput.value = searchValue;
             }
+            // Autofocus the search input
+            searchInput.focus();
         }
 
         // Restore right pane search filters from URL

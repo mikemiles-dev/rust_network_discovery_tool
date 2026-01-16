@@ -233,8 +233,8 @@ impl EndPointAttribute {
         dhcp_client_id: Option<String>,
         dhcp_vendor_class: Option<String>,
     ) -> Result<()> {
-        // Strip local suffixes like .local, .lan, .home
-        let hostname = strip_local_suffix(&hostname);
+        // Strip local suffixes like .local, .lan, .home and normalize to lowercase
+        let hostname = strip_local_suffix(&hostname).to_lowercase();
         // Use INSERT OR IGNORE to skip duplicates (UNIQUE constraint may not catch NULLs)
         conn.execute(
             "INSERT OR IGNORE INTO endpoint_attributes (created_at, endpoint_id, mac, ip, hostname, dhcp_client_id, dhcp_vendor_class) VALUES (strftime('%s', 'now'), ?1, ?2, ?3, ?4, ?5, ?6)",

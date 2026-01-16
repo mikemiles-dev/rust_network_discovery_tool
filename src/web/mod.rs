@@ -74,7 +74,7 @@ struct Templates;
 #[folder = "static/"]
 struct StaticAssets;
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     src_hostname: String,
     dst_hostname: String,
@@ -980,6 +980,7 @@ fn get_all_endpoint_types(
 }
 
 #[derive(Serialize)]
+#[derive(Default)]
 struct BytesStats {
     bytes_in: i64,
     bytes_out: i64,
@@ -1544,8 +1545,22 @@ async fn static_files(path: actix_web::web::Path<String>) -> impl Responder {
 async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let hostname = strip_local_suffix(&get_hostname().unwrap_or_else(|_| "Unknown".to_string()));
     let selected_endpoint = query.node.clone().unwrap_or_else(|| hostname.clone());
+    let scan_interval = query.scan_interval.unwrap_or(60);
 
-    let communications = get_nodes(query.node.clone(), query.scan_interval.unwrap_or(60));
+    // Phase 1: Run independent queries in parallel
+    let query_node_1 = query.node.clone();
+    let nodes_future =
+        tokio::task::spawn_blocking(move || get_nodes(query_node_1, scan_interval));
+    let dropdown_future =
+        tokio::task::spawn_blocking(move || dropdown_endpoints(scan_interval));
+    let interfaces_future = tokio::task::spawn_blocking(get_interfaces);
+
+    let (communications_result, dropdown_result, interfaces_result) =
+        tokio::join!(nodes_future, dropdown_future, interfaces_future);
+
+    let communications = communications_result.unwrap_or_default();
+    let dropdown_endpoints = dropdown_result.unwrap_or_default();
+    let interfaces = interfaces_result.unwrap_or_default();
 
     let mut endpoints = get_endpoints(&communications);
 
@@ -1556,11 +1571,40 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     {
         endpoints.push(selected_node.clone());
     }
-    let interfaces = get_interfaces();
     let supported_protocols = ProtocolPort::get_supported_protocols();
 
-    let dropdown_endpoints = dropdown_endpoints(query.scan_interval.unwrap_or(60));
-    let endpoint_ips_macs = get_endpoint_ips_and_macs(&dropdown_endpoints);
+    // Phase 2: Run queries that depend on dropdown_endpoints in parallel
+    let dropdown_for_ips = dropdown_endpoints.clone();
+    let dropdown_for_vendor = dropdown_endpoints.clone();
+    let dropdown_for_bytes = dropdown_endpoints.clone();
+    let dropdown_for_seen = dropdown_endpoints.clone();
+    let dropdown_for_types = dropdown_endpoints.clone();
+
+    let ips_macs_future =
+        tokio::task::spawn_blocking(move || get_endpoint_ips_and_macs(&dropdown_for_ips));
+    let vendor_classes_future =
+        tokio::task::spawn_blocking(move || get_endpoint_vendor_classes(&dropdown_for_vendor));
+    let bytes_future =
+        tokio::task::spawn_blocking(move || get_all_endpoints_bytes(&dropdown_for_bytes, scan_interval));
+    let last_seen_future =
+        tokio::task::spawn_blocking(move || get_all_endpoints_last_seen(&dropdown_for_seen, scan_interval));
+    let all_types_future =
+        tokio::task::spawn_blocking(move || get_all_endpoint_types(&dropdown_for_types));
+
+    let (ips_macs_result, vendor_classes_result, bytes_result, last_seen_result, all_types_result) =
+        tokio::join!(
+            ips_macs_future,
+            vendor_classes_future,
+            bytes_future,
+            last_seen_future,
+            all_types_future
+        );
+
+    let endpoint_ips_macs = ips_macs_result.unwrap_or_default();
+    let endpoint_dhcp_vendor_classes = vendor_classes_result.unwrap_or_default();
+    let endpoint_bytes = bytes_result.unwrap_or_default();
+    let endpoint_last_seen = last_seen_result.unwrap_or_default();
+    let (dropdown_types, manual_overrides) = all_types_result.unwrap_or_default();
 
     // Build vendor lookup for all endpoints (hostname first, then MAC)
     // Hostname detection is more accurate for devices with generic WiFi chips
@@ -1599,9 +1643,6 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         })
         .collect();
 
-    // Fetch DHCP vendor classes for model identification
-    let endpoint_dhcp_vendor_classes = get_endpoint_vendor_classes(&dropdown_endpoints);
-
     // Build model lookup for all endpoints (hostname first, then MAC, then DHCP vendor class)
     let endpoint_models: HashMap<String, String> = dropdown_endpoints
         .iter()
@@ -1629,12 +1670,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         })
         .collect();
 
-    let endpoint_bytes =
-        get_all_endpoints_bytes(&dropdown_endpoints, query.scan_interval.unwrap_or(60));
-    let endpoint_last_seen =
-        get_all_endpoints_last_seen(&dropdown_endpoints, query.scan_interval.unwrap_or(60));
     let mut endpoint_types = get_endpoint_types(&communications);
-    let (dropdown_types, manual_overrides) = get_all_endpoint_types(&dropdown_endpoints);
     // Merge dropdown types into endpoint_types
     // Manual overrides should take priority, so use insert() for those
     for (endpoint, type_str) in dropdown_types {
@@ -1672,10 +1708,47 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     // Convert manual_overrides to Vec for serialization
     let manual_overrides: Vec<String> = manual_overrides.into_iter().collect();
 
-    let (ips, macs, hostnames) = get_all_ips_macs_and_hostnames_from_single_hostname(
-        selected_endpoint.clone(),
-        query.scan_interval.unwrap_or(60),
-    );
+    // Phase 3: Run selected endpoint queries in parallel
+    let selected_for_ips = selected_endpoint.clone();
+    let selected_for_protocols = selected_endpoint.clone();
+    let selected_for_bytes = selected_endpoint.clone();
+
+    let ips_macs_hostnames_future = tokio::task::spawn_blocking(move || {
+        get_all_ips_macs_and_hostnames_from_single_hostname(selected_for_ips, scan_interval)
+    });
+    let protocols_future = tokio::task::spawn_blocking(move || {
+        get_protocols_for_endpoint(selected_for_protocols, scan_interval)
+    });
+    let bytes_stats_future = tokio::task::spawn_blocking(move || {
+        get_bytes_for_endpoint(selected_for_bytes, scan_interval)
+    });
+
+    // Ports query depends on whether a node is selected
+    let ports_future = if query.node.is_some() {
+        // Use in-memory data, no DB query needed
+        let comms = communications.clone();
+        let selected = selected_endpoint.clone();
+        tokio::task::spawn_blocking(move || get_ports_from_communications(&comms, &selected))
+    } else {
+        let selected_for_ports = selected_endpoint.clone();
+        tokio::task::spawn_blocking(move || {
+            get_ports_for_endpoint(selected_for_ports, scan_interval)
+        })
+    };
+
+    let (ips_macs_hostnames_result, protocols_result, bytes_stats_result, ports_result) =
+        tokio::join!(
+            ips_macs_hostnames_future,
+            protocols_future,
+            bytes_stats_future,
+            ports_future
+        );
+
+    let (ips, macs, hostnames) = ips_macs_hostnames_result.unwrap_or_default();
+    let protocols = protocols_result.unwrap_or_default();
+    let bytes_stats = bytes_stats_result.unwrap_or_else(|_| BytesStats::default());
+    let ports = ports_result.unwrap_or_default();
+
     // Build MAC vendor lookup
     let mac_vendors: HashMap<String, String> = macs
         .iter()
@@ -1728,17 +1801,6 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
             }
         })
         .unwrap_or_default();
-    let protocols =
-        get_protocols_for_endpoint(selected_endpoint.clone(), query.scan_interval.unwrap_or(60));
-    // Use ports from communications data when a node is selected (matches graph)
-    // Otherwise use database query for all ports
-    let ports = if query.node.is_some() {
-        get_ports_from_communications(&communications, &selected_endpoint)
-    } else {
-        get_ports_for_endpoint(selected_endpoint.clone(), query.scan_interval.unwrap_or(60))
-    };
-    let bytes_stats =
-        get_bytes_for_endpoint(selected_endpoint.clone(), query.scan_interval.unwrap_or(60));
 
     let mut context = Context::new();
     context.insert("communications", &communications);
