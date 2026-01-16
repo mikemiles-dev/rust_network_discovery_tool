@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::Duration;
 
@@ -21,9 +22,43 @@ impl SsdpScanner {
         self
     }
 
+    /// Fetch and parse UPnP device description XML to get friendly name and model
+    async fn fetch_device_info(location: &str) -> Option<(Option<String>, Option<String>)> {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(3))
+            .build()
+            .ok()?;
+
+        let response = client.get(location).send().await.ok()?;
+        let xml = response.text().await.ok()?;
+
+        // Parse XML to extract friendlyName and modelName
+        let friendly_name = Self::extract_xml_element(&xml, "friendlyName");
+        let model_name = Self::extract_xml_element(&xml, "modelName");
+
+        Some((friendly_name, model_name))
+    }
+
+    /// Extract a simple XML element value (basic parsing without full XML parser)
+    fn extract_xml_element(xml: &str, element: &str) -> Option<String> {
+        let start_tag = format!("<{}>", element);
+        let end_tag = format!("</{}>", element);
+
+        let start = xml.find(&start_tag)? + start_tag.len();
+        let end = xml[start..].find(&end_tag)? + start;
+
+        let value = xml[start..end].trim().to_string();
+        if value.is_empty() {
+            None
+        } else {
+            Some(value)
+        }
+    }
+
     /// Discover SSDP/UPnP devices on the network
     pub async fn discover(&self) -> Vec<SsdpResult> {
         let mut results = Vec::new();
+        let mut location_map: HashMap<IpAddr, String> = HashMap::new();
         let search_target = ssdp_client::SearchTarget::RootDevice;
 
         match ssdp_client::search(
@@ -42,6 +77,7 @@ impl SsdpScanner {
                         && let Ok(ip) = host.parse::<IpAddr>()
                     {
                         let server_str = response.server();
+                        location_map.entry(ip).or_insert_with(|| response.location().to_string());
                         results.push(SsdpResult {
                             ip,
                             location: response.location().to_string(),
@@ -52,6 +88,7 @@ impl SsdpScanner {
                             },
                             device_type: Some(response.search_target().to_string()),
                             friendly_name: None,
+                            model_name: None,
                         });
                     }
                 }
@@ -64,6 +101,16 @@ impl SsdpScanner {
         // Deduplicate by IP (same device may respond multiple times)
         results.sort_by(|a, b| a.ip.cmp(&b.ip));
         results.dedup_by(|a, b| a.ip == b.ip);
+
+        // Fetch device descriptions to get friendly names and models
+        for result in &mut results {
+            if let Some(location) = location_map.get(&result.ip)
+                && let Some((friendly_name, model_name)) = Self::fetch_device_info(location).await
+            {
+                result.friendly_name = friendly_name;
+                result.model_name = model_name;
+            }
+        }
 
         results
     }
@@ -96,6 +143,7 @@ mod tests {
                 server: Some("Test/1.0".to_string()),
                 device_type: Some("upnp:rootdevice".to_string()),
                 friendly_name: None,
+                model_name: None,
             },
             SsdpResult {
                 ip: "192.168.1.100".parse().unwrap(),
@@ -103,6 +151,7 @@ mod tests {
                 server: Some("Test/1.0".to_string()),
                 device_type: Some("urn:schemas-upnp-org:device:MediaRenderer:1".to_string()),
                 friendly_name: None,
+                model_name: None,
             },
             SsdpResult {
                 ip: "192.168.1.101".parse().unwrap(),
@@ -110,6 +159,7 @@ mod tests {
                 server: None,
                 device_type: None,
                 friendly_name: None,
+                model_name: None,
             },
         ];
 

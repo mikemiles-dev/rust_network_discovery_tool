@@ -84,8 +84,8 @@ pub struct SsdpResult {
     pub location: String,
     pub server: Option<String>,
     pub device_type: Option<String>,
-    #[allow(dead_code)]
     pub friendly_name: Option<String>,
+    pub model_name: Option<String>,
 }
 
 /// Scan capabilities based on privileges

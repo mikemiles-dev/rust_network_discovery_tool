@@ -1,5 +1,45 @@
 # Release Notes
 
+## [0.5.0]
+
+### Added
+- **IPv6 Neighbor Discovery (NDP) Scanner** - Discover IPv6 devices on the local network
+  - Sends ICMPv6 Neighbor Solicitation to all-nodes multicast (ff02::1)
+  - Parses Neighbor Advertisement responses to extract IPv6/MAC pairs
+  - Enabled by default alongside ARP and SSDP scans
+- **IPv6 EUI-64 MAC Extraction** - Extract MAC addresses from IPv6 link-local addresses
+  - Automatically detects EUI-64 format addresses (with ff:fe pattern)
+  - Saves extracted MAC to endpoint for better device tracking
+- **SSDP/UPnP Device Description Fetching** - Get detailed device info from UPnP XML
+  - Fetches `friendlyName` and `modelName` from device description URLs
+  - Stored in database as `ssdp_friendly_name` and `ssdp_model`
+  - Model info used for device classification and display
+- **TV Model Normalization** - Convert cryptic model numbers to friendly names
+  - Samsung: QN43LS03TAFXZA → "Samsung The Frame", QN65Q80CAFXZA → "Samsung QLED Q8"
+  - Samsung lifestyle TVs: The Frame, The Serif, The Sero, The Terrace
+  - Samsung series: Neo QLED, QLED Q6-Q9, OLED S85-S95, Crystal UHD
+  - LG: OLED55C3PUA → "LG OLED C3", QNED, NanoCell series
+  - Sony: XR55A90J → "Sony Bravia XR A90"
+- **Soundbar Model Detection & Normalization** - Identify soundbars by model number
+  - Samsung: HW-* (HW-MS750 → "Samsung Soundbar MS750"), SPK-*, WAM*
+  - LG: SL*, SN*, SP*, SC9* series
+  - JBL: Bar-* series
+  - Soundbars now properly classified instead of as TVs
+- **Filter Persistence** - Vendor and protocol filters preserved across page refreshes
+  - Vendor selection saved to URL query parameter
+  - Protocol selection saved to URL query parameter
+  - Scroll position (window, table, details pane) saved to sessionStorage
+- **Clickable Logo** - Click "Rust Network Discovery Tool" to navigate to / and clear all filters
+
+### Fixed
+- **MacBook Classified as Phone** - Mac computers advertising `_companion-link._tcp` (Handoff/AirDrop) were incorrectly classified as phones
+  - Now checks hostname for Mac patterns before applying phone classification from mDNS services
+- **IPv6 Privacy Addresses** - Link-local IPv6 addresses with randomized interface IDs (RFC 4941) no longer saved as endpoints
+  - Only EUI-64 format addresses (with extractable MAC) are saved
+  - Prevents cluttering database with temporary privacy addresses
+
+---
+
 ## [0.4.0]
 
 ### Added

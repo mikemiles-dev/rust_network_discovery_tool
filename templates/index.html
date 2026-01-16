@@ -53,6 +53,14 @@
       padding-bottom: 0.375rem;
     }
 
+    .logo a {
+      text-decoration: none;
+      background: inherit;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
     .controls {
       display: flex;
       gap: 1.5rem;
@@ -1413,7 +1421,7 @@
       <button class="tab-btn" onclick="switchTab('dns')">mDNS Entries</button>
       <button class="tab-btn" onclick="switchTab('scanner')">Scanner</button>
     </div>
-    <div class="logo">⚡ Rust Network Discovery Tool</div>
+    <div class="logo"><a href="/">⚡ Rust Network Discovery Tool</a></div>
   </header>
 
   <!-- Network Tab Content -->

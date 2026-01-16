@@ -15,7 +15,7 @@ use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::device_control::DeviceController;
 use crate::network::endpoint::{
     EndPoint, get_hostname_vendor, get_mac_vendor, get_model_from_hostname, get_model_from_mac,
-    get_model_from_vendor_and_type, strip_local_suffix,
+    get_model_from_vendor_and_type, normalize_model_name, strip_local_suffix,
 };
 use crate::network::mdns_lookup::MDnsLookup;
 use crate::network::protocol::ProtocolPort;
@@ -479,6 +479,42 @@ fn get_endpoint_vendor_classes(endpoints: &[String]) -> HashMap<String, String> 
     result
 }
 
+/// Get SSDP model and friendly name for all endpoints (from UPnP discovery)
+fn get_endpoint_ssdp_models(endpoints: &[String]) -> HashMap<String, (Option<String>, Option<String>)> {
+    let conn = new_connection();
+    let mut result: HashMap<String, (Option<String>, Option<String>)> = HashMap::new();
+
+    // Build lowercase set for case-insensitive matching
+    let endpoints_lower: HashSet<String> = endpoints.iter().map(|e| e.to_lowercase()).collect();
+
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT {DISPLAY_NAME_SQL} AS display_name, e.ssdp_model, e.ssdp_friendly_name
+             FROM endpoints e
+             WHERE e.ssdp_model IS NOT NULL OR e.ssdp_friendly_name IS NOT NULL"
+        ))
+        .expect("Failed to prepare SSDP models statement");
+
+    let rows = stmt
+        .query_map([], |row| {
+            let name: String = row.get(0)?;
+            let model: Option<String> = row.get(1)?;
+            let friendly_name: Option<String> = row.get(2)?;
+            Ok((name, model, friendly_name))
+        })
+        .expect("Failed to execute SSDP models query");
+
+    for row in rows.flatten() {
+        let (name, model, friendly_name) = row;
+        let name_lower = name.to_lowercase();
+        if endpoints_lower.contains(&name_lower) && (model.is_some() || friendly_name.is_some()) {
+            result.insert(name_lower, (model, friendly_name));
+        }
+    }
+
+    result
+}
+
 fn get_all_ips_macs_and_hostnames_from_single_hostname(
     hostname: String,
     internal_minutes: u64,
@@ -918,6 +954,31 @@ fn get_all_endpoint_types(
         }
     }
 
+    // Batch fetch all SSDP models for all endpoints (for soundbar/TV classification)
+    let mut all_ssdp_models: HashMap<String, String> = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT {DISPLAY_NAME_SQL} AS display_name, e.ssdp_model
+                 FROM endpoints e
+                 WHERE e.ssdp_model IS NOT NULL AND e.ssdp_model != ''"
+            ))
+            .expect("Failed to prepare SSDP model batch statement");
+
+        let rows = stmt
+            .query_map([], |row| {
+                let name: String = row.get(0)?;
+                let model: String = row.get(1)?;
+                Ok((name, model))
+            })
+            .expect("Failed to execute SSDP model batch query");
+
+        for row in rows.flatten() {
+            // Use lowercase keys for case-insensitive lookups
+            all_ssdp_models.insert(row.0.to_lowercase(), row.1);
+        }
+    }
+
     // Now classify each endpoint using the batch-fetched data
     for endpoint in endpoints {
         // Check for manual override first (case-insensitive)
@@ -956,6 +1017,7 @@ fn get_all_endpoint_types(
 
         let macs = all_macs.get(&endpoint_lower).cloned().unwrap_or_default();
         let ports = all_ports.get(&endpoint_lower).cloned().unwrap_or_default();
+        let ssdp_model = all_ssdp_models.get(&endpoint_lower);
 
         // First check network-level classification (gateway, internet)
         // Use first IP for network-level classification
@@ -965,7 +1027,7 @@ fn get_all_endpoint_types(
         {
             types.insert(endpoint.clone(), endpoint_type);
         } else if let Some(device_type) =
-            EndPoint::classify_device_type(Some(endpoint), &ips, &ports, &macs)
+            EndPoint::classify_device_type(Some(endpoint), &ips, &ports, &macs, ssdp_model.map(|s| s.as_str()))
         {
             types.insert(endpoint.clone(), device_type);
         } else if let Some(ref ip_str) = first_ip {
@@ -1111,6 +1173,18 @@ async fn get_endpoint_details(
         .find(|(k, _)| k.eq_ignore_ascii_case(&endpoint_name))
         .map(|(_, v)| v.clone());
 
+    // Get SSDP model for this endpoint (for device classification)
+    let ssdp_model: Option<String> = conn
+        .query_row(
+            &format!(
+                "SELECT e.ssdp_model FROM endpoints e WHERE {} = ?1 COLLATE NOCASE AND e.ssdp_model IS NOT NULL",
+                DISPLAY_NAME_SQL
+            ),
+            [&endpoint_name],
+            |row| row.get(0),
+        )
+        .ok();
+
     // Get local hostname for comparison
     let local_hostname =
         strip_local_suffix(&get_hostname().unwrap_or_else(|_| "Unknown".to_string()));
@@ -1129,7 +1203,7 @@ async fn get_endpoint_details(
             (network_type.to_string(), false)
         } else {
             // Use EndPoint::classify_device_type for device-specific detection
-            let auto_type = EndPoint::classify_device_type(Some(&endpoint_name), &ips, &[], &macs)
+            let auto_type = EndPoint::classify_device_type(Some(&endpoint_name), &ips, &[], &macs, ssdp_model.as_deref())
                 .unwrap_or_else(|| {
                     // Fallback: if on local network, classify as "local", otherwise "other"
                     if let Some(ref ip_str) = first_ip {
@@ -1579,6 +1653,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let dropdown_for_bytes = dropdown_endpoints.clone();
     let dropdown_for_seen = dropdown_endpoints.clone();
     let dropdown_for_types = dropdown_endpoints.clone();
+    let dropdown_for_ssdp = dropdown_endpoints.clone();
 
     let ips_macs_future =
         tokio::task::spawn_blocking(move || get_endpoint_ips_and_macs(&dropdown_for_ips));
@@ -1590,14 +1665,17 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         tokio::task::spawn_blocking(move || get_all_endpoints_last_seen(&dropdown_for_seen, scan_interval));
     let all_types_future =
         tokio::task::spawn_blocking(move || get_all_endpoint_types(&dropdown_for_types));
+    let ssdp_models_future =
+        tokio::task::spawn_blocking(move || get_endpoint_ssdp_models(&dropdown_for_ssdp));
 
-    let (ips_macs_result, vendor_classes_result, bytes_result, last_seen_result, all_types_result) =
+    let (ips_macs_result, vendor_classes_result, bytes_result, last_seen_result, all_types_result, ssdp_models_result) =
         tokio::join!(
             ips_macs_future,
             vendor_classes_future,
             bytes_future,
             last_seen_future,
-            all_types_future
+            all_types_future,
+            ssdp_models_future
         );
 
     let endpoint_ips_macs = ips_macs_result.unwrap_or_default();
@@ -1605,6 +1683,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let endpoint_bytes = bytes_result.unwrap_or_default();
     let endpoint_last_seen = last_seen_result.unwrap_or_default();
     let (dropdown_types, manual_overrides) = all_types_result.unwrap_or_default();
+    let endpoint_ssdp_models = ssdp_models_result.unwrap_or_default();
 
     // Build vendor lookup for all endpoints (hostname first, then MAC)
     // Hostname detection is more accurate for devices with generic WiFi chips
@@ -1652,12 +1731,22 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         .collect();
     unique_vendors.sort();
 
-    // Build model lookup for all endpoints (hostname first, then MAC, then DHCP vendor class)
+    // Build model lookup for all endpoints (SSDP first, then hostname, MAC, DHCP vendor class)
     let endpoint_models: HashMap<String, String> = dropdown_endpoints
         .iter()
         .filter_map(|endpoint| {
             let endpoint_lower = endpoint.to_lowercase();
-            // Try hostname-based detection first
+            // Get vendor for this endpoint (used for model normalization)
+            let vendor = endpoint_vendors.get(&endpoint_lower).map(|v| v.as_str());
+            // Try SSDP/UPnP model first (most accurate for TVs and media devices)
+            if let Some((Some(model), _friendly)) = endpoint_ssdp_models.get(&endpoint_lower) {
+                // Try to normalize the model name (e.g., QN43LS03TAFXZA -> Samsung The Frame)
+                if let Some(normalized) = normalize_model_name(model, vendor) {
+                    return Some((endpoint_lower.clone(), normalized));
+                }
+                return Some((endpoint_lower.clone(), model.clone()));
+            }
+            // Try hostname-based detection
             if let Some(model) = get_model_from_hostname(endpoint) {
                 return Some((endpoint_lower.clone(), model));
             }
@@ -2284,8 +2373,25 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
                     "location": ssdp.location,
                     "server": ssdp.server,
                     "device_type": ssdp.device_type,
+                    "friendly_name": ssdp.friendly_name,
+                    "model_name": ssdp.model_name,
                 });
                 insert_scan_result(&conn, endpoint_id, "ssdp", None, Some(&details.to_string()))?;
+
+                // If we got a model name from SSDP, save it to the endpoint
+                if let Some(ref model) = ssdp.model_name {
+                    let _ = conn.execute(
+                        "UPDATE endpoints SET ssdp_model = ?1 WHERE id = ?2 AND (ssdp_model IS NULL OR ssdp_model = '')",
+                        params![model, endpoint_id],
+                    );
+                }
+                // If we got a friendly name from SSDP, save it
+                if let Some(ref friendly) = ssdp.friendly_name {
+                    let _ = conn.execute(
+                        "UPDATE endpoints SET ssdp_friendly_name = ?1 WHERE id = ?2 AND (ssdp_friendly_name IS NULL OR ssdp_friendly_name = '')",
+                        params![friendly, endpoint_id],
+                    );
+                }
             }
         }
         ScanResult::Ndp(ndp) => {

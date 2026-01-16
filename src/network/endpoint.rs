@@ -166,6 +166,83 @@ const SOUNDBAR_PATTERNS: &[&str] = &[
     "beam",
 ];
 
+/// Soundbar model number prefixes (for SSDP model detection)
+const SOUNDBAR_MODEL_PREFIXES: &[&str] = &[
+    "hw-",  // Samsung soundbars (HW-MS750, HW-Q990B, etc.)
+    "spk-", // Samsung speakers (SPK-WAM750, etc.)
+    "wam",  // Samsung Wireless Audio Multiroom (WAM750, etc.)
+    "sl",   // LG soundbars (SL8YG, SL10YG, etc.) - no dash in LG models
+    "sn",   // LG soundbars (SN11RG, etc.)
+    "sp",   // LG soundbars (SP9YA, etc.)
+    "sc9",  // LG soundbars (SC9S, etc.) - sc9 to avoid matching other "sc" models
+    "bar-", // JBL soundbars (Bar 5.1, etc.)
+];
+
+/// Samsung TV model series patterns mapped to friendly names
+/// Model format: [Panel][Size][Series][Variant] e.g., QN43LS03TAFXZA
+/// - QN = QLED, UN = UHD LED
+/// - 43 = screen size
+/// - LS03 = The Frame series
+/// - TAFXZA = year/region variant
+const SAMSUNG_TV_SERIES: &[(&str, &str)] = &[
+    // Lifestyle TVs
+    ("ls03", "The Frame"),
+    ("ls01", "The Serif"),
+    ("ls05", "The Sero"),
+    ("lst7", "The Terrace"),
+    // OLED series
+    ("s95", "OLED S95"),
+    ("s90", "OLED S90"),
+    ("s85", "OLED S85"),
+    // Neo QLED series (highest to lowest)
+    ("qn9", "Neo QLED QN9"),
+    ("qn8", "Neo QLED QN8"),
+    ("qn7", "Neo QLED QN7"),
+    // QLED series
+    ("q8", "QLED Q8"),
+    ("q7", "QLED Q7"),
+    ("q6", "QLED Q6"),
+    // Crystal UHD series
+    ("cu8", "Crystal UHD CU8"),
+    ("cu7", "Crystal UHD CU7"),
+    ("bu8", "Crystal UHD BU8"),
+    ("au8", "Crystal UHD AU8"),
+    ("tu8", "Crystal UHD TU8"),
+    ("tu7", "Crystal UHD TU7"),
+];
+
+/// LG TV model series patterns mapped to friendly names
+/// Model format: OLED[Size][Series][Year][Variant] e.g., OLED55C3PUA
+const LG_TV_SERIES: &[(&str, &str)] = &[
+    // OLED series (premium to standard)
+    ("oled", "OLED"),
+    ("g3", "OLED G3"),
+    ("g2", "OLED G2"),
+    ("c3", "OLED C3"),
+    ("c2", "OLED C2"),
+    ("c1", "OLED C1"),
+    ("b3", "OLED B3"),
+    ("b2", "OLED B2"),
+    // QNED series
+    ("qned", "QNED"),
+    // NanoCell series
+    ("nano", "NanoCell"),
+    // UHD series
+    ("uq", "UHD"),
+    ("up", "UHD"),
+];
+
+/// Sony TV model series patterns
+const SONY_TV_SERIES: &[(&str, &str)] = &[
+    ("a95", "Bravia XR A95"),
+    ("a90", "Bravia XR A90"),
+    ("a80", "Bravia XR A80"),
+    ("x95", "Bravia XR X95"),
+    ("x90", "Bravia XR X90"),
+    ("x85", "Bravia X85"),
+    ("x80", "Bravia X80"),
+];
+
 const APPLIANCE_PATTERNS: &[&str] = &[
     "dishwasher",
     "washer",
@@ -1484,6 +1561,110 @@ fn is_soundbar_hostname(hostname: &str) -> bool {
         return true;
     }
     false
+}
+
+/// Check if SSDP/UPnP model indicates a soundbar
+fn is_soundbar_model(model: &str) -> bool {
+    let model_lower = model.to_lowercase();
+    SOUNDBAR_MODEL_PREFIXES
+        .iter()
+        .any(|prefix| model_lower.starts_with(prefix))
+}
+
+/// Normalize a TV/device model number to a friendly name
+/// e.g., "QN43LS03TAFXZA" -> "Samsung The Frame"
+/// e.g., "OLED55C3PUA" -> "LG OLED C3"
+/// e.g., "HW-MS750" -> "Samsung Soundbar"
+pub fn normalize_model_name(model: &str, vendor: Option<&str>) -> Option<String> {
+    let model_upper = model.to_uppercase();
+    let model_lower = model.to_lowercase();
+
+    // Check for soundbar models first
+    if model_lower.starts_with("hw-") || model_lower.starts_with("spk-") {
+        // Samsung soundbar - extract series
+        // HW-MS750 -> Soundbar MS750
+        // HW-Q990B -> Soundbar Q990B
+        let series = if model_lower.starts_with("hw-") {
+            &model_upper[3..]
+        } else {
+            &model_upper[4..]
+        };
+        return Some(format!("Samsung Soundbar {}", series));
+    }
+    if model_lower.starts_with("wam") {
+        // Samsung Wireless Audio Multiroom
+        return Some(format!("Samsung Wireless Speaker {}", &model_upper[3..]));
+    }
+    // LG soundbar models
+    if (model_lower.starts_with("sl") || model_lower.starts_with("sn") || model_lower.starts_with("sp"))
+        && model_lower.chars().nth(2).is_some_and(|c| c.is_ascii_digit())
+    {
+        return Some(format!("LG Soundbar {}", model_upper));
+    }
+    if model_lower.starts_with("sc9") {
+        return Some(format!("LG Soundbar {}", model_upper));
+    }
+    // JBL soundbar
+    if model_lower.starts_with("bar-") || model_lower.starts_with("bar ") {
+        return Some(format!("JBL {}", model_upper));
+    }
+
+    // Determine vendor from model prefix or provided vendor
+    let is_samsung = model_upper.starts_with("QN")
+        || model_upper.starts_with("UN")
+        || vendor.is_some_and(|v| v.to_lowercase().contains("samsung"));
+    let is_lg = model_upper.starts_with("OLED")
+        || model_upper.contains("NANO")
+        || model_upper.contains("QNED")
+        || vendor.is_some_and(|v| v.to_lowercase().contains("lg"));
+    let is_sony = model_upper.starts_with("XR")
+        || model_upper.starts_with("KD")
+        || vendor.is_some_and(|v| v.to_lowercase().contains("sony"));
+
+    // Samsung TV models
+    if is_samsung {
+        // Skip screen size digits to find series identifier
+        // Format: [QN|UN][Size][Series][Variant]
+        let series_part = if model_upper.starts_with("QN") || model_upper.starts_with("UN") {
+            // Skip panel type (2 chars) and size (2-3 digits)
+            let after_panel = &model_lower[2..];
+            after_panel.trim_start_matches(|c: char| c.is_ascii_digit())
+        } else {
+            &model_lower[..]
+        };
+
+        for (pattern, name) in SAMSUNG_TV_SERIES {
+            if series_part.starts_with(pattern) {
+                return Some(format!("Samsung {}", name));
+            }
+        }
+    }
+
+    // LG TV models
+    if is_lg {
+        for (pattern, name) in LG_TV_SERIES {
+            if model_lower.contains(pattern) {
+                return Some(format!("LG {}", name));
+            }
+        }
+    }
+
+    // Sony TV models
+    if is_sony {
+        // Skip prefix like XR or KD and size
+        let series_part = model_lower
+            .trim_start_matches("xr")
+            .trim_start_matches("kd")
+            .trim_start_matches(|c: char| c.is_ascii_digit() || c == '-');
+
+        for (pattern, name) in SONY_TV_SERIES {
+            if series_part.starts_with(pattern) {
+                return Some(format!("Sony {}", name));
+            }
+        }
+    }
+
+    None
 }
 
 /// Check if hostname indicates an appliance
@@ -2901,10 +3082,18 @@ impl EndPoint {
         ips: &[String],
         ports: &[u16],
         macs: &[String],
+        model: Option<&str>,
     ) -> Option<&'static str> {
         // Pre-compute lowercase hostname once
         let lower_hostname = hostname.map(|h| h.to_lowercase());
         let lower = lower_hostname.as_deref();
+
+        // Check SSDP/UPnP model first - most reliable for identifying device type
+        if let Some(m) = model
+            && is_soundbar_model(m)
+        {
+            return Some(CLASSIFICATION_SOUNDBAR);
+        }
 
         // Check for LG ThinQ appliances FIRST (they advertise AirPlay but aren't TVs)
         if let Some(h) = lower
@@ -3020,6 +3209,34 @@ impl EndPoint {
         if !has_custom_name_column {
             conn.execute("ALTER TABLE endpoints ADD COLUMN custom_name TEXT", [])?;
         }
+
+        // Migration: Add ssdp_model column for UPnP model name
+        let has_ssdp_model: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_table_info('endpoints') WHERE name = 'ssdp_model'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !has_ssdp_model {
+            conn.execute("ALTER TABLE endpoints ADD COLUMN ssdp_model TEXT", [])?;
+        }
+
+        // Migration: Add ssdp_friendly_name column for UPnP friendly name
+        let has_ssdp_friendly_name: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_table_info('endpoints') WHERE name = 'ssdp_friendly_name'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !has_ssdp_friendly_name {
+            conn.execute(
+                "ALTER TABLE endpoints ADD COLUMN ssdp_friendly_name TEXT",
+                [],
+            )?;
+        }
+
         Ok(())
     }
 
@@ -4015,20 +4232,29 @@ mod tests {
     fn test_classify_device_type_integration() {
         // Full integration test of classify_device_type
         assert_eq!(
-            EndPoint::classify_device_type(Some("hp-laserjet"), &[], &[], &[]),
+            EndPoint::classify_device_type(Some("hp-laserjet"), &[], &[], &[], None),
             Some("printer")
         );
         assert_eq!(
-            EndPoint::classify_device_type(Some("roku-ultra"), &[], &[], &[]),
+            EndPoint::classify_device_type(Some("roku-ultra"), &[], &[], &[], None),
             Some("tv")
         );
         assert_eq!(
-            EndPoint::classify_device_type(Some("unknown-device"), &[], &[9100], &[]),
+            EndPoint::classify_device_type(Some("unknown-device"), &[], &[9100], &[], None),
             Some("printer")
         );
         assert_eq!(
-            EndPoint::classify_device_type(Some("my-laptop"), &[], &[80, 443], &[]),
+            EndPoint::classify_device_type(Some("my-laptop"), &[], &[80, 443], &[], None),
             None
+        );
+        // SSDP model-based classification
+        assert_eq!(
+            EndPoint::classify_device_type(Some("samsung-tv"), &[], &[], &[], Some("HW-MS750")),
+            Some("soundbar")
+        );
+        assert_eq!(
+            EndPoint::classify_device_type(Some("lg-device"), &[], &[], &[], Some("SL8YG")),
+            Some("soundbar")
         );
     }
 
@@ -4040,7 +4266,8 @@ mod tests {
                 Some("unknown"),
                 &[],
                 &[],
-                &["3c:5c:c4:90:a2:93".to_string()]
+                &["3c:5c:c4:90:a2:93".to_string()],
+                None
             ),
             Some("appliance")
         );
@@ -4050,7 +4277,8 @@ mod tests {
                 Some("192.168.1.50"),
                 &[],
                 &[],
-                &["18:d6:c7:12:34:56".to_string()]
+                &["18:d6:c7:12:34:56".to_string()],
+                None
             ),
             Some("appliance")
         );
@@ -4060,7 +4288,8 @@ mod tests {
                 Some("unknown"),
                 &[],
                 &[],
-                &["34:3e:a4:00:00:00".to_string()]
+                &["34:3e:a4:00:00:00".to_string()],
+                None
             ),
             Some("appliance")
         );
@@ -4070,7 +4299,8 @@ mod tests {
                 Some("unknown"),
                 &[],
                 &[],
-                &["a4:83:e7:12:34:56".to_string()]
+                &["a4:83:e7:12:34:56".to_string()],
+                None
             ),
             Some("phone")
         );
@@ -4080,7 +4310,8 @@ mod tests {
                 Some("hp-printer"),
                 &[],
                 &[],
-                &["3c:5c:c4:90:a2:93".to_string()]
+                &["3c:5c:c4:90:a2:93".to_string()],
+                None
             ),
             Some("printer")
         );
@@ -4122,5 +4353,91 @@ mod tests {
 
         // IPv4 should return None
         assert_eq!(extract_mac_from_ipv6_eui64("192.168.1.1"), None);
+    }
+
+    #[test]
+    fn test_normalize_model_name() {
+        use super::*;
+
+        // Samsung The Frame
+        assert_eq!(
+            normalize_model_name("QN43LS03TAFXZA", None),
+            Some("Samsung The Frame".to_string())
+        );
+        assert_eq!(
+            normalize_model_name("QN65LS03BAFXZA", None),
+            Some("Samsung The Frame".to_string())
+        );
+
+        // Samsung The Serif
+        assert_eq!(
+            normalize_model_name("QN55LS01TAFXZA", None),
+            Some("Samsung The Serif".to_string())
+        );
+
+        // Samsung QLED (numbered series)
+        assert_eq!(
+            normalize_model_name("QN65Q80CAFXZA", None),
+            Some("Samsung QLED Q8".to_string())
+        );
+        assert_eq!(
+            normalize_model_name("QN55Q60BAFXZA", None),
+            Some("Samsung QLED Q6".to_string())
+        );
+
+        // Samsung Neo QLED
+        assert_eq!(
+            normalize_model_name("QN85QN90BAFXZA", None),
+            Some("Samsung Neo QLED QN9".to_string())
+        );
+
+        // Samsung OLED
+        assert_eq!(
+            normalize_model_name("QN65S95BAFXZA", None),
+            Some("Samsung OLED S95".to_string())
+        );
+
+        // Samsung Crystal UHD
+        assert_eq!(
+            normalize_model_name("UN55TU8000FXZA", None),
+            Some("Samsung Crystal UHD TU8".to_string())
+        );
+
+        // LG OLED (with vendor hint)
+        assert_eq!(
+            normalize_model_name("OLED55C3PUA", Some("LG")),
+            Some("LG OLED".to_string())
+        );
+        assert_eq!(
+            normalize_model_name("55C2PUA", Some("LG")),
+            Some("LG OLED C2".to_string())
+        );
+
+        // Sony Bravia (with vendor hint)
+        assert_eq!(
+            normalize_model_name("XR55A90J", Some("Sony")),
+            Some("Sony Bravia XR A90".to_string())
+        );
+
+        // Soundbar models should normalize to friendly names
+        assert_eq!(
+            normalize_model_name("HW-MS750", None),
+            Some("Samsung Soundbar MS750".to_string())
+        );
+        assert_eq!(
+            normalize_model_name("HW-Q990B", None),
+            Some("Samsung Soundbar Q990B".to_string())
+        );
+        assert_eq!(
+            normalize_model_name("SPK-WAM750", None),
+            Some("Samsung Soundbar WAM750".to_string())
+        );
+        assert_eq!(
+            normalize_model_name("SL8YG", None),
+            Some("LG Soundbar SL8YG".to_string())
+        );
+
+        // Unknown model should return None
+        assert_eq!(normalize_model_name("XYZ123ABC", None), None);
     }
 }
