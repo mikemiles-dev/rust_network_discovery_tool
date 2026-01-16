@@ -46,8 +46,8 @@
                         // Don't reload page when on scanner tab - scanner has its own polling
                         if (App.Scanner) App.Scanner.pollStatus();
                     } else {
-                        // Reload page for network tab
-                        window.location.reload();
+                        // Reload page for network tab, preserving sort and selection
+                        App.Refresh.reloadWithState();
                     }
                 }, seconds * 1000);
             }
@@ -82,8 +82,38 @@
             } else if (App.state.activeTab === 'scanner') {
                 if (App.Scanner) App.Scanner.pollStatus();
             } else {
-                window.location.reload();
+                App.Refresh.reloadWithState();
             }
+        },
+
+        /**
+         * Reload page while preserving sort and selection state
+         */
+        reloadWithState: function() {
+            var url = new URL(window.location.href);
+
+            // Save current sort state
+            var sortedHeader = document.querySelector('.endpoints-table th.sorted-asc, .endpoints-table th.sorted-desc');
+            if (sortedHeader) {
+                var sortKey = sortedHeader.dataset.sort;
+                var sortDir = sortedHeader.classList.contains('sorted-asc') ? 'asc' : 'desc';
+                url.searchParams.set('sort', sortKey);
+                url.searchParams.set('sort_dir', sortDir);
+            }
+
+            // Save current page for pagination
+            if (App.Pagination) {
+                var pageState = App.Pagination.getState('endpoints');
+                if (pageState && pageState.currentPage > 1) {
+                    url.searchParams.set('page', pageState.currentPage);
+                }
+                if (pageState && pageState.pageSize !== 25) {
+                    url.searchParams.set('page_size', pageState.pageSize);
+                }
+            }
+
+            // Navigate to URL with state
+            window.location.href = url.toString();
         },
 
         /**

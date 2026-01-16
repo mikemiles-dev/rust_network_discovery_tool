@@ -17,7 +17,8 @@
             currentDeviceType: null,
             deviceCapabilitiesLoaded: false,
             currentThinQDeviceId: null,
-            currentThinQDeviceType: null
+            currentThinQDeviceType: null,
+            restoringState: false
         }
     };
 

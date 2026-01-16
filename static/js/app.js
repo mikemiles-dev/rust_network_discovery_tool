@@ -161,10 +161,16 @@
         // Initialize table sorting
         App.initTableSorting();
 
+        // Restore sort state from URL params
+        App.restoreSortState();
+
         // Initialize pagination for both tables
         if (App.Pagination) {
             App.Pagination.init('endpoints');
             App.Pagination.init('mdns');
+
+            // Restore pagination state from URL params
+            App.restorePaginationState();
         }
 
         // Initialize refresh interval
@@ -271,9 +277,67 @@
             tbody.appendChild(row);
         });
 
-        // Reset pagination to first page after sorting
-        if (App.Pagination) {
+        // Reset pagination to first page after sorting (but not when restoring from URL)
+        if (App.Pagination && !App.state.restoringState) {
             App.Pagination.resetToFirstPage('endpoints');
+        }
+    };
+
+    /**
+     * Restore sort state from URL parameters
+     */
+    App.restoreSortState = function() {
+        var urlParams = new URLSearchParams(window.location.search);
+        var sortKey = urlParams.get('sort');
+        var sortDir = urlParams.get('sort_dir');
+
+        if (sortKey) {
+            var table = document.getElementById('endpoints-table');
+            if (!table) return;
+
+            var headers = table.querySelectorAll('th.sortable');
+            var targetHeader = null;
+
+            headers.forEach(function(header) {
+                header.classList.remove('sorted-asc', 'sorted-desc');
+                if (header.dataset.sort === sortKey) {
+                    targetHeader = header;
+                }
+            });
+
+            if (targetHeader) {
+                var ascending = sortDir !== 'desc';
+                targetHeader.classList.add(ascending ? 'sorted-asc' : 'sorted-desc');
+
+                // Set flag to prevent pagination reset during restore
+                App.state.restoringState = true;
+                App.sortTable(sortKey, ascending);
+                App.state.restoringState = false;
+            }
+        }
+    };
+
+    /**
+     * Restore pagination state from URL parameters
+     */
+    App.restorePaginationState = function() {
+        var urlParams = new URLSearchParams(window.location.search);
+        var page = urlParams.get('page');
+        var pageSize = urlParams.get('page_size');
+
+        if (pageSize && App.Pagination) {
+            var select = document.getElementById('endpoints-page-size');
+            if (select) {
+                select.value = pageSize;
+                App.Pagination.changePageSize('endpoints', pageSize);
+            }
+        }
+
+        if (page && App.Pagination) {
+            var pageNum = parseInt(page, 10);
+            if (pageNum > 1) {
+                App.Pagination.goToPage('endpoints', pageNum);
+            }
         }
     };
 

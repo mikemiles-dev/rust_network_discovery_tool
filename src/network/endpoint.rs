@@ -605,6 +605,8 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("ec:b5:fa", "Philips Hue"),
     // Ecobee (thermostats)
     ("44:61:32", "Ecobee"),
+    // Texas Instruments (IoT chips, sensors, CC3xxx WiFi modules)
+    ("28:ec:9a", "Texas Instruments"),
     // TP-Link/Kasa smart plugs
     ("50:c7:bf", "TP-Link"),
     ("60:32:b1", "TP-Link"),
@@ -2446,6 +2448,7 @@ pub fn get_model_from_mac(mac: &str) -> Option<String> {
         "Vizio" => Some("Vizio TV".to_string()),
         "TCL" => Some("TCL TV".to_string()),
         "Hisense" => Some("Hisense TV".to_string()),
+        "Texas Instruments" => Some("TI IoT Device".to_string()),
         _ => None,
     }
 }
