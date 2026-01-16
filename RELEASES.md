@@ -30,6 +30,18 @@
   - Protocol selection saved to URL query parameter
   - Scroll position (window, table, details pane) saved to sessionStorage
 - **Clickable Logo** - Click "Rust Network Discovery Tool" to navigate to / and clear all filters
+- **Manual Model Override** - Set custom model names for any device via API
+  - `/api/endpoint/model` endpoint to set or clear custom models
+  - Custom models take priority over auto-detected models
+  - Useful for devices that can't be auto-detected (e.g., smart plugs, sensors)
+- **Heuristic-Based Model Detection** - Infer device models from context when not discoverable
+  - Amazon devices: Echo (no SSDP/mDNS/ports), Fire TV (specific ports), Ring
+  - Google/Nest devices: Chromecast, Nest/Google speakers
+  - Uses MAC vendor + network behavior to identify devices
+- **Automatic HP Printer Model Detection** - Probes HP printer web interfaces for model info
+  - Triggers automatically when HP device detected via ARP scan
+  - Extracts model from web page title (LaserJet, OfficeJet, DeskJet, ENVY)
+  - Saves model to database for display in UI
 
 ### Fixed
 - **MacBook Classified as Phone** - Mac computers advertising `_companion-link._tcp` (Handoff/AirDrop) were incorrectly classified as phones

@@ -126,6 +126,84 @@ fn resolve_from_mdns_cache(name: &str) -> Option<String> {
     }
 }
 
+/// Check if a hostname looks like an HP printer (NPI prefix)
+/// Probe an HP printer's web interface to get its model name
+/// HP printers typically expose their model in the HTML title or body
+async fn probe_hp_printer_model(ip: &str) -> Option<String> {
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return None,
+    };
+
+    // Try to fetch the printer's main page
+    let url = format!("http://{}/", ip);
+    let response = match client.get(&url).send().await {
+        Ok(r) => r,
+        Err(_) => return None,
+    };
+
+    let html = match response.text().await {
+        Ok(t) => t,
+        Err(_) => return None,
+    };
+
+    // Try to extract model from HTML title tag
+    // HP printers typically have titles like "HP Color LaserJet MFP M283fdw"
+    if let Some(start) = html.find("<title>") {
+        let after_title = &html[start + 7..];
+        if let Some(end) = after_title.find("</title>") {
+            let title = after_title[..end].trim();
+            // Clean up the title - remove IP address and extra whitespace
+            let model = title
+                .split("&nbsp;")
+                .next()
+                .unwrap_or(title)
+                .split("  ")
+                .next()
+                .unwrap_or(title)
+                .trim();
+
+            // Only return if it looks like an HP model
+            if model.to_lowercase().contains("hp ") ||
+               model.to_lowercase().contains("laserjet") ||
+               model.to_lowercase().contains("officejet") ||
+               model.to_lowercase().contains("deskjet") ||
+               model.to_lowercase().contains("envy") {
+                return Some(model.to_string());
+            }
+        }
+    }
+
+    // Try to extract from <h1> tag (common in HP printer pages)
+    if let Some(start) = html.find("<h1>") {
+        let after_h1 = &html[start + 4..];
+        if let Some(end) = after_h1.find("</h1>") {
+            let h1_content = after_h1[..end].trim();
+            if h1_content.to_lowercase().contains("hp ") {
+                return Some(h1_content.to_string());
+            }
+        }
+    }
+
+    None
+}
+
+/// Probe an HP printer and save the model to the database if found
+async fn probe_and_save_hp_printer_model(ip: &str, endpoint_id: i64) {
+    if let Some(model) = probe_hp_printer_model(ip).await {
+        // Save the model to the database
+        if let Ok(conn) = new_connection_result() {
+            let _ = conn.execute(
+                "UPDATE endpoints SET ssdp_model = ?1 WHERE id = ?2 AND (ssdp_model IS NULL OR ssdp_model = '')",
+                params![model, endpoint_id],
+            );
+        }
+    }
+}
+
 fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
     let conn = new_connection();
     // Use JOIN instead of correlated subquery for better performance
@@ -2414,6 +2492,23 @@ fn get_scan_manager() -> std::sync::Arc<ScanManager> {
                     // Process scan result - create/update endpoint in database
                     if let Err(e) = process_scan_result(&result) {
                         eprintln!("Error processing scan result: {}", e);
+                    }
+
+                    // Check if this is an ARP result for an HP device and probe for model
+                    if let ScanResult::Arp(arp) = &result {
+                        let mac_str = arp.mac.to_string();
+                        if get_mac_vendor(&mac_str).is_some_and(|v| v == "HP") {
+                            let ip = arp.ip.to_string();
+                            // Spawn async task to probe HP printer model
+                            tokio::spawn(async move {
+                                // Find the endpoint_id for this IP
+                                if let Ok(conn) = new_connection_result()
+                                    && let Some(endpoint_id) = find_existing_endpoint_by_ip(&conn, &ip)
+                                {
+                                    probe_and_save_hp_printer_model(&ip, endpoint_id).await;
+                                }
+                            });
+                        }
                     }
                 }
             });
