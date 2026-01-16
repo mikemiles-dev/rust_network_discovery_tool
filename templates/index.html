@@ -1787,6 +1787,21 @@
             <div class="empty-state">No MAC addresses</div>
           {% endif %}
         </div>
+
+        <!-- Delete Endpoint Button -->
+        {% if endpoint %}
+        <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(71, 85, 105, 0.3);">
+          <button onclick="deleteEndpoint('{{ endpoint }}')"
+                  style="width: 100%; padding: 0.75rem; background: #dc2626; color: white; border: none; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: background-color 0.2s;"
+                  onmouseover="this.style.backgroundColor='#b91c1c'"
+                  onmouseout="this.style.backgroundColor='#dc2626'">
+            🗑️ Delete Endpoint
+          </button>
+          <div style="font-size: 0.7rem; color: var(--text-secondary); text-align: center; margin-top: 0.5rem;">
+            Removes endpoint and all associated communications
+          </div>
+        </div>
+        {% endif %}
         </div><!-- End Details Tab Content -->
 
         <!-- Control Tab Content -->

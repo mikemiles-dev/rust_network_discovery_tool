@@ -434,6 +434,35 @@
                 btn.textContent = originalText;
                 btn.disabled = false;
             });
+        },
+
+        /**
+         * Delete an endpoint and all associated data
+         */
+        deleteEndpoint: function(endpointName) {
+            if (!confirm('Are you sure you want to delete "' + endpointName + '"?\n\nThis will permanently remove the endpoint and all associated communications.')) {
+                return;
+            }
+
+            fetch('/api/endpoint/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ endpoint_name: endpointName })
+            })
+            .then(function(response) { return response.json(); })
+            .then(function(result) {
+                if (result.success) {
+                    // Navigate to home page without the deleted endpoint
+                    var url = new URL(window.location.href);
+                    url.searchParams.delete('node');
+                    window.location.href = url.toString();
+                } else {
+                    alert('Failed to delete endpoint: ' + result.message);
+                }
+            })
+            .catch(function(error) {
+                alert('Error deleting endpoint: ' + error);
+            });
         }
     };
 
@@ -443,6 +472,7 @@
     window.selectScanInterval = App.Endpoints.selectScanInterval;
     window.scrollToSection = App.Endpoints.scrollToSection;
     window.probeHostname = App.Endpoints.probeHostname;
+    window.deleteEndpoint = App.Endpoints.deleteEndpoint;
     window.getDeviceTypeInfo = App.Endpoints.getDeviceTypeInfo;
     window.updateEndpointDetails = App.Endpoints.updateDetails;
 

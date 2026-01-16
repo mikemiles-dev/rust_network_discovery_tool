@@ -133,11 +133,10 @@ fn resolve_from_mdns_cache(name: &str) -> Option<String> {
     }
 }
 
-/// Check if a hostname looks like an HP printer (NPI prefix)
-/// Probe an HP printer's web interface to get its model name
+/// Probe an HP printer's web interface to get its model name (blocking version)
 /// HP printers typically expose their model in the HTML title or body
-async fn probe_hp_printer_model(ip: &str) -> Option<String> {
-    let client = match reqwest::Client::builder()
+fn probe_hp_printer_model_blocking(ip: &str) -> Option<String> {
+    let client = match reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
         .build()
     {
@@ -147,12 +146,12 @@ async fn probe_hp_printer_model(ip: &str) -> Option<String> {
 
     // Try to fetch the printer's main page
     let url = format!("http://{}/", ip);
-    let response = match client.get(&url).send().await {
+    let response = match client.get(&url).send() {
         Ok(r) => r,
         Err(_) => return None,
     };
 
-    let html = match response.text().await {
+    let html = match response.text() {
         Ok(t) => t,
         Err(_) => return None,
     };
@@ -206,9 +205,9 @@ async fn probe_hp_printer_model(ip: &str) -> Option<String> {
     None
 }
 
-/// Probe an HP printer and save the model to the database if found
-async fn probe_and_save_hp_printer_model(ip: &str, endpoint_id: i64) {
-    if let Some(model) = probe_hp_printer_model(ip).await {
+/// Probe an HP printer and save the model to the database if found (blocking)
+fn probe_and_save_hp_printer_model_blocking(ip: &str, endpoint_id: i64) {
+    if let Some(model) = probe_hp_printer_model_blocking(ip) {
         // Save the model to the database
         if let Ok(conn) = new_connection_result() {
             match conn.execute(
@@ -1399,6 +1398,14 @@ async fn get_endpoint_details(
     let needs_model = custom_model.as_ref().is_none_or(|m| m.is_empty())
         && ssdp_model.as_ref().is_none_or(|m| m.is_empty());
 
+    // Debug logging for HP probe
+    if device_vendor == "HP" {
+        eprintln!(
+            "HP device check: vendor={}, custom_model={:?}, ssdp_model={:?}, needs_model={}",
+            device_vendor, custom_model, ssdp_model, needs_model
+        );
+    }
+
     if device_vendor == "HP"
         && needs_model
         && let Some(ip) = ips.first().cloned()
@@ -1421,8 +1428,9 @@ async fn get_endpoint_details(
 
         if should_probe {
             eprintln!("Auto-probing HP device at {} (endpoint {})", ip, endpoint_id);
-            tokio::spawn(async move {
-                probe_and_save_hp_printer_model(&ip, endpoint_id).await;
+            // Use spawn_blocking for immediate execution in thread pool
+            tokio::task::spawn_blocking(move || {
+                probe_and_save_hp_printer_model_blocking(&ip, endpoint_id);
                 // Remove from probing set when done
                 let mut probing = get_probing_endpoints().lock().unwrap();
                 probing.remove(&endpoint_id);
@@ -1707,6 +1715,7 @@ pub fn start(preferred_port: u16) {
                         .service(set_endpoint_type)
                         .service(rename_endpoint)
                         .service(set_endpoint_model)
+                        .service(delete_endpoint)
                         .service(probe_endpoint_model)
                         .service(get_dns_entries_api)
                         .service(probe_hostname)
@@ -2342,6 +2351,91 @@ async fn set_endpoint_model(body: Json<SetModelRequest>) -> impl Responder {
 }
 
 #[derive(Deserialize)]
+struct DeleteEndpointRequest {
+    endpoint_name: String,
+}
+
+#[derive(Serialize)]
+struct DeleteEndpointResponse {
+    success: bool,
+    message: String,
+}
+
+/// Delete an endpoint and all associated data (communications, attributes, scan results)
+#[post("/api/endpoint/delete")]
+async fn delete_endpoint(body: Json<DeleteEndpointRequest>) -> impl Responder {
+    let conn = new_connection();
+
+    // First, find the endpoint ID(s) matching the name
+    let endpoint_ids: Vec<i64> = conn
+        .prepare(&format!(
+            "SELECT DISTINCT e.id FROM endpoints e
+             LEFT JOIN endpoint_attributes ea ON e.id = ea.endpoint_id
+             WHERE {} = ?1 COLLATE NOCASE
+                OR LOWER(ea.hostname) = LOWER(?1)
+                OR LOWER(ea.ip) = LOWER(?1)",
+            DISPLAY_NAME_SQL
+        ))
+        .and_then(|mut stmt| {
+            stmt.query_map([&body.endpoint_name], |row| row.get(0))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+
+    if endpoint_ids.is_empty() {
+        return HttpResponse::NotFound().json(DeleteEndpointResponse {
+            success: false,
+            message: format!("Endpoint '{}' not found", body.endpoint_name),
+        });
+    }
+
+    // Delete in order to respect foreign key constraints
+    let mut deleted_comms = 0;
+    let mut deleted_attrs = 0;
+    let mut deleted_scans = 0;
+    let mut deleted_endpoints = 0;
+
+    for endpoint_id in &endpoint_ids {
+        // Delete communications where this endpoint is source or destination
+        deleted_comms += conn
+            .execute(
+                "DELETE FROM communications WHERE source_endpoint_id = ?1 OR destination_endpoint_id = ?1",
+                params![endpoint_id],
+            )
+            .unwrap_or(0);
+
+        // Delete scan results
+        deleted_scans += conn
+            .execute(
+                "DELETE FROM scan_results WHERE endpoint_id = ?1",
+                params![endpoint_id],
+            )
+            .unwrap_or(0);
+
+        // Delete endpoint attributes
+        deleted_attrs += conn
+            .execute(
+                "DELETE FROM endpoint_attributes WHERE endpoint_id = ?1",
+                params![endpoint_id],
+            )
+            .unwrap_or(0);
+
+        // Delete the endpoint itself
+        deleted_endpoints += conn
+            .execute("DELETE FROM endpoints WHERE id = ?1", params![endpoint_id])
+            .unwrap_or(0);
+    }
+
+    HttpResponse::Ok().json(DeleteEndpointResponse {
+        success: true,
+        message: format!(
+            "Deleted endpoint '{}': {} endpoint(s), {} communication(s), {} attribute(s), {} scan result(s)",
+            body.endpoint_name, deleted_endpoints, deleted_comms, deleted_attrs, deleted_scans
+        ),
+    })
+}
+
+#[derive(Deserialize)]
 struct ProbeModelRequest {
     ip: String,
 }
@@ -2358,8 +2452,14 @@ struct ProbeModelResponse {
 async fn probe_endpoint_model(body: Json<ProbeModelRequest>) -> impl Responder {
     let ip = body.ip.clone();
 
-    // Try to probe the device for its model
-    if let Some(model) = probe_hp_printer_model(&ip).await {
+    // Try to probe the device for its model (run in blocking thread for immediate execution)
+    let ip_clone = ip.clone();
+    let model = tokio::task::spawn_blocking(move || probe_hp_printer_model_blocking(&ip_clone))
+        .await
+        .ok()
+        .flatten();
+
+    if let Some(model) = model {
         // Find the endpoint and save the model
         let conn = match new_connection_result() {
             Ok(c) => c,
@@ -2689,8 +2789,8 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
                 // If this is an HP device, probe for printer model
                 if get_mac_vendor(&mac_str).is_some_and(|v| v == "HP") {
                     let ip_for_probe = ip_str.clone();
-                    tokio::spawn(async move {
-                        probe_and_save_hp_printer_model(&ip_for_probe, endpoint_id).await;
+                    tokio::task::spawn_blocking(move || {
+                        probe_and_save_hp_printer_model_blocking(&ip_for_probe, endpoint_id);
                     });
                 }
             }
