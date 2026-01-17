@@ -282,6 +282,44 @@ MONITOR_INTERFACES="1" DATA_RETENTION_DAYS=14 DATABASE_URL="network.db" WEB_PORT
 
 **Database Naming**: By default, the database is named after the monitored interface (e.g., `en0.db`, `eth0.db`, `Wi-Fi.db`). When monitoring multiple interfaces, it defaults to `network.db`. Set `DATABASE_URL` to override this behavior.
 
+### Settings Tab
+
+The web UI includes a **Settings** tab for configuring runtime options without restarting the application.
+
+#### Available Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Cleanup Interval** | 30 seconds | How often the background cleanup job runs to merge duplicate endpoints and remove old data |
+| **Data Retention** | 7 days | How long to keep historical connection data before automatic deletion |
+
+#### Using the Settings Tab
+
+1. Open the web UI at http://localhost:8080
+2. Click the **Settings** tab in the header
+3. Adjust the values as needed
+4. Click **Save Settings**
+5. Restart the application for timing changes to take effect
+
+#### Settings API
+
+For automation or integration:
+
+```bash
+# Get all settings
+curl http://localhost:8080/api/settings
+
+# Update a setting
+curl -X POST http://localhost:8080/api/settings \
+  -H "Content-Type: application/json" \
+  -d '{"key": "cleanup_interval_seconds", "value": "60"}'
+
+# Update data retention
+curl -X POST http://localhost:8080/api/settings \
+  -H "Content-Type: application/json" \
+  -d '{"key": "data_retention_days", "value": "14"}'
+```
+
 ## How It Works
 
 1. **Captures packets** on selected network interfaces using libpnet

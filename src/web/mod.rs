@@ -13,7 +13,7 @@ use std::io::Write;
 use tera::{Context, Tera};
 use tokio::task;
 
-use crate::db::{SQLWriter, new_connection, new_connection_result};
+use crate::db::{SQLWriter, new_connection, new_connection_result, get_all_settings, set_setting};
 use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::device_control::DeviceController;
 use crate::network::endpoint::{
@@ -1300,6 +1300,25 @@ async fn get_endpoint_details(
     let endpoint_name = path.into_inner();
     let internal_minutes = query.scan_interval.unwrap_or(525600);
 
+    // Run all blocking DB operations in a separate thread pool
+    let result = tokio::task::spawn_blocking(move || {
+        get_endpoint_details_blocking(endpoint_name, internal_minutes)
+    })
+    .await;
+
+    match result {
+        Ok(response) => HttpResponse::Ok().json(response),
+        Err(_) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": "Failed to fetch endpoint details"
+        })),
+    }
+}
+
+/// Blocking implementation of endpoint details fetching
+fn get_endpoint_details_blocking(
+    endpoint_name: String,
+    internal_minutes: u64,
+) -> EndpointDetailsResponse {
     // Get IPs, MACs, and hostnames
     let (ips, macs, hostnames) = get_all_ips_macs_and_hostnames_from_single_hostname(
         endpoint_name.clone(),
@@ -1465,8 +1484,8 @@ async fn get_endpoint_details(
 
         if should_probe {
             eprintln!("Auto-probing HP device at {} (endpoint {})", ip, endpoint_id);
-            // Use spawn_blocking for immediate execution in thread pool
-            tokio::task::spawn_blocking(move || {
+            // Spawn a thread for the probe (we're already in a blocking context)
+            std::thread::spawn(move || {
                 probe_and_save_hp_printer_model_blocking(&ip, endpoint_id);
                 // Remove from probing set when done
                 let mut probing = get_probing_endpoints().lock().unwrap();
@@ -1521,7 +1540,7 @@ async fn get_endpoint_details(
     // Get bytes stats
     let bytes_stats = get_bytes_for_endpoint(endpoint_name.clone(), internal_minutes);
 
-    let response = EndpointDetailsResponse {
+    EndpointDetailsResponse {
         endpoint_name,
         device_type,
         is_manual_override,
@@ -1534,9 +1553,7 @@ async fn get_endpoint_details(
         protocols,
         bytes_in: bytes_stats.bytes_in,
         bytes_out: bytes_stats.bytes_out,
-    };
-
-    HttpResponse::Ok().json(response)
+    }
 }
 
 #[derive(Serialize)]
@@ -1775,6 +1792,8 @@ pub fn start(preferred_port: u16) {
                         .service(get_scan_capabilities)
                         .service(get_scan_config)
                         .service(set_scan_config)
+                        .service(get_settings)
+                        .service(update_setting)
                         .service(upload_pcap)
                 })
                 .bind(("127.0.0.1", port))
@@ -1852,7 +1871,7 @@ async fn static_files(path: actix_web::web::Path<String>) -> impl Responder {
 #[get("/")]
 async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let hostname = strip_local_suffix(&get_hostname().unwrap_or_else(|_| "Unknown".to_string()));
-    let selected_endpoint = query.node.clone().unwrap_or_else(|| hostname.clone());
+    let selected_endpoint = query.node.clone().unwrap_or_default();
     let scan_interval = query.scan_interval.unwrap_or(525600);
 
     // Phase 1: Run independent queries in parallel
@@ -2062,7 +2081,9 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     // Always classify local device as "local"
     endpoint_types.insert(hostname.clone(), "local");
     // Ensure the selected endpoint is always in endpoint_types (for URL navigation)
-    endpoint_types.entry(selected_endpoint.clone()).or_insert("other");
+    if !selected_endpoint.is_empty() {
+        endpoint_types.entry(selected_endpoint.clone()).or_insert("other");
+    }
 
     // Second pass: enhance models using vendor + device type for endpoints without models
     let mut endpoint_models = endpoint_models;
@@ -2206,7 +2227,6 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     // wasn't found in batch queries (e.g., mDNS-resolved names)
     let selected_lower = selected_endpoint.to_lowercase();
     let mut endpoint_vendors = endpoint_vendors;
-    let mut endpoint_models = endpoint_models;
     if !device_vendor.is_empty() {
         endpoint_vendors.entry(selected_lower.clone()).or_insert(device_vendor.clone());
     }
@@ -2484,20 +2504,32 @@ async fn delete_endpoint(body: Json<DeleteEndpointRequest>) -> impl Responder {
     let conn = new_connection();
 
     // First, find the endpoint ID(s) matching the name
-    let endpoint_ids: Vec<i64> = conn
-        .prepare(&format!(
-            "SELECT DISTINCT e.id FROM endpoints e
-             LEFT JOIN endpoint_attributes ea ON e.id = ea.endpoint_id
-             WHERE {} = ?1 COLLATE NOCASE
-                OR LOWER(ea.hostname) = LOWER(?1)
-                OR LOWER(ea.ip) = LOWER(?1)",
-            DISPLAY_NAME_SQL
-        ))
-        .and_then(|mut stmt| {
-            stmt.query_map([&body.endpoint_name], |row| row.get(0))
-                .map(|rows| rows.filter_map(|r| r.ok()).collect())
-        })
-        .unwrap_or_default();
+    let endpoint_ids: Vec<i64> = match conn.prepare(&format!(
+        "SELECT DISTINCT e.id FROM endpoints e
+         LEFT JOIN endpoint_attributes ea ON e.id = ea.endpoint_id
+         WHERE {} = ?1 COLLATE NOCASE
+            OR LOWER(ea.hostname) = LOWER(?1)
+            OR LOWER(ea.ip) = LOWER(?1)",
+        DISPLAY_NAME_SQL
+    )) {
+        Ok(mut stmt) => match stmt.query_map([&body.endpoint_name], |row| row.get(0)) {
+            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Err(e) => {
+                eprintln!("Error querying for endpoint to delete: {}", e);
+                return HttpResponse::InternalServerError().json(DeleteEndpointResponse {
+                    success: false,
+                    message: format!("Database query error: {}", e),
+                });
+            }
+        },
+        Err(e) => {
+            eprintln!("Error preparing delete query: {}", e);
+            return HttpResponse::InternalServerError().json(DeleteEndpointResponse {
+                success: false,
+                message: format!("Database error: {}", e),
+            });
+        }
+    };
 
     if endpoint_ids.is_empty() {
         return HttpResponse::NotFound().json(DeleteEndpointResponse {
@@ -2507,16 +2539,23 @@ async fn delete_endpoint(body: Json<DeleteEndpointRequest>) -> impl Responder {
     }
 
     // Delete in order to respect foreign key constraints
-    let mut deleted_comms = 0;
+    let mut updated_comms = 0;
     let mut deleted_attrs = 0;
     let mut deleted_scans = 0;
     let mut deleted_endpoints = 0;
 
     for endpoint_id in &endpoint_ids {
-        // Delete communications where this endpoint is source or destination
-        deleted_comms += conn
+        // Nullify this endpoint's ID in communications instead of deleting them
+        // This preserves communication history for other endpoints
+        updated_comms += conn
             .execute(
-                "DELETE FROM communications WHERE source_endpoint_id = ?1 OR destination_endpoint_id = ?1",
+                "UPDATE communications SET src_endpoint_id = NULL WHERE src_endpoint_id = ?1",
+                params![endpoint_id],
+            )
+            .unwrap_or(0);
+        updated_comms += conn
+            .execute(
+                "UPDATE communications SET dst_endpoint_id = NULL WHERE dst_endpoint_id = ?1",
                 params![endpoint_id],
             )
             .unwrap_or(0);
@@ -2546,8 +2585,8 @@ async fn delete_endpoint(body: Json<DeleteEndpointRequest>) -> impl Responder {
     HttpResponse::Ok().json(DeleteEndpointResponse {
         success: true,
         message: format!(
-            "Deleted endpoint '{}': {} endpoint(s), {} communication(s), {} attribute(s), {} scan result(s)",
-            body.endpoint_name, deleted_endpoints, deleted_comms, deleted_attrs, deleted_scans
+            "Deleted endpoint '{}': {} endpoint(s), {} attribute(s), {} scan result(s) (preserved {} communication records)",
+            body.endpoint_name, deleted_endpoints, deleted_attrs, deleted_scans, updated_comms
         ),
     })
 }
@@ -3110,6 +3149,55 @@ async fn set_scan_config(body: Json<ScanConfig>) -> impl Responder {
         success: true,
         message: "Config updated".to_string(),
     })
+}
+
+// ============================================================================
+// Settings Endpoints
+// ============================================================================
+
+#[derive(Serialize)]
+struct SettingsResponse {
+    settings: std::collections::HashMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct UpdateSettingRequest {
+    key: String,
+    value: String,
+}
+
+#[derive(Serialize)]
+struct UpdateSettingResponse {
+    success: bool,
+    message: String,
+}
+
+#[get("/api/settings")]
+async fn get_settings() -> impl Responder {
+    let settings = tokio::task::spawn_blocking(get_all_settings)
+        .await
+        .unwrap_or_default();
+
+    HttpResponse::Ok().json(SettingsResponse { settings })
+}
+
+#[post("/api/settings")]
+async fn update_setting(body: Json<UpdateSettingRequest>) -> impl Responder {
+    let key = body.key.clone();
+    let value = body.value.clone();
+
+    let result = tokio::task::spawn_blocking(move || set_setting(&key, &value)).await;
+
+    match result {
+        Ok(Ok(())) => HttpResponse::Ok().json(UpdateSettingResponse {
+            success: true,
+            message: format!("Setting '{}' updated", body.key),
+        }),
+        _ => HttpResponse::InternalServerError().json(UpdateSettingResponse {
+            success: false,
+            message: "Failed to update setting".to_string(),
+        }),
+    }
 }
 
 // ============================================================================

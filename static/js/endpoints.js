@@ -309,6 +309,12 @@
             // Stop any existing model polling
             App.Endpoints.stopModelPolling();
 
+            // Show the endpoint details overlay (may be hidden when no endpoint selected)
+            var overlay = document.querySelector('.protocols-overlay');
+            if (overlay) {
+                overlay.style.display = '';
+            }
+
             // Show loading state immediately to avoid showing stale data
             App.Endpoints.showLoading(nodeId);
 
@@ -340,6 +346,12 @@
             document.querySelectorAll('.endpoint-row.selected').forEach(function(row) {
                 row.classList.remove('selected');
             });
+
+            // Hide the endpoint details overlay
+            var overlay = document.querySelector('.protocols-overlay');
+            if (overlay) {
+                overlay.style.display = 'none';
+            }
 
             // Clear endpoint details content
             var nameDisplay = document.querySelector('#endpoint-name-display span');

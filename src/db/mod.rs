@@ -41,6 +41,53 @@ pub fn new_connection_result() -> Result<Connection, rusqlite::Error> {
     Ok(conn)
 }
 
+/// Get a setting value from the database
+pub fn get_setting(key: &str) -> Option<String> {
+    let conn = new_connection();
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = ?1",
+        [key],
+        |row| row.get(0),
+    )
+    .ok()
+}
+
+/// Get a setting value as i64, with a default fallback
+pub fn get_setting_i64(key: &str, default: i64) -> i64 {
+    get_setting(key)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
+/// Set a setting value in the database
+pub fn set_setting(key: &str, value: &str) -> Result<(), rusqlite::Error> {
+    let conn = new_connection();
+    conn.execute(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, strftime('%s', 'now'))
+         ON CONFLICT(key) DO UPDATE SET value = ?2, updated_at = strftime('%s', 'now')",
+        rusqlite::params![key, value],
+    )?;
+    Ok(())
+}
+
+/// Get all settings as a HashMap
+pub fn get_all_settings() -> std::collections::HashMap<String, String> {
+    let conn = new_connection();
+    let mut settings = std::collections::HashMap::new();
+
+    if let Ok(mut stmt) = conn.prepare("SELECT key, value FROM settings")
+        && let Ok(rows) = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+    {
+        for row in rows.flatten() {
+            settings.insert(row.0, row.1);
+        }
+    }
+
+    settings
+}
+
 #[cfg(test)]
 pub fn new_test_connection() -> Connection {
     let conn = Connection::open_in_memory().expect("Failed to create in-memory database");
@@ -144,6 +191,26 @@ impl SQLWriter {
             )
             .expect("Failed to create open_ports table");
 
+            // Create settings table for user-configurable options
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+                )",
+                [],
+            )
+            .expect("Failed to create settings table");
+
+            // Insert default settings if they don't exist
+            conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES
+                    ('cleanup_interval_seconds', '30'),
+                    ('data_retention_days', '7')",
+                [],
+            )
+            .expect("Failed to insert default settings");
+
             const BATCH_SIZE: usize = 100; // Smaller batches to reduce lock time
             const BATCH_TIMEOUT_MS: u64 = 500; // Flush every 0.5 seconds
             let mut batch = Vec::with_capacity(BATCH_SIZE);
@@ -183,7 +250,7 @@ impl SQLWriter {
             }
         });
 
-        // Spawn separate cleanup task that runs at startup, then every hour
+        // Spawn separate cleanup task that runs at startup, then at configurable interval
         task::spawn(async {
             // Run cleanup immediately at startup (with small delay to let tables be created)
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
@@ -199,8 +266,9 @@ impl SQLWriter {
                     eprintln!("Failed to cleanup old data: {}", e);
                 }
 
-                // Wait 1 hour before next cleanup
-                tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
+                // Read cleanup interval from settings (default 30 seconds)
+                let interval_secs = get_setting_i64("cleanup_interval_seconds", 30);
+                tokio::time::sleep(tokio::time::Duration::from_secs(interval_secs as u64)).await;
             }
         });
 
@@ -322,10 +390,13 @@ impl SQLWriter {
     }
 
     fn cleanup_old_data(conn: &Connection) -> rusqlite::Result<()> {
-        let retention_days = env::var("DATA_RETENTION_DAYS")
-            .ok()
-            .and_then(|val| val.parse::<i64>().ok())
-            .unwrap_or(7); // Default: keep 7 days
+        // Read retention from settings first, then env var, then default to 7 days
+        let retention_days = get_setting_i64("data_retention_days",
+            env::var("DATA_RETENTION_DAYS")
+                .ok()
+                .and_then(|val| val.parse::<i64>().ok())
+                .unwrap_or(7)
+        );
 
         let retention_seconds = retention_days * 24 * 60 * 60;
 
@@ -373,8 +444,15 @@ impl SQLWriter {
             println!("Merged {} duplicate endpoints by hostname", merged);
         }
 
+        // Merge endpoints that share the same IPv6 /64 prefix
+        // This handles devices with multiple IPv6 addresses captured before hostname resolution
+        let ipv6_merged = Self::merge_endpoints_by_ipv6_prefix(conn)?;
+        if ipv6_merged > 0 {
+            println!("Merged {} duplicate endpoints by IPv6 prefix", ipv6_merged);
+        }
+
         // Vacuum database occasionally to reclaim space
-        if deleted > 1000 || deduped > 1000 || merged > 0 {
+        if deleted > 1000 || deduped > 1000 || merged > 0 || ipv6_merged > 0 {
             println!("Running VACUUM to reclaim disk space...");
             conn.execute("VACUUM", [])?;
         }
@@ -444,6 +522,109 @@ impl SQLWriter {
                 conn.execute("DELETE FROM endpoints WHERE id = ?1", [merge_id])?;
 
                 merged_count += 1;
+            }
+        }
+
+        Ok(merged_count)
+    }
+
+    /// Merge endpoints that share the same IPv6 /64 prefix
+    /// This handles cases where a device has multiple IPv6 addresses (privacy extensions, etc.)
+    /// and was captured before hostname resolution, creating duplicate endpoints
+    fn merge_endpoints_by_ipv6_prefix(conn: &Connection) -> rusqlite::Result<usize> {
+        let mut merged_count = 0;
+
+        // Find endpoints with IPv6 addresses, grouped by their /64 prefix
+        // IPv6 /64 prefix is the first 4 colon-separated groups (e.g., "2607:fb90:9b88:4ec6")
+        let mut stmt = conn.prepare(
+            "SELECT
+                substr(ea.ip, 1, instr(ea.ip || ':', ':') - 1) || ':' ||
+                substr(substr(ea.ip, instr(ea.ip, ':') + 1), 1, instr(substr(ea.ip, instr(ea.ip, ':') + 1) || ':', ':') - 1) || ':' ||
+                substr(substr(substr(ea.ip, instr(ea.ip, ':') + 1), instr(substr(ea.ip, instr(ea.ip, ':') + 1), ':') + 1), 1,
+                    instr(substr(substr(ea.ip, instr(ea.ip, ':') + 1), instr(substr(ea.ip, instr(ea.ip, ':') + 1), ':') + 1) || ':', ':') - 1) || ':' ||
+                substr(substr(substr(substr(ea.ip, instr(ea.ip, ':') + 1), instr(substr(ea.ip, instr(ea.ip, ':') + 1), ':') + 1),
+                    instr(substr(substr(ea.ip, instr(ea.ip, ':') + 1), instr(substr(ea.ip, instr(ea.ip, ':') + 1), ':') + 1), ':') + 1), 1,
+                    instr(substr(substr(substr(ea.ip, instr(ea.ip, ':') + 1), instr(substr(ea.ip, instr(ea.ip, ':') + 1), ':') + 1),
+                        instr(substr(substr(ea.ip, instr(ea.ip, ':') + 1), instr(substr(ea.ip, instr(ea.ip, ':') + 1), ':') + 1), ':') + 1) || ':', ':') - 1)
+                as prefix,
+                GROUP_CONCAT(DISTINCT e.id) as endpoint_ids,
+                COUNT(DISTINCT e.id) as cnt
+             FROM endpoint_attributes ea
+             JOIN endpoints e ON ea.endpoint_id = e.id
+             WHERE ea.ip LIKE '%:%:%:%:%'  -- Only IPv6 addresses (at least 4 colons)
+               AND ea.ip NOT LIKE 'fe80:%'  -- Exclude link-local
+             GROUP BY prefix
+             HAVING cnt > 1",
+        )?;
+
+        let prefixes: Vec<(String, String)> = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        for (_prefix, ids_str) in prefixes {
+            let ids: Vec<i64> = ids_str.split(',').filter_map(|s| s.parse().ok()).collect();
+
+            if ids.len() < 2 {
+                continue;
+            }
+
+            // Find which endpoint has a proper hostname (not just an IP)
+            // Prefer endpoints with hostnames over those with just IPv6 addresses as names
+            let mut best_id: Option<i64> = None;
+            let mut ipv6_only_ids: Vec<i64> = Vec::new();
+
+            for &id in &ids {
+                let name: Option<String> = conn
+                    .query_row("SELECT name FROM endpoints WHERE id = ?1", [id], |row| {
+                        row.get(0)
+                    })
+                    .ok();
+
+                if let Some(ref n) = name {
+                    // If name contains colons, it's likely an IPv6 address
+                    if n.contains(':') {
+                        ipv6_only_ids.push(id);
+                    } else if best_id.is_none() {
+                        best_id = Some(id);
+                    }
+                }
+            }
+
+            // If we found a hostname-based endpoint and IPv6-only endpoints, merge them
+            if let Some(keep_id) = best_id {
+                for merge_id in ipv6_only_ids {
+                    // Move endpoint_attributes
+                    conn.execute(
+                        "UPDATE OR IGNORE endpoint_attributes SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+                        rusqlite::params![keep_id, merge_id],
+                    )?;
+                    conn.execute(
+                        "DELETE FROM endpoint_attributes WHERE endpoint_id = ?1",
+                        [merge_id],
+                    )?;
+
+                    // Move communications
+                    conn.execute(
+                        "UPDATE OR IGNORE communications SET src_endpoint_id = ?1 WHERE src_endpoint_id = ?2",
+                        rusqlite::params![keep_id, merge_id],
+                    )?;
+                    conn.execute(
+                        "UPDATE OR IGNORE communications SET dst_endpoint_id = ?1 WHERE dst_endpoint_id = ?2",
+                        rusqlite::params![keep_id, merge_id],
+                    )?;
+                    conn.execute(
+                        "DELETE FROM communications WHERE src_endpoint_id = ?1 OR dst_endpoint_id = ?1",
+                        [merge_id],
+                    )?;
+
+                    // Delete the duplicate endpoint
+                    conn.execute("DELETE FROM endpoints WHERE id = ?1", [merge_id])?;
+
+                    merged_count += 1;
+                }
             }
         }
 

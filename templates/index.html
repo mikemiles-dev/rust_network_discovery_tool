@@ -1422,6 +1422,7 @@
       <button class="tab-btn" onclick="switchTab('dns')">mDNS Entries</button>
       <button class="tab-btn" onclick="switchTab('scanner')">Scanner</button>
       <button class="tab-btn" onclick="switchTab('pcap')">PCAP</button>
+      <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
     </div>
     <div class="logo"><a href="/">⚡ Rust Network Discovery Tool</a></div>
   </header>
@@ -1604,7 +1605,7 @@
       </div>
 
       <!-- Protocols Overlay -->
-      <div class="protocols-overlay">
+      <div class="protocols-overlay"{% if not endpoint %} style="display: none;"{% endif %}>
         <!-- Endpoint Details Header with Tabs -->
         <div class="overlay-header" style="display: flex; justify-content: space-between; align-items: center;">
           <span>Endpoint Details</span>
@@ -2293,6 +2294,58 @@
     </div>
   </div><!-- End PCAP Tab -->
 
+  <!-- Settings Tab Content -->
+  <div id="settings-tab" class="tab-content">
+    <div class="scanner-container" style="max-width: 800px; margin: 0 auto; padding: 2rem;">
+      <h2 style="color: var(--text-primary); margin-bottom: 1.5rem; font-size: 1.5rem;">Settings</h2>
+
+      <div class="settings-section" style="background: var(--card-bg); border-radius: 0.5rem; padding: 1.5rem; margin-bottom: 1rem;">
+        <h3 style="color: var(--text-primary); margin-bottom: 1rem; font-size: 1.1rem;">Timing Settings</h3>
+
+        <div class="setting-item" style="margin-bottom: 1.5rem;">
+          <label style="display: block; color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.875rem;">
+            Cleanup Interval (seconds)
+          </label>
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <input type="number" id="setting-cleanup-interval"
+                   style="width: 120px; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 0.25rem; background: var(--bg-secondary); color: var(--text-primary);"
+                   min="10" max="3600" value="30">
+            <span style="color: var(--text-secondary); font-size: 0.75rem;">
+              How often to run cleanup tasks (merge duplicates, etc.)
+            </span>
+          </div>
+        </div>
+
+        <div class="setting-item" style="margin-bottom: 1.5rem;">
+          <label style="display: block; color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.875rem;">
+            Data Retention (days)
+          </label>
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <input type="number" id="setting-data-retention"
+                   style="width: 120px; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 0.25rem; background: var(--bg-secondary); color: var(--text-primary);"
+                   min="1" max="365" value="7">
+            <span style="color: var(--text-secondary); font-size: 0.75rem;">
+              How long to keep communication records
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 1rem;">
+        <button onclick="saveSettings()"
+                style="padding: 0.75rem 1.5rem; background: var(--accent-primary); color: white; border: none; border-radius: 0.25rem; cursor: pointer; font-weight: 500;">
+          Save Settings
+        </button>
+        <button onclick="loadSettings()"
+                style="padding: 0.75rem 1.5rem; background: var(--card-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 0.25rem; cursor: pointer;">
+          Reset
+        </button>
+      </div>
+
+      <div id="settings-status" style="margin-top: 1rem; padding: 0.75rem; border-radius: 0.25rem; display: none;"></div>
+    </div>
+  </div><!-- End Settings Tab -->
+
   <!-- External JavaScript modules -->
   <script src="/static/js/utils.js"></script>
   <script src="/static/js/formatting.js"></script>
@@ -2307,6 +2360,7 @@
   <script src="/static/js/device-control.js"></script>
   <script src="/static/js/lg-thinq.js"></script>
   <script src="/static/js/internet.js"></script>
+  <script src="/static/js/settings.js"></script>
   <script src="/static/js/app.js"></script>
 
   <!-- Inline script for template data initialization -->

@@ -3796,10 +3796,95 @@ impl EndPoint {
                     "UPDATE endpoints SET name = ? WHERE id = ?",
                     params![hostname, endpoint_id],
                 )?;
+                // When updating from IP to hostname, try to merge other IPv6 endpoints on same prefix
+                Self::merge_ipv6_siblings_into_endpoint(conn, endpoint_id);
             }
         }
 
         Ok(())
+    }
+
+    /// Merge other endpoints on the same IPv6 /64 prefix into this endpoint
+    /// Called when an endpoint gets a proper hostname, to consolidate IPv6-only duplicates
+    fn merge_ipv6_siblings_into_endpoint(conn: &Connection, target_endpoint_id: i64) {
+        // Get IPv6 addresses for this endpoint
+        let ipv6_addrs: Vec<String> = conn
+            .prepare(
+                "SELECT ip FROM endpoint_attributes WHERE endpoint_id = ?1 AND ip LIKE '%:%:%:%:%'",
+            )
+            .and_then(|mut stmt| {
+                stmt.query_map([target_endpoint_id], |row| row.get(0))
+                    .map(|rows| rows.filter_map(|r| r.ok()).collect())
+            })
+            .unwrap_or_default();
+
+        if ipv6_addrs.is_empty() {
+            return;
+        }
+
+        // Extract /64 prefixes (first 4 groups)
+        let prefixes: Vec<String> = ipv6_addrs
+            .iter()
+            .filter_map(|ip| {
+                let parts: Vec<&str> = ip.split(':').collect();
+                if parts.len() >= 4 {
+                    Some(format!("{}:{}:{}:{}", parts[0], parts[1], parts[2], parts[3]))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if prefixes.is_empty() {
+            return;
+        }
+
+        // Find other endpoints with IPv6 addresses on the same prefix that have IP-only names
+        for prefix in prefixes {
+            // Find endpoints with IPv6-like names (containing colons) on the same prefix
+            let siblings: Vec<i64> = conn
+                .prepare(
+                    "SELECT DISTINCT e.id FROM endpoints e
+                     JOIN endpoint_attributes ea ON e.id = ea.endpoint_id
+                     WHERE ea.ip LIKE ?1 || ':%'
+                       AND e.id != ?2
+                       AND e.name LIKE '%:%'",
+                )
+                .and_then(|mut stmt| {
+                    stmt.query_map(params![prefix, target_endpoint_id], |row| row.get(0))
+                        .map(|rows| rows.filter_map(|r| r.ok()).collect())
+                })
+                .unwrap_or_default();
+
+            for sibling_id in siblings {
+                // Merge sibling into target
+                let _ = conn.execute(
+                    "UPDATE OR IGNORE endpoint_attributes SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+                    params![target_endpoint_id, sibling_id],
+                );
+                let _ = conn.execute(
+                    "DELETE FROM endpoint_attributes WHERE endpoint_id = ?1",
+                    [sibling_id],
+                );
+                let _ = conn.execute(
+                    "UPDATE OR IGNORE communications SET src_endpoint_id = ?1 WHERE src_endpoint_id = ?2",
+                    params![target_endpoint_id, sibling_id],
+                );
+                let _ = conn.execute(
+                    "UPDATE OR IGNORE communications SET dst_endpoint_id = ?1 WHERE dst_endpoint_id = ?2",
+                    params![target_endpoint_id, sibling_id],
+                );
+                let _ = conn.execute(
+                    "DELETE FROM communications WHERE src_endpoint_id = ?1 OR dst_endpoint_id = ?1",
+                    [sibling_id],
+                );
+                let _ = conn.execute("DELETE FROM endpoints WHERE id = ?1", [sibling_id]);
+                println!(
+                    "Merged IPv6 endpoint {} into {} (same /64 prefix: {})",
+                    sibling_id, target_endpoint_id, prefix
+                );
+            }
+        }
     }
 
     fn parse_windows_gateway(output: &str) -> Option<String> {

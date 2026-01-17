@@ -1,5 +1,39 @@
 # Release Notes
 
+## [0.5.2]
+
+### Added
+- **Settings Tab** - New UI tab for configuring application settings
+  - Cleanup Interval (seconds) - How often to run merge/cleanup tasks (default: 30s)
+  - Data Retention (days) - How long to keep communication records (default: 7 days)
+  - Settings stored in SQLite database and persist across restarts
+  - API endpoints: `GET /api/settings`, `POST /api/settings`
+- **Automatic IPv6 Endpoint Merging** - Devices with multiple IPv6 addresses now automatically merged
+  - Merges endpoints sharing the same /64 prefix when one gets a hostname
+  - Runs immediately when hostname is discovered via mDNS/DNS
+  - Also runs periodically as part of cleanup task
+  - Prefers endpoints with proper hostnames over IPv6-address-named endpoints
+
+### Changed
+- **Delete Endpoint Behavior** - Now preserves communication history for other endpoints
+  - Previously deleted all communications involving the endpoint
+  - Now sets endpoint ID to NULL in communications, preserving records for other devices
+  - Prevents "disappearing endpoints" when deleting a gateway or hub device
+- **Endpoint Details Panel** - Hidden when no endpoint is selected
+  - Previously showed local machine details by default
+  - Now shows clean UI until user selects an endpoint
+- **Cleanup Task Interval** - Now configurable via Settings (was hardcoded to 30s)
+- **Data Retention** - Now configurable via Settings (previously only via environment variable)
+
+### Fixed
+- **Delete Endpoint API** - Fixed wrong column names (`source_endpoint_id`/`destination_endpoint_id` → `src_endpoint_id`/`dst_endpoint_id`)
+- **Delete Endpoint Error Handling** - Now returns proper error messages instead of silently failing
+- **Endpoint Details Loading** - Fixed 15+ second delay caused by hidden overlay panel
+  - JavaScript now properly shows overlay when selecting endpoint via AJAX
+- **Endpoint Details API** - Moved blocking DB operations to `spawn_blocking` for better async performance
+
+---
+
 ## [0.5.1]
 
 ### Added
