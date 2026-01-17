@@ -3405,6 +3405,7 @@ impl EndPoint {
              WHERE hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'
                AND hostname NOT LIKE '%:%'
                AND hostname NOT LIKE '%.local'
+               AND hostname LIKE '%.%'
              ORDER BY last_seen_at DESC",
         )?;
 
