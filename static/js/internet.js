@@ -48,7 +48,7 @@
             if (!tbody) return;
 
             if (destinations.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 2rem;">No internet destinations recorded yet.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 2rem;">No internet destinations recorded yet.</td></tr>';
                 return;
             }
 
@@ -57,15 +57,12 @@
 
             var html = '';
             sorted.forEach(function(dest) {
-                var totalBytes = (dest.bytes_in || 0) + (dest.bytes_out || 0);
                 var firstSeen = App.Internet.formatTimestamp(dest.first_seen_at);
                 var lastSeen = App.Internet.formatTimestamp(dest.last_seen_at);
-                var traffic = App.Formatting.formatBytes(totalBytes);
 
                 html += '<tr class="internet-row" data-hostname="' + App.Utils.escapeHtml(dest.hostname) + '">';
                 html += '<td>' + App.Utils.escapeHtml(dest.hostname) + '</td>';
                 html += '<td style="text-align: right;">' + (dest.packet_count || 0).toLocaleString() + '</td>';
-                html += '<td style="text-align: right;">' + traffic + '</td>';
                 html += '<td>' + firstSeen + '</td>';
                 html += '<td>' + lastSeen + '</td>';
                 html += '</tr>';
@@ -82,7 +79,7 @@
             var tbody = document.getElementById('internet-table-body');
             if (!tbody) return;
 
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #f87171; padding: 2rem;">' +
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #f87171; padding: 2rem;">' +
                 App.Utils.escapeHtml(message) + '</td></tr>';
         },
 
@@ -105,10 +102,6 @@
                         valA = a.packet_count || 0;
                         valB = b.packet_count || 0;
                         return dir * (valA - valB);
-                    case 'traffic':
-                        valA = (a.bytes_in || 0) + (a.bytes_out || 0);
-                        valB = (b.bytes_in || 0) + (b.bytes_out || 0);
-                        return dir * (valA - valB);
                     case 'first_seen':
                         valA = a.first_seen_at || 0;
                         valB = b.first_seen_at || 0;
@@ -128,7 +121,7 @@
          * Update sort indicators in the table header
          */
         updateSortIndicators: function() {
-            var columns = ['hostname', 'packets', 'traffic', 'first_seen', 'last_seen'];
+            var columns = ['hostname', 'packets', 'first_seen', 'last_seen'];
             columns.forEach(function(col) {
                 var indicator = document.getElementById('sort-' + col);
                 if (indicator) {

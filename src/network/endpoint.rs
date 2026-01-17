@@ -3317,6 +3317,18 @@ impl EndPoint {
             conn.execute("ALTER TABLE endpoints ADD COLUMN custom_model TEXT", [])?;
         }
 
+        // Migration: Add custom_vendor column for manual vendor override
+        let has_custom_vendor: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_table_info('endpoints') WHERE name = 'custom_vendor'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !has_custom_vendor {
+            conn.execute("ALTER TABLE endpoints ADD COLUMN custom_vendor TEXT", [])?;
+        }
+
         // Create internet_destinations table for tracking external hosts
         conn.execute(
             "CREATE TABLE IF NOT EXISTS internet_destinations (
@@ -3390,6 +3402,9 @@ impl EndPoint {
         let mut stmt = conn.prepare(
             "SELECT id, hostname, first_seen_at, last_seen_at, packet_count, bytes_in, bytes_out
              FROM internet_destinations
+             WHERE hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'
+               AND hostname NOT LIKE '%:%'
+               AND hostname NOT LIKE '%.local'
              ORDER BY last_seen_at DESC",
         )?;
 
@@ -3468,6 +3483,27 @@ impl EndPoint {
         )
     }
 
+    /// Set a custom vendor for an endpoint by name, custom_name, or hostname in endpoint_attributes
+    /// Pass None to clear the custom vendor and revert to auto-detected vendor
+    pub fn set_custom_vendor(
+        conn: &Connection,
+        endpoint_name: &str,
+        custom_vendor: Option<&str>,
+    ) -> Result<usize> {
+        conn.execute(
+            "UPDATE endpoints SET custom_vendor = ?1
+             WHERE id IN (
+                 SELECT DISTINCT e.id FROM endpoints e
+                 LEFT JOIN endpoint_attributes ea ON e.id = ea.endpoint_id
+                 WHERE LOWER(e.name) = LOWER(?2)
+                    OR LOWER(e.custom_name) = LOWER(?2)
+                    OR LOWER(ea.hostname) = LOWER(?2)
+                    OR LOWER(ea.ip) = LOWER(?2)
+             )",
+            params![custom_vendor, endpoint_name],
+        )
+    }
+
     /// Get the original name of an endpoint (the name field, not custom_name)
     /// This is used when clearing a custom name to redirect to the original URL
     pub fn get_original_name(conn: &Connection, endpoint_name: &str) -> Option<String> {
@@ -3489,7 +3525,7 @@ impl EndPoint {
     pub fn get_all_manual_device_types(conn: &Connection) -> HashMap<String, String> {
         let mut map = HashMap::new();
         if let Ok(mut stmt) = conn.prepare(
-            "SELECT name, manual_device_type FROM endpoints WHERE manual_device_type IS NOT NULL AND name IS NOT NULL",
+            "SELECT COALESCE(custom_name, name), manual_device_type FROM endpoints WHERE manual_device_type IS NOT NULL AND (name IS NOT NULL OR custom_name IS NOT NULL)",
         ) && let Ok(rows) = stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         }) {

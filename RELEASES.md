@@ -1,5 +1,28 @@
 # Release Notes
 
+## [0.5.1]
+
+### Added
+- **Internet Destinations Tab** - Track external domains your network connects to
+  - Shows domain names (not raw IPs) for better readability
+  - Filters out IPv4 addresses, IPv6 addresses, and mDNS (.local) names
+  - Sortable columns: Domain, Packets, First Seen, Last Seen
+  - Searchable domain list
+
+### Changed
+- **Internet Destinations UI** - Renamed "Hostname" column to "Domain" for clarity
+- **Internet Destinations UI** - Removed Traffic column for cleaner display
+- **Endpoint Rename** - URL filters (vendor, protocol, page, etc.) now preserved when renaming endpoints
+- **Auto-refresh** - Pauses during rename, vendor edit, and model edit operations to prevent input focus loss
+
+### Fixed
+- **Special Characters in Names** - Endpoint names with apostrophes now work correctly in URLs and UI
+- **Device Type Saving** - Manual device type overrides now save and display correctly
+- **Vendor/Model Display** - Custom vendor and model names now show properly in endpoint table
+- **Template Rendering** - Fixed HashMap lookup errors when endpoint not found in type/vendor/model maps
+
+---
+
 ## [0.5.0]
 
 ### Added

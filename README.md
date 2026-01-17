@@ -9,6 +9,9 @@ Rust Network Discovery Tool
 A lightweight network traffic monitoring tool that captures and visualizes network connections on your local network. Shows "what's talking to what" in an easy-to-use web interface.
 
 ## Features
+
+- **Internet Destinations Tracking**: See which external domains your network connects to (filters out raw IPs and local mDNS names)
+
 ## Installation
 
 ### Pre-built Binaries
@@ -46,6 +49,10 @@ sudo rust_network_discovery_tool
 
 
 - **Passive Monitoring**: Captures network traffic to see what's communicating
+- **Internet Destinations**: Track external domains your network connects to
+  - Filters out raw IP addresses and mDNS (.local) names for clean domain list
+  - Sortable by domain, packet count, first seen, and last seen timestamps
+  - Searchable domain list
 - **Active Network Scanning**: Discover devices that aren't actively communicating
   - **Automatic Scan on Startup**: Runs ARP and SSDP scans automatically when launched
   - **ARP Scanning**: Find all devices on your local subnet by MAC address (requires root/admin)

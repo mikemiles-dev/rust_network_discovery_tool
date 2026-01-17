@@ -578,11 +578,11 @@ fn get_endpoint_vendor_classes(endpoints: &[String]) -> HashMap<String, String> 
     result
 }
 
-/// Model data tuple: (custom_model, ssdp_model, ssdp_friendly_name)
-type EndpointModelData = (Option<String>, Option<String>, Option<String>);
+/// Model/Vendor data tuple: (custom_model, ssdp_model, ssdp_friendly_name, custom_vendor)
+type EndpointModelData = (Option<String>, Option<String>, Option<String>, Option<String>);
 
-/// Get SSDP model, friendly name, and custom model for all endpoints
-/// Returns: (custom_model, ssdp_model, ssdp_friendly_name)
+/// Get SSDP model, friendly name, custom model, and custom vendor for all endpoints
+/// Returns: (custom_model, ssdp_model, ssdp_friendly_name, custom_vendor)
 fn get_endpoint_ssdp_models(endpoints: &[String]) -> HashMap<String, EndpointModelData> {
     let conn = new_connection();
     let mut result: HashMap<String, EndpointModelData> = HashMap::new();
@@ -592,9 +592,9 @@ fn get_endpoint_ssdp_models(endpoints: &[String]) -> HashMap<String, EndpointMod
 
     let mut stmt = conn
         .prepare(&format!(
-            "SELECT {DISPLAY_NAME_SQL} AS display_name, e.custom_model, e.ssdp_model, e.ssdp_friendly_name
+            "SELECT {DISPLAY_NAME_SQL} AS display_name, e.custom_model, e.ssdp_model, e.ssdp_friendly_name, e.custom_vendor
              FROM endpoints e
-             WHERE e.custom_model IS NOT NULL OR e.ssdp_model IS NOT NULL OR e.ssdp_friendly_name IS NOT NULL"
+             WHERE e.custom_model IS NOT NULL OR e.ssdp_model IS NOT NULL OR e.ssdp_friendly_name IS NOT NULL OR e.custom_vendor IS NOT NULL"
         ))
         .expect("Failed to prepare SSDP models statement");
 
@@ -604,17 +604,18 @@ fn get_endpoint_ssdp_models(endpoints: &[String]) -> HashMap<String, EndpointMod
             let custom_model: Option<String> = row.get(1)?;
             let ssdp_model: Option<String> = row.get(2)?;
             let friendly_name: Option<String> = row.get(3)?;
-            Ok((name, custom_model, ssdp_model, friendly_name))
+            let custom_vendor: Option<String> = row.get(4)?;
+            Ok((name, custom_model, ssdp_model, friendly_name, custom_vendor))
         })
         .expect("Failed to execute SSDP models query");
 
     for row in rows.flatten() {
-        let (name, custom_model, ssdp_model, friendly_name) = row;
+        let (name, custom_model, ssdp_model, friendly_name, custom_vendor) = row;
         let name_lower = name.to_lowercase();
         if endpoints_lower.contains(&name_lower)
-            && (custom_model.is_some() || ssdp_model.is_some() || friendly_name.is_some())
+            && (custom_model.is_some() || ssdp_model.is_some() || friendly_name.is_some() || custom_vendor.is_some())
         {
-            result.insert(name_lower, (custom_model, ssdp_model, friendly_name));
+            result.insert(name_lower, (custom_model, ssdp_model, friendly_name, custom_vendor));
         }
     }
 
@@ -1751,6 +1752,7 @@ pub fn start(preferred_port: u16) {
                         .service(set_endpoint_type)
                         .service(rename_endpoint)
                         .service(set_endpoint_model)
+                        .service(set_endpoint_vendor)
                         .service(delete_endpoint)
                         .service(probe_endpoint_model)
                         .service(get_dns_entries_api)
@@ -1863,7 +1865,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         tokio::join!(nodes_future, dropdown_future, interfaces_future);
 
     let communications = communications_result.unwrap_or_default();
-    let dropdown_endpoints = dropdown_result.unwrap_or_default();
+    let mut dropdown_endpoints = dropdown_result.unwrap_or_default();
     let interfaces = interfaces_result.unwrap_or_default();
 
     let mut endpoints = get_endpoints(&communications);
@@ -1874,6 +1876,12 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         && !endpoints.contains(selected_node)
     {
         endpoints.push(selected_node.clone());
+    }
+    // Also add to dropdown_endpoints so the node appears in the list
+    if let Some(ref selected_node) = query.node
+        && !dropdown_endpoints.contains(selected_node)
+    {
+        dropdown_endpoints.push(selected_node.clone());
     }
     let supported_protocols = ProtocolPort::get_supported_protocols();
 
@@ -1942,21 +1950,28 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let endpoint_vendors: HashMap<String, String> = dropdown_endpoints
         .iter()
         .filter_map(|endpoint| {
-            // Try hostname-based detection first (catches PS4, Xbox, etc.)
+            let endpoint_lower = endpoint.to_lowercase();
+
+            // Check custom_vendor first (user-set vendor takes priority)
+            if let Some((_, _, _, Some(custom_vendor))) = endpoint_ssdp_models.get(&endpoint_lower) {
+                return Some((endpoint_lower, custom_vendor.clone()));
+            }
+
+            // Try hostname-based detection (catches PS4, Xbox, etc.)
             if let Some(vendor) = get_hostname_vendor(endpoint) {
-                return Some((endpoint.to_lowercase(), vendor.to_string()));
+                return Some((endpoint_lower, vendor.to_string()));
             }
             // Fall back to MAC-based detection, but filter out component manufacturers
             // Use lowercase for case-insensitive lookup
             let mac_vendor =
                 endpoint_ips_macs
-                    .get(&endpoint.to_lowercase())
+                    .get(&endpoint_lower)
                     .and_then(|(_, macs)| {
                         macs.iter().find_map(|mac| {
                             get_mac_vendor(mac).filter(|v| !component_vendors.contains(v))
                         })
                     });
-            mac_vendor.map(|v| (endpoint.to_lowercase(), v.to_string()))
+            mac_vendor.map(|v| (endpoint_lower, v.to_string()))
         })
         .collect();
 
@@ -1978,12 +1993,12 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
             let vendor = endpoint_vendors.get(&endpoint_lower).map(|v| v.as_str());
 
             // Check custom_model first (user-set model takes priority)
-            if let Some((Some(custom_model), _, _)) = endpoint_ssdp_models.get(&endpoint_lower) {
+            if let Some((Some(custom_model), _, _, _)) = endpoint_ssdp_models.get(&endpoint_lower) {
                 return Some((endpoint_lower.clone(), custom_model.clone()));
             }
 
             // Try SSDP/UPnP model (most accurate for TVs and media devices)
-            if let Some((_, Some(ssdp_model), _)) = endpoint_ssdp_models.get(&endpoint_lower) {
+            if let Some((_, Some(ssdp_model), _, _)) = endpoint_ssdp_models.get(&endpoint_lower) {
                 // Try to normalize the model name (e.g., QN43LS03TAFXZA -> Samsung The Frame)
                 if let Some(normalized) = normalize_model_name(ssdp_model, vendor) {
                     return Some((endpoint_lower.clone(), normalized));
@@ -2001,7 +2016,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
                 // Check if device has SSDP info (indicates it's not a "silent" device like Echo)
                 let has_ssdp = endpoint_ssdp_models
                     .get(&endpoint_lower)
-                    .is_some_and(|(_, ssdp, friendly)| ssdp.is_some() || friendly.is_some());
+                    .is_some_and(|(_, ssdp, friendly, _)| ssdp.is_some() || friendly.is_some());
                 // Note: We don't have open ports data here, so pass empty slice
                 // Full context-aware detection happens in get_endpoint_details
                 for mac in macs {
@@ -2046,6 +2061,8 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     }
     // Always classify local device as "local"
     endpoint_types.insert(hostname.clone(), "local");
+    // Ensure the selected endpoint is always in endpoint_types (for URL navigation)
+    endpoint_types.entry(selected_endpoint.clone()).or_insert("other");
 
     // Second pass: enhance models using vendor + device type for endpoints without models
     let mut endpoint_models = endpoint_models;
@@ -2140,25 +2157,25 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
 
     // Check custom_model first (user-set model takes priority)
     let device_model: String = models_data
-        .and_then(|(custom_model_opt, _, _)| custom_model_opt.clone())
+        .and_then(|(custom_model_opt, _, _, _)| custom_model_opt.clone())
         .or_else(|| {
             // Try SSDP model with normalization
             models_data
-                .and_then(|(_, ssdp_model_opt, _)| ssdp_model_opt.as_ref())
+                .and_then(|(_, ssdp_model_opt, _, _)| ssdp_model_opt.as_ref())
                 .and_then(|model| {
                     let vendor_ref = if device_vendor.is_empty() {
                         None
                     } else {
                         Some(device_vendor.as_str())
                     };
-                    normalize_model_name(model, vendor_ref).or_else(|| Some(model.clone()))
+                    normalize_model_name(model, vendor_ref).or_else(|| Some(model.to_string()))
                 })
         })
         .or_else(|| get_model_from_hostname(&selected_endpoint))
         .or_else(|| {
             // Context-aware MAC detection for Amazon devices etc.
             let has_ssdp =
-                models_data.is_some_and(|(_, ssdp, friendly)| ssdp.is_some() || friendly.is_some());
+                models_data.is_some_and(|(_, ssdp, friendly, _)| ssdp.is_some() || friendly.is_some());
             macs.iter().find_map(|mac| {
                 infer_model_with_context(mac, has_ssdp, false, false, &[])
                     .or_else(|| get_model_from_mac(mac))
@@ -2183,6 +2200,19 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
             }
         })
         .unwrap_or_default();
+
+    // Ensure the selected endpoint's vendor/model are in the lookup maps
+    // This handles cases where the endpoint was added via URL but its data
+    // wasn't found in batch queries (e.g., mDNS-resolved names)
+    let selected_lower = selected_endpoint.to_lowercase();
+    let mut endpoint_vendors = endpoint_vendors;
+    let mut endpoint_models = endpoint_models;
+    if !device_vendor.is_empty() {
+        endpoint_vendors.entry(selected_lower.clone()).or_insert(device_vendor.clone());
+    }
+    if !device_model.is_empty() {
+        endpoint_models.entry(selected_lower).or_insert(device_model.clone());
+    }
 
     let mut context = Context::new();
     context.insert("communications", &communications);
@@ -2381,6 +2411,56 @@ async fn set_endpoint_model(body: Json<SetModelRequest>) -> impl Responder {
             }
         }
         Err(e) => HttpResponse::InternalServerError().json(SetModelResponse {
+            success: false,
+            message: format!("Database error: {}", e),
+        }),
+    }
+}
+
+#[derive(Deserialize)]
+struct SetVendorRequest {
+    endpoint_name: String,
+    vendor: Option<String>,
+}
+
+#[derive(Serialize)]
+struct SetVendorResponse {
+    success: bool,
+    message: String,
+}
+
+#[post("/api/endpoint/vendor")]
+async fn set_endpoint_vendor(body: Json<SetVendorRequest>) -> impl Responder {
+    let conn = new_connection();
+
+    // If vendor is "auto" or empty, clear the custom vendor
+    let vendor = match &body.vendor {
+        Some(v) if v == "auto" || v.is_empty() => None,
+        Some(v) => Some(v.as_str()),
+        None => None,
+    };
+
+    match EndPoint::set_custom_vendor(&conn, &body.endpoint_name, vendor) {
+        Ok(rows_updated) => {
+            if rows_updated > 0 {
+                HttpResponse::Ok().json(SetVendorResponse {
+                    success: true,
+                    message: format!(
+                        "Vendor {} for {}",
+                        vendor
+                            .map(|v| format!("set to '{}'", v))
+                            .unwrap_or_else(|| "cleared".to_string()),
+                        body.endpoint_name
+                    ),
+                })
+            } else {
+                HttpResponse::NotFound().json(SetVendorResponse {
+                    success: false,
+                    message: format!("Endpoint '{}' not found", body.endpoint_name),
+                })
+            }
+        }
+        Err(e) => HttpResponse::InternalServerError().json(SetVendorResponse {
             success: false,
             message: format!("Database error: {}", e),
         }),
