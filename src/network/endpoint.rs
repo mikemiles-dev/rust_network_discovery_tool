@@ -3627,19 +3627,19 @@ impl EndPoint {
 
         // For INTERNET IPs (non-local), record in internet_destinations table instead of creating endpoint
         // This separates external hosts from local network devices
-        if let Some(ref ip_str) = ip {
-            if !Self::is_on_local_network(ip_str) {
-                // Use hostname if we have one, otherwise use the IP address
-                let dest_name = dhcp_hostname
-                    .clone()
-                    .or_else(|| Self::lookup_hostname(ip.clone(), mac.clone(), protocol.clone(), payload))
-                    .unwrap_or_else(|| ip_str.clone());
+        if let Some(ref ip_str) = ip
+            && !Self::is_on_local_network(ip_str)
+        {
+            // Use hostname if we have one, otherwise use the IP address
+            let dest_name = dhcp_hostname
+                .clone()
+                .or_else(|| Self::lookup_hostname(ip.clone(), mac.clone(), protocol.clone(), payload))
+                .unwrap_or_else(|| ip_str.clone());
 
-                // Record this internet destination (ignore errors - best effort)
-                let _ = Self::insert_or_update_internet_destination(conn, &dest_name, 0, true);
+            // Record this internet destination (ignore errors - best effort)
+            let _ = Self::insert_or_update_internet_destination(conn, &dest_name, 0, true);
 
-                return Err(InsertEndpointError::InternetDestination);
-            }
+            return Err(InsertEndpointError::InternetDestination);
         }
 
         // Strip .local and other local suffixes from hostnames and normalize to lowercase
