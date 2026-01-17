@@ -19,7 +19,9 @@
             deviceCapabilitiesLoaded: false,
             currentThinQDeviceId: null,
             currentThinQDeviceType: null,
-            restoringState: false
+            restoringState: false,
+            activeOnly: false,
+            knownVendorsOnly: false
         }
     };
 

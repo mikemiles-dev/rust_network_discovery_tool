@@ -58,9 +58,21 @@
         },
 
         /**
-         * Show only endpoints with known vendors
+         * Toggle showing only endpoints with known vendors
          */
         showOnlyKnownVendors: function() {
+            // Toggle the known filter
+            if (App.state.knownVendorsOnly) {
+                // Turn off the filter
+                App.state.knownVendorsOnly = false;
+                var url = new URL(window.location.href);
+                url.searchParams.delete('known');
+                history.replaceState({}, '', url.toString());
+                App.Filters.updateFilterButtonStates();
+                App.Filters.apply(true);
+                return;
+            }
+
             // First, show all device types
             document.getElementById('filterLocal').checked = true;
             document.getElementById('filterGateway').checked = true;
@@ -91,22 +103,41 @@
                 App.state.selectedVendor = null;
             }
 
+            // Clear active filter
+            App.state.activeOnly = false;
+
             // Set known filter state
             App.state.knownVendorsOnly = true;
 
             // Update URL to persist filter
             var url = new URL(window.location.href);
+            url.searchParams.delete('active');
             url.searchParams.set('known', '1');
             history.replaceState({}, '', url.toString());
 
-            // Apply filters (will include knownVendorsOnly check)
-            App.Filters.apply();
+            // Update button states
+            App.Filters.updateFilterButtonStates();
+
+            // Apply filters (skip URL update to preserve our state)
+            App.Filters.apply(true);
         },
 
         /**
-         * Show only endpoints that are currently active (online)
+         * Toggle showing only endpoints that are currently active (online)
          */
         showOnlyActive: function() {
+            // Toggle the active filter
+            if (App.state.activeOnly) {
+                // Turn off the filter
+                App.state.activeOnly = false;
+                var url = new URL(window.location.href);
+                url.searchParams.delete('active');
+                history.replaceState({}, '', url.toString());
+                App.Filters.updateFilterButtonStates();
+                App.Filters.apply(true);
+                return;
+            }
+
             // First, show all device types
             document.getElementById('filterLocal').checked = true;
             document.getElementById('filterGateway').checked = true;
@@ -149,8 +180,11 @@
             url.searchParams.set('active', '1');
             history.replaceState({}, '', url.toString());
 
-            // Apply filters (will include activeOnly check)
-            App.Filters.apply();
+            // Update button states
+            App.Filters.updateFilterButtonStates();
+
+            // Apply filters (skip URL update to preserve our state)
+            App.Filters.apply(true);
         },
 
         /**
@@ -227,9 +261,18 @@
             var searchInput = document.getElementById('endpointSearch');
             var searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
 
-            // Save filter state to URL
+            // Save filter state to URL and clear special filters on user interaction
             if (!skipUrlUpdate) {
+                // Clear activeOnly and knownVendorsOnly when user changes other filters
+                // This prevents confusion where these filters persist invisibly
+                if (App.state.activeOnly || App.state.knownVendorsOnly) {
+                    App.state.activeOnly = false;
+                    App.state.knownVendorsOnly = false;
+                }
+
                 var url = new URL(window.location.href);
+                url.searchParams.delete('active');
+                url.searchParams.delete('known');
                 url.searchParams.set('filter_local', showLocal ? '1' : '0');
                 url.searchParams.set('filter_gateway', showGateway ? '1' : '0');
                 url.searchParams.set('filter_printer', showPrinter ? '1' : '0');
@@ -315,6 +358,40 @@
             if (App.Pagination) {
                 App.Pagination.resetToFirstPage('endpoints');
             }
+
+            // Update filter button visual states
+            App.Filters.updateFilterButtonStates();
+        },
+
+        /**
+         * Update visual state of Known/Active filter buttons
+         */
+        updateFilterButtonStates: function() {
+            var quickButtons = document.querySelectorAll('.quick-buttons button');
+            quickButtons.forEach(function(btn) {
+                var onclick = btn.getAttribute('onclick') || '';
+                if (onclick.includes('showOnlyActive')) {
+                    if (App.state.activeOnly) {
+                        btn.style.background = 'rgba(34, 197, 94, 0.5)';
+                        btn.style.borderColor = '#22c55e';
+                        btn.style.boxShadow = '0 0 8px rgba(34, 197, 94, 0.4)';
+                    } else {
+                        btn.style.background = 'rgba(34, 197, 94, 0.2)';
+                        btn.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+                        btn.style.boxShadow = 'none';
+                    }
+                } else if (onclick.includes('showOnlyKnownVendors')) {
+                    if (App.state.knownVendorsOnly) {
+                        btn.style.background = 'rgba(16, 185, 129, 0.5)';
+                        btn.style.borderColor = '#10b981';
+                        btn.style.boxShadow = '0 0 8px rgba(16, 185, 129, 0.4)';
+                    } else {
+                        btn.style.background = 'rgba(16, 185, 129, 0.2)';
+                        btn.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+                        btn.style.boxShadow = 'none';
+                    }
+                }
+            });
         },
 
         /**
