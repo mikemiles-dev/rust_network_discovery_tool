@@ -424,15 +424,14 @@
                 dropdown.style.top = (rect.top - dropdownRect.height - 4) + 'px';
             }
 
-            // Get scan interval and current endpoint from URL
+            // Get current endpoint from URL
             var urlParams = new URLSearchParams(window.location.search);
-            var scanInterval = urlParams.get('scan_interval') || '60';
             var currentEndpoint = urlParams.get('node') || '';
 
             // Fetch endpoints that THIS endpoint communicated with over this protocol
-            var apiUrl = '/api/protocol/' + encodeURIComponent(protocol) + '/endpoints?scan_interval=' + scanInterval;
+            var apiUrl = '/api/protocol/' + encodeURIComponent(protocol) + '/endpoints';
             if (currentEndpoint) {
-                apiUrl += '&from_endpoint=' + encodeURIComponent(currentEndpoint);
+                apiUrl += '?from_endpoint=' + encodeURIComponent(currentEndpoint);
             }
 
             fetch(apiUrl)
@@ -491,10 +490,7 @@
             var select = document.getElementById('globalProtocolSelect');
             if (!select) return;
 
-            var urlParams = new URLSearchParams(window.location.search);
-            var scanInterval = urlParams.get('scan_interval') || '60';
-
-            fetch('/api/protocols?scan_interval=' + scanInterval)
+            fetch('/api/protocols')
                 .then(function(response) { return response.json(); })
                 .then(function(data) {
                     // Keep the first "All Protocols" option
@@ -536,11 +532,8 @@
                 return;
             }
 
-            var urlParams = new URLSearchParams(window.location.search);
-            var scanInterval = urlParams.get('scan_interval') || '60';
-
             // Fetch all endpoints using this protocol
-            fetch('/api/protocol/' + encodeURIComponent(protocol) + '/endpoints?scan_interval=' + scanInterval)
+            fetch('/api/protocol/' + encodeURIComponent(protocol) + '/endpoints')
                 .then(function(response) { return response.json(); })
                 .then(function(data) {
                     var protocolEndpoints = new Set(data.endpoints || []);

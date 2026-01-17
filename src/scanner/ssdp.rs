@@ -48,11 +48,7 @@ impl SsdpScanner {
         let end = xml[start..].find(&end_tag)? + start;
 
         let value = xml[start..end].trim().to_string();
-        if value.is_empty() {
-            None
-        } else {
-            Some(value)
-        }
+        if value.is_empty() { None } else { Some(value) }
     }
 
     /// Discover SSDP/UPnP devices on the network
@@ -77,7 +73,9 @@ impl SsdpScanner {
                         && let Ok(ip) = host.parse::<IpAddr>()
                     {
                         let server_str = response.server();
-                        location_map.entry(ip).or_insert_with(|| response.location().to_string());
+                        location_map
+                            .entry(ip)
+                            .or_insert_with(|| response.location().to_string());
                         results.push(SsdpResult {
                             ip,
                             location: response.location().to_string(),

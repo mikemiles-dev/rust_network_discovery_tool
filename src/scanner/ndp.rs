@@ -2,11 +2,11 @@ use std::net::{IpAddr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
 use pnet::datalink::{self, Channel, NetworkInterface};
+use pnet::packet::MutablePacket;
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket, MutableEthernetPacket};
 use pnet::packet::icmpv6::{Icmpv6Types, MutableIcmpv6Packet};
 use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::ipv6::MutableIpv6Packet;
-use pnet::packet::MutablePacket;
 use pnet::util::MacAddr;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
@@ -90,10 +90,7 @@ impl NdpScanner {
     }
 
     /// Build a Neighbor Solicitation packet for all-nodes multicast
-    fn build_neighbor_solicitation(
-        src_mac: MacAddr,
-        src_ip: Ipv6Addr,
-    ) -> Option<Vec<u8>> {
+    fn build_neighbor_solicitation(src_mac: MacAddr, src_ip: Ipv6Addr) -> Option<Vec<u8>> {
         // Target: all-nodes multicast ff02::1
         let all_nodes_multicast = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 1);
 
@@ -282,7 +279,11 @@ impl NdpScanner {
             // This often gets more responses than NS alone
 
             // Wait for receiver
-            let _ = timeout(Duration::from_millis(self.timeout_ms + 100), receiver_handle).await;
+            let _ = timeout(
+                Duration::from_millis(self.timeout_ms + 100),
+                receiver_handle,
+            )
+            .await;
 
             // Collect results
             while let Ok(result) = result_rx.try_recv() {

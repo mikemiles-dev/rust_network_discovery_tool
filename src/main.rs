@@ -1,5 +1,6 @@
 mod db;
 mod network;
+pub mod pcap;
 mod scanner;
 mod web;
 
@@ -12,7 +13,6 @@ use pnet::datalink::Channel::Ethernet;
 use pnet::datalink::NetworkInterface;
 use pnet::packet::ethernet::EthernetPacket;
 use std::env;
-use std::path::Path;
 use tokio::{io, task};
 
 use db::SQLWriter;
@@ -47,49 +47,8 @@ struct Args {
     batch: bool,
 }
 
-fn process_pcap_file(
-    file_path: &str,
-    label: Option<String>,
-    sender: &tokio::sync::mpsc::Sender<Communication>,
-) -> io::Result<usize> {
-    use pcap::Capture;
-
-    println!("Processing pcap file: {}", file_path);
-
-    let source_label = label.unwrap_or_else(|| {
-        Path::new(file_path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(file_path)
-            .to_string()
-    });
-
-    let mut cap = Capture::from_file(file_path)
-        .map_err(|e| io::Error::other(format!("Failed to open pcap file {}: {}", file_path, e)))?;
-
-    let mut packet_count = 0;
-    while let Ok(packet) = cap.next_packet() {
-        if let Some(ethernet_packet) = EthernetPacket::new(packet.data) {
-            let communication =
-                Communication::new_with_source(ethernet_packet, Some(source_label.clone()));
-
-            if sender.blocking_send(communication).is_err() {
-                eprintln!("Warning: Failed to send packet to database writer");
-                break;
-            }
-            packet_count += 1;
-
-            if packet_count % 1000 == 0 {
-                print!("\rProcessed {} packets...", packet_count);
-                use std::io::Write;
-                std::io::stdout().flush().ok();
-            }
-        }
-    }
-
-    println!("\rProcessed {} packets from {}", packet_count, file_path);
-    Ok(packet_count)
-}
+// process_pcap_file is now in the pcap module
+use crate::pcap::process_pcap_file;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
@@ -535,8 +494,7 @@ mod tests {
         assert!(std::path::Path::new(path).exists());
 
         // Read it back using pcap crate
-        use pcap::Capture;
-        let mut cap = Capture::from_file(path).unwrap();
+        let mut cap = ::pcap::Capture::from_file(path).unwrap();
 
         let mut packet_count = 0;
         while cap.next_packet().is_ok() {

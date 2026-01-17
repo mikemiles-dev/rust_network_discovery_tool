@@ -7,6 +7,8 @@ edition = "2024"
 actix-files = "0.6"
 actix-web = "4.0"
 actix-rt = "2.0"
+actix-multipart = "0.7"
+futures-util = "0.3"
 clap = { version = "4.5", features = ["derive"] }
 ctrlc = "3.2.3"
 chrono = { version = "0.4", features = ["serde"] }

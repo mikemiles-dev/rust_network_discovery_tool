@@ -125,33 +125,33 @@ impl MDnsLookup {
             "_dyson_mqtt._tcp.local.",  // Dyson devices (fans, purifiers)
             "_eero._tcp.local.",        // Eero routers/mesh
             // Gaming consoles
-            "_xbox._tcp.local.",        // Xbox consoles
-            "_psn._tcp.local.",         // PlayStation Network
-            "_nintendo._tcp.local.",    // Nintendo devices
+            "_xbox._tcp.local.",     // Xbox consoles
+            "_psn._tcp.local.",      // PlayStation Network
+            "_nintendo._tcp.local.", // Nintendo devices
             // Media servers and speakers
-            "_sonos._tcp.local.",       // Sonos speakers
-            "_daap._tcp.local.",        // iTunes/Apple Music sharing
-            "_plex._tcp.local.",        // Plex Media Server
+            "_sonos._tcp.local.", // Sonos speakers
+            "_daap._tcp.local.",  // iTunes/Apple Music sharing
+            "_plex._tcp.local.",  // Plex Media Server
             // More smart home
-            "_hue._tcp.local.",         // Philips Hue bridges
-            "_nanoleaf._tcp.local.",    // Nanoleaf lights
-            "_wemo._tcp.local.",        // Belkin Wemo devices
+            "_hue._tcp.local.",              // Philips Hue bridges
+            "_nanoleaf._tcp.local.",         // Nanoleaf lights
+            "_wemo._tcp.local.",             // Belkin Wemo devices
             "_tplink-smarthome._tcp.local.", // TP-Link Kasa/Tapo
-            "_tuya._tcp.local.",        // Tuya IoT devices
-            "_ecobee._tcp.local.",      // Ecobee thermostats
-            "_ring._tcp.local.",        // Ring doorbells/cameras
+            "_tuya._tcp.local.",             // Tuya IoT devices
+            "_ecobee._tcp.local.",           // Ecobee thermostats
+            "_ring._tcp.local.",             // Ring doorbells/cameras
             // NAS devices
-            "_synology._tcp.local.",    // Synology NAS
-            "_qnap._tcp.local.",        // QNAP NAS
-            "_adisk._tcp.local.",       // Apple Time Machine/AirPort Disk
+            "_synology._tcp.local.", // Synology NAS
+            "_qnap._tcp.local.",     // QNAP NAS
+            "_adisk._tcp.local.",    // Apple Time Machine/AirPort Disk
             // Network equipment
-            "_ubnt._tcp.local.",        // Ubiquiti devices
+            "_ubnt._tcp.local.", // Ubiquiti devices
             // Remote access
-            "_vnc._tcp.local.",         // VNC remote desktop
-            "_rfb._tcp.local.",         // Remote framebuffer (VNC)
+            "_vnc._tcp.local.", // VNC remote desktop
+            "_rfb._tcp.local.", // Remote framebuffer (VNC)
             // Apple services
-            "_airdrop._tcp.local.",     // Apple AirDrop
-            "_continuity._tcp.local.",  // Apple Continuity/Handoff
+            "_airdrop._tcp.local.",    // Apple AirDrop
+            "_continuity._tcp.local.", // Apple Continuity/Handoff
         ];
 
         for service in services_to_browse.iter() {
@@ -171,10 +171,7 @@ impl MDnsLookup {
                                     host.pop();
                                 }
                                 // Strip .local suffix and normalize to lowercase
-                                host = host
-                                    .strip_suffix(".local")
-                                    .unwrap_or(&host)
-                                    .to_lowercase();
+                                host = host.strip_suffix(".local").unwrap_or(&host).to_lowercase();
 
                                 // Extract service name (e.g., "_googlecast._tcp.local.")
                                 let service_name = service_type

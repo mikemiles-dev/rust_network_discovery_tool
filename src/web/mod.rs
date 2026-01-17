@@ -1,16 +1,19 @@
+use actix_multipart::Multipart;
 use actix_web::{
     App, HttpServer,
     web::{Data, Json, Query},
 };
 use actix_web::{HttpResponse, Responder, get, post};
 use dns_lookup::get_hostname;
+use futures_util::StreamExt;
 use pnet::datalink;
 use rust_embed::RustEmbed;
 use std::collections::{HashMap, HashSet};
+use std::io::Write;
 use tera::{Context, Tera};
 use tokio::task;
 
-use crate::db::{new_connection, new_connection_result};
+use crate::db::{SQLWriter, new_connection, new_connection_result};
 use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::device_control::DeviceController;
 use crate::network::endpoint::{
@@ -1261,7 +1264,7 @@ async fn get_endpoint_details(
     query: actix_web::web::Query<NodeQuery>,
 ) -> impl Responder {
     let endpoint_name = path.into_inner();
-    let internal_minutes = query.scan_interval.unwrap_or(60);
+    let internal_minutes = query.scan_interval.unwrap_or(525600);
 
     // Get IPs, MACs, and hostnames
     let (ips, macs, hostnames) = get_all_ips_macs_and_hostnames_from_single_hostname(
@@ -1520,7 +1523,7 @@ async fn get_protocol_endpoints(
     query: actix_web::web::Query<ProtocolQuery>,
 ) -> impl Responder {
     let protocol = path.into_inner();
-    let internal_minutes = query.scan_interval.unwrap_or(60);
+    let internal_minutes = query.scan_interval.unwrap_or(525600);
 
     let endpoints =
         get_endpoints_for_protocol(&protocol, internal_minutes, query.from_endpoint.as_deref());
@@ -1538,7 +1541,7 @@ struct AllProtocolsResponse {
 
 #[get("/api/protocols")]
 async fn get_all_protocols_api(query: actix_web::web::Query<NodeQuery>) -> impl Responder {
-    let internal_minutes = query.scan_interval.unwrap_or(60);
+    let internal_minutes = query.scan_interval.unwrap_or(525600);
     let protocols = get_all_protocols(internal_minutes);
     HttpResponse::Ok().json(AllProtocolsResponse { protocols })
 }
@@ -1736,6 +1739,7 @@ pub fn start(preferred_port: u16) {
                         .service(get_scan_capabilities)
                         .service(get_scan_config)
                         .service(set_scan_config)
+                        .service(upload_pcap)
                 })
                 .bind(("127.0.0.1", port))
                 {
@@ -1813,7 +1817,7 @@ async fn static_files(path: actix_web::web::Path<String>) -> impl Responder {
 async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let hostname = strip_local_suffix(&get_hostname().unwrap_or_else(|_| "Unknown".to_string()));
     let selected_endpoint = query.node.clone().unwrap_or_else(|| hostname.clone());
-    let scan_interval = query.scan_interval.unwrap_or(60);
+    let scan_interval = query.scan_interval.unwrap_or(525600);
 
     // Phase 1: Run independent queries in parallel
     let query_node_1 = query.node.clone();
@@ -2162,7 +2166,6 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     context.insert("endpoint_models", &endpoint_models);
     context.insert("endpoint_bytes", &endpoint_bytes);
     context.insert("endpoint_last_seen", &endpoint_last_seen);
-    context.insert("scan_interval", &query.scan_interval.unwrap_or(60));
     context.insert("ips", &ips);
     context.insert("macs", &macs);
     context.insert("mac_vendors", &mac_vendors);
@@ -2993,6 +2996,165 @@ async fn set_scan_config(body: Json<ScanConfig>) -> impl Responder {
         success: true,
         message: "Config updated".to_string(),
     })
+}
+
+// ============================================================================
+// PCAP Upload Endpoint
+// ============================================================================
+
+#[derive(Serialize)]
+struct PcapUploadResponse {
+    success: bool,
+    message: String,
+    packet_count: Option<usize>,
+    filename: Option<String>,
+}
+
+#[post("/api/pcap/upload")]
+async fn upload_pcap(mut payload: Multipart) -> impl Responder {
+    let mut file_data: Option<Vec<u8>> = None;
+    let mut filename: Option<String> = None;
+    let mut label: Option<String> = None;
+
+    // Extract file and label from multipart form
+    while let Some(item) = payload.next().await {
+        let mut field = match item {
+            Ok(f) => f,
+            Err(e) => {
+                return HttpResponse::BadRequest().json(PcapUploadResponse {
+                    success: false,
+                    message: format!("Error reading multipart field: {}", e),
+                    packet_count: None,
+                    filename: None,
+                });
+            }
+        };
+
+        let field_name = field.name().unwrap_or("").to_string();
+
+        if field_name == "file" {
+            // Get filename from content disposition
+            if let Some(cd) = field.content_disposition() {
+                filename = cd.get_filename().map(|s| s.to_string());
+            }
+
+            // Read file data
+            let mut data = Vec::new();
+            while let Some(chunk) = field.next().await {
+                match chunk {
+                    Ok(bytes) => data.extend_from_slice(&bytes),
+                    Err(e) => {
+                        return HttpResponse::BadRequest().json(PcapUploadResponse {
+                            success: false,
+                            message: format!("Error reading file data: {}", e),
+                            packet_count: None,
+                            filename: None,
+                        });
+                    }
+                }
+            }
+            file_data = Some(data);
+        } else if field_name == "label" {
+            // Read label field
+            let mut label_data = Vec::new();
+            while let Some(chunk) = field.next().await {
+                if let Ok(bytes) = chunk {
+                    label_data.extend_from_slice(&bytes);
+                }
+            }
+            if let Ok(label_str) = String::from_utf8(label_data) {
+                let trimmed = label_str.trim();
+                if !trimmed.is_empty() {
+                    label = Some(trimmed.to_string());
+                }
+            }
+        }
+    }
+
+    // Validate we got a file
+    let data = match file_data {
+        Some(d) if !d.is_empty() => d,
+        _ => {
+            return HttpResponse::BadRequest().json(PcapUploadResponse {
+                success: false,
+                message: "No file uploaded or file is empty".to_string(),
+                packet_count: None,
+                filename: None,
+            });
+        }
+    };
+
+    let original_filename = filename
+        .clone()
+        .unwrap_or_else(|| "upload.pcap".to_string());
+
+    // If no label provided, use the filename
+    let source_label = label.unwrap_or_else(|| original_filename.clone());
+
+    // Write to temporary file
+    let temp_path = format!("/tmp/pcap_upload_{}.pcap", uuid::Uuid::new_v4());
+    match std::fs::File::create(&temp_path) {
+        Ok(mut file) => {
+            if let Err(e) = file.write_all(&data) {
+                return HttpResponse::InternalServerError().json(PcapUploadResponse {
+                    success: false,
+                    message: format!("Failed to write temp file: {}", e),
+                    packet_count: None,
+                    filename: Some(original_filename),
+                });
+            }
+        }
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(PcapUploadResponse {
+                success: false,
+                message: format!("Failed to create temp file: {}", e),
+                packet_count: None,
+                filename: Some(original_filename),
+            });
+        }
+    }
+
+    // Create a SQL writer for processing
+    let sql_writer = SQLWriter::new().await;
+    let sender = sql_writer.sender.clone();
+
+    // Process the pcap file in a blocking task
+    let temp_path_clone = temp_path.clone();
+    let label_clone = source_label.clone();
+    let result = task::spawn_blocking(move || {
+        crate::pcap::process_pcap_file(&temp_path_clone, Some(label_clone), &sender)
+    })
+    .await;
+
+    // Clean up temp file
+    let _ = std::fs::remove_file(&temp_path);
+
+    // Give the SQL writer time to flush remaining packets
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    match result {
+        Ok(Ok(packet_count)) => HttpResponse::Ok().json(PcapUploadResponse {
+            success: true,
+            message: format!(
+                "Successfully processed {} packets from '{}'",
+                packet_count, original_filename
+            ),
+            packet_count: Some(packet_count),
+            filename: Some(original_filename),
+        }),
+        Ok(Err(e)) => HttpResponse::InternalServerError().json(PcapUploadResponse {
+            success: false,
+            message: format!("Failed to process pcap file: {}", e),
+            packet_count: None,
+            filename: Some(original_filename),
+        }),
+        Err(e) => HttpResponse::InternalServerError().json(PcapUploadResponse {
+            success: false,
+            message: format!("Task execution error: {}", e),
+            packet_count: None,
+            filename: Some(original_filename),
+        }),
+    }
 }
 
 #[cfg(test)]

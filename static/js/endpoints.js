@@ -385,15 +385,6 @@
         },
 
         /**
-         * Select scan interval
-         */
-        selectScanInterval: function(interval) {
-            var url = new URL(window.location.href);
-            url.searchParams.set('scan_interval', interval);
-            window.location.href = url.toString();
-        },
-
-        /**
          * Scroll to section in details panel
          */
         scrollToSection: function(sectionId) {
@@ -469,7 +460,6 @@
     // Expose functions globally for onclick handlers
     window.selectNode = App.Endpoints.selectNode;
     window.unselectNode = App.Endpoints.unselectNode;
-    window.selectScanInterval = App.Endpoints.selectScanInterval;
     window.scrollToSection = App.Endpoints.scrollToSection;
     window.probeHostname = App.Endpoints.probeHostname;
     window.deleteEndpoint = App.Endpoints.deleteEndpoint;

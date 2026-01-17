@@ -1596,8 +1596,13 @@ pub fn normalize_model_name(model: &str, vendor: Option<&str>) -> Option<String>
         return Some(format!("Samsung Wireless Speaker {}", &model_upper[3..]));
     }
     // LG soundbar models
-    if (model_lower.starts_with("sl") || model_lower.starts_with("sn") || model_lower.starts_with("sp"))
-        && model_lower.chars().nth(2).is_some_and(|c| c.is_ascii_digit())
+    if (model_lower.starts_with("sl")
+        || model_lower.starts_with("sn")
+        || model_lower.starts_with("sp"))
+        && model_lower
+            .chars()
+            .nth(2)
+            .is_some_and(|c| c.is_ascii_digit())
     {
         return Some(format!("LG Soundbar {}", model_upper));
     }
@@ -3457,7 +3462,8 @@ impl EndPoint {
 
         // Try to extract MAC from IPv6 EUI-64 address if no MAC provided
         let mac = mac.or_else(|| {
-            ip.as_ref().and_then(|ip_str| extract_mac_from_ipv6_eui64(ip_str))
+            ip.as_ref()
+                .and_then(|ip_str| extract_mac_from_ipv6_eui64(ip_str))
         });
 
         // Filter out broadcast/multicast MACs - these aren't real endpoints

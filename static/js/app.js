@@ -218,6 +218,11 @@
             App.Refresh.init();
         }
 
+        // Initialize PCAP module
+        if (App.Pcap) {
+            App.Pcap.init();
+        }
+
         // Restore scroll positions after refresh
         var savedScroll = sessionStorage.getItem('scrollPosition');
         var savedTableScroll = sessionStorage.getItem('tableScrollPosition');
