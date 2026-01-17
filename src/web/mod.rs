@@ -1779,6 +1779,46 @@ fn get_all_endpoints_last_seen(
     result
 }
 
+/// Get online status for all endpoints
+/// An endpoint is considered "online" if it had traffic in the last 60 seconds
+fn get_all_endpoints_online_status(endpoints: &[String]) -> HashMap<String, bool> {
+    let conn = new_connection();
+    let mut result: HashMap<String, bool> = HashMap::new();
+
+    // Initialize all endpoints as offline (use lowercase keys for case-insensitive matching)
+    for endpoint in endpoints {
+        result.insert(endpoint.to_lowercase(), false);
+    }
+
+    // Single query to get endpoints with recent traffic (last 60 seconds)
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT
+                {DISPLAY_NAME_SQL} AS display_name
+             FROM endpoints e
+             INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
+             WHERE c.last_seen_at >= (strftime('%s', 'now') - 60)
+             GROUP BY e.id"
+        ))
+        .expect("Failed to prepare statement");
+
+    let rows = stmt
+        .query_map([], |row| {
+            let name: String = row.get(0)?;
+            Ok(name)
+        })
+        .expect("Failed to execute query");
+
+    for row in rows.flatten() {
+        // Use lowercase for case-insensitive matching
+        if let Some(existing) = result.get_mut(&row.to_lowercase()) {
+            *existing = true;
+        }
+    }
+
+    result
+}
+
 pub fn start(preferred_port: u16) {
     task::spawn_blocking(move || {
         println!("Starting web server");
@@ -1955,6 +1995,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let dropdown_for_vendor = dropdown_endpoints.clone();
     let dropdown_for_bytes = dropdown_endpoints.clone();
     let dropdown_for_seen = dropdown_endpoints.clone();
+    let dropdown_for_online = dropdown_endpoints.clone();
     let dropdown_for_types = dropdown_endpoints.clone();
     let dropdown_for_ssdp = dropdown_endpoints.clone();
 
@@ -1968,6 +2009,9 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let last_seen_future = tokio::task::spawn_blocking(move || {
         get_all_endpoints_last_seen(&dropdown_for_seen, scan_interval)
     });
+    let online_status_future = tokio::task::spawn_blocking(move || {
+        get_all_endpoints_online_status(&dropdown_for_online)
+    });
     let all_types_future =
         tokio::task::spawn_blocking(move || get_all_endpoint_types(&dropdown_for_types));
     let ssdp_models_future =
@@ -1978,6 +2022,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         vendor_classes_result,
         bytes_result,
         last_seen_result,
+        online_status_result,
         all_types_result,
         ssdp_models_result,
     ) = tokio::join!(
@@ -1985,6 +2030,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         vendor_classes_future,
         bytes_future,
         last_seen_future,
+        online_status_future,
         all_types_future,
         ssdp_models_future
     );
@@ -1993,6 +2039,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let endpoint_dhcp_vendor_classes = vendor_classes_result.unwrap_or_default();
     let endpoint_bytes = bytes_result.unwrap_or_default();
     let endpoint_last_seen = last_seen_result.unwrap_or_default();
+    let endpoint_online_status = online_status_result.unwrap_or_default();
     let (dropdown_types, manual_overrides) = all_types_result.unwrap_or_default();
     let endpoint_ssdp_models = ssdp_models_result.unwrap_or_default();
 
@@ -2296,6 +2343,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     context.insert("endpoint_models", &endpoint_models);
     context.insert("endpoint_bytes", &endpoint_bytes);
     context.insert("endpoint_last_seen", &endpoint_last_seen);
+    context.insert("endpoint_online_status", &endpoint_online_status);
     context.insert("ips", &ips);
     context.insert("macs", &macs);
     context.insert("mac_vendors", &mac_vendors);

@@ -62,34 +62,95 @@
          */
         showOnlyKnownVendors: function() {
             // First, show all device types
-            App.Filters.selectAll();
+            document.getElementById('filterLocal').checked = true;
+            document.getElementById('filterGateway').checked = true;
+            document.getElementById('filterPrinter').checked = true;
+            document.getElementById('filterTv').checked = true;
+            document.getElementById('filterGaming').checked = true;
+            document.getElementById('filterPhone').checked = true;
+            document.getElementById('filterVirtualization').checked = true;
+            document.getElementById('filterSoundbar').checked = true;
+            document.getElementById('filterAppliance').checked = true;
+            document.getElementById('filterOther').checked = true;
 
-            // Clear other filters
+            // Clear search
             var searchInput = document.getElementById('endpointSearch');
             if (searchInput) searchInput.value = '';
 
+            // Clear protocol filter
             var protocolSelect = document.getElementById('globalProtocolSelect');
             if (protocolSelect) {
                 protocolSelect.value = '';
                 App.state.selectedProtocol = null;
             }
 
-            // Now filter to only show rows with vendors
-            var rows = document.querySelectorAll('.endpoint-row');
-            rows.forEach(function(row) {
-                var vendor = row.dataset.endpointVendor;
-                if (vendor && vendor.trim() !== '') {
-                    row.dataset.filteredOut = 'false';
-                } else {
-                    row.dataset.filteredOut = 'true';
-                    row.style.display = 'none';
-                }
-            });
-
-            // Update pagination
-            if (App.Pagination) {
-                App.Pagination.update('endpoints');
+            // Clear vendor dropdown (we're using knownVendorsOnly instead)
+            var vendorSelect = document.getElementById('globalVendorSelect');
+            if (vendorSelect) {
+                vendorSelect.value = '';
+                App.state.selectedVendor = null;
             }
+
+            // Set known filter state
+            App.state.knownVendorsOnly = true;
+
+            // Update URL to persist filter
+            var url = new URL(window.location.href);
+            url.searchParams.set('known', '1');
+            history.replaceState({}, '', url.toString());
+
+            // Apply filters (will include knownVendorsOnly check)
+            App.Filters.apply();
+        },
+
+        /**
+         * Show only endpoints that are currently active (online)
+         */
+        showOnlyActive: function() {
+            // First, show all device types
+            document.getElementById('filterLocal').checked = true;
+            document.getElementById('filterGateway').checked = true;
+            document.getElementById('filterPrinter').checked = true;
+            document.getElementById('filterTv').checked = true;
+            document.getElementById('filterGaming').checked = true;
+            document.getElementById('filterPhone').checked = true;
+            document.getElementById('filterVirtualization').checked = true;
+            document.getElementById('filterSoundbar').checked = true;
+            document.getElementById('filterAppliance').checked = true;
+            document.getElementById('filterOther').checked = true;
+
+            // Clear search
+            var searchInput = document.getElementById('endpointSearch');
+            if (searchInput) searchInput.value = '';
+
+            // Clear protocol filter
+            var protocolSelect = document.getElementById('globalProtocolSelect');
+            if (protocolSelect) {
+                protocolSelect.value = '';
+                App.state.selectedProtocol = null;
+            }
+
+            // Clear vendor dropdown
+            var vendorSelect = document.getElementById('globalVendorSelect');
+            if (vendorSelect) {
+                vendorSelect.value = '';
+                App.state.selectedVendor = null;
+            }
+
+            // Clear known filter
+            App.state.knownVendorsOnly = false;
+
+            // Set active filter state
+            App.state.activeOnly = true;
+
+            // Update URL to persist filter
+            var url = new URL(window.location.href);
+            url.searchParams.delete('known');
+            url.searchParams.set('active', '1');
+            history.replaceState({}, '', url.toString());
+
+            // Apply filters (will include activeOnly check)
+            App.Filters.apply();
         },
 
         /**
@@ -228,8 +289,22 @@
                     }
                 }
 
+                // Apply "known vendors only" filter if active
+                var shouldShowByKnown = true;
+                if (App.state.knownVendorsOnly) {
+                    var rowVendorKnown = (row.dataset.endpointVendor || '').trim();
+                    shouldShowByKnown = rowVendorKnown !== '';
+                }
+
+                // Apply "active only" filter if active
+                var shouldShowByActive = true;
+                if (App.state.activeOnly) {
+                    var isOnline = row.dataset.endpointOnline === 'true';
+                    shouldShowByActive = isOnline;
+                }
+
                 // Set filtered-out attribute for pagination to use
-                var isFilteredOut = !(shouldShowByType && shouldShowBySearch && shouldShowByVendor);
+                var isFilteredOut = !(shouldShowByType && shouldShowBySearch && shouldShowByVendor && shouldShowByKnown && shouldShowByActive);
                 row.dataset.filteredOut = isFilteredOut ? 'true' : 'false';
             });
 
@@ -627,9 +702,10 @@
     window.clearPortFilter = App.Filters.clearPortFilter;
     window.filterByVendor = App.Filters.filterByVendor;
     window.showOnlyKnownVendors = App.Filters.showOnlyKnownVendors;
+    window.showOnlyActive = App.Filters.showOnlyActive;
 
     /**
-     * Clear all filters - search, protocol, and vendor
+     * Clear all filters - search, protocol, vendor, known, and active
      */
     window.clearAllFilters = function() {
         // Clear search input
@@ -651,6 +727,17 @@
             vendorSelect.value = '';
             App.state.selectedVendor = null;
         }
+
+        // Clear known vendors filter
+        App.state.knownVendorsOnly = false;
+
+        // Clear active only filter
+        App.state.activeOnly = false;
+
+        var url = new URL(window.location.href);
+        url.searchParams.delete('known');
+        url.searchParams.delete('active');
+        history.replaceState({}, '', url.toString());
 
         // Clear port filter if active
         App.Filters.clearPortFilter();

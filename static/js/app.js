@@ -193,6 +193,18 @@
             }
         }
 
+        // Restore "known vendors only" filter from URL before applying filters
+        var knownParam = urlParams.get('known');
+        if (knownParam === '1') {
+            App.state.knownVendorsOnly = true;
+        }
+
+        // Restore "active only" filter from URL before applying filters
+        var activeParam = urlParams.get('active');
+        if (activeParam === '1') {
+            App.state.activeOnly = true;
+        }
+
         // Apply filters on page load
         if (App.Filters) {
             App.Filters.apply(true);
