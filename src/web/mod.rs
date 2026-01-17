@@ -13,7 +13,7 @@ use std::io::Write;
 use tera::{Context, Tera};
 use tokio::task;
 
-use crate::db::{SQLWriter, new_connection, new_connection_result, get_all_settings, set_setting};
+use crate::db::{SQLWriter, new_connection, new_connection_result, get_all_settings, get_setting_i64, set_setting};
 use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::device_control::DeviceController;
 use crate::network::endpoint::{
@@ -1780,8 +1780,8 @@ fn get_all_endpoints_last_seen(
 }
 
 /// Get online status for all endpoints
-/// An endpoint is considered "online" if it had traffic in the last 60 seconds
-fn get_all_endpoints_online_status(endpoints: &[String]) -> HashMap<String, bool> {
+/// An endpoint is considered "online" if it had traffic within the threshold (in seconds)
+fn get_all_endpoints_online_status(endpoints: &[String], threshold_seconds: u64) -> HashMap<String, bool> {
     let conn = new_connection();
     let mut result: HashMap<String, bool> = HashMap::new();
 
@@ -1790,20 +1790,20 @@ fn get_all_endpoints_online_status(endpoints: &[String]) -> HashMap<String, bool
         result.insert(endpoint.to_lowercase(), false);
     }
 
-    // Single query to get endpoints with recent traffic (last 60 seconds)
+    // Single query to get endpoints with recent traffic within threshold
     let mut stmt = conn
         .prepare(&format!(
             "SELECT
                 {DISPLAY_NAME_SQL} AS display_name
              FROM endpoints e
              INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
-             WHERE c.last_seen_at >= (strftime('%s', 'now') - 60)
+             WHERE c.last_seen_at >= (strftime('%s', 'now') - ?1)
              GROUP BY e.id"
         ))
         .expect("Failed to prepare statement");
 
     let rows = stmt
-        .query_map([], |row| {
+        .query_map([threshold_seconds], |row| {
             let name: String = row.get(0)?;
             Ok(name)
         })
@@ -2010,7 +2010,9 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         get_all_endpoints_last_seen(&dropdown_for_seen, scan_interval)
     });
     let online_status_future = tokio::task::spawn_blocking(move || {
-        get_all_endpoints_online_status(&dropdown_for_online)
+        // Get active threshold from settings (default 60 seconds = 1 minute)
+        let active_threshold = get_setting_i64("active_threshold_seconds", 60) as u64;
+        get_all_endpoints_online_status(&dropdown_for_online, active_threshold)
     });
     let all_types_future =
         tokio::task::spawn_blocking(move || get_all_endpoint_types(&dropdown_for_types));

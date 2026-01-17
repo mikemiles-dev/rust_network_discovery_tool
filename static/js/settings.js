@@ -24,6 +24,11 @@
                     dataRetention.value = settings.data_retention_days;
                 }
 
+                var activeThreshold = document.getElementById('setting-active-threshold');
+                if (activeThreshold && settings.active_threshold_seconds) {
+                    activeThreshold.value = settings.active_threshold_seconds;
+                }
+
                 showStatus('Settings loaded', 'success');
             })
             .catch(function(error) {
@@ -38,6 +43,7 @@
     function saveSettings() {
         var cleanupInterval = document.getElementById('setting-cleanup-interval');
         var dataRetention = document.getElementById('setting-data-retention');
+        var activeThreshold = document.getElementById('setting-active-threshold');
 
         var promises = [];
 
@@ -62,6 +68,19 @@
                     body: JSON.stringify({
                         key: 'data_retention_days',
                         value: dataRetention.value
+                    })
+                })
+            );
+        }
+
+        if (activeThreshold) {
+            promises.push(
+                fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        key: 'active_threshold_seconds',
+                        value: activeThreshold.value
                     })
                 })
             );

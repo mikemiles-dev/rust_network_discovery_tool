@@ -568,7 +568,8 @@
     }
 
     .status-indicator.offline {
-      background-color: #6b7280;
+      background-color: #ef4444;
+      opacity: 0.6;
     }
 
     .endpoint-name-cell {
@@ -2394,6 +2395,20 @@
                    min="1" max="365" value="7">
             <span style="color: var(--text-secondary); font-size: 0.75rem;">
               How long to keep communication records
+            </span>
+          </div>
+        </div>
+
+        <div class="setting-item" style="margin-bottom: 1.5rem;">
+          <label style="display: block; color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.875rem;">
+            Active Threshold (seconds)
+          </label>
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <input type="number" id="setting-active-threshold"
+                   style="width: 120px; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 0.25rem; background: var(--bg-secondary); color: var(--text-primary);"
+                   min="10" max="3600" value="60">
+            <span style="color: var(--text-secondary); font-size: 0.75rem;">
+              Endpoints with activity within this time are shown as "Active" (green indicator)
             </span>
           </div>
         </div>
