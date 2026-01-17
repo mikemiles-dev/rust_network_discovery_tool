@@ -58,6 +58,41 @@
         },
 
         /**
+         * Show only endpoints with known vendors
+         */
+        showOnlyKnownVendors: function() {
+            // First, show all device types
+            App.Filters.selectAll();
+
+            // Clear other filters
+            var searchInput = document.getElementById('endpointSearch');
+            if (searchInput) searchInput.value = '';
+
+            var protocolSelect = document.getElementById('globalProtocolSelect');
+            if (protocolSelect) {
+                protocolSelect.value = '';
+                App.state.selectedProtocol = null;
+            }
+
+            // Now filter to only show rows with vendors
+            var rows = document.querySelectorAll('.endpoint-row');
+            rows.forEach(function(row) {
+                var vendor = row.dataset.endpointVendor;
+                if (vendor && vendor.trim() !== '') {
+                    row.dataset.filteredOut = 'false';
+                } else {
+                    row.dataset.filteredOut = 'true';
+                    row.style.display = 'none';
+                }
+            });
+
+            // Update pagination
+            if (App.Pagination) {
+                App.Pagination.update('endpoints');
+            }
+        },
+
+        /**
          * Deselect all device type filters
          */
         selectNone: function() {
@@ -591,6 +626,38 @@
     window.filterByPort = App.Filters.filterByPort;
     window.clearPortFilter = App.Filters.clearPortFilter;
     window.filterByVendor = App.Filters.filterByVendor;
+    window.showOnlyKnownVendors = App.Filters.showOnlyKnownVendors;
+
+    /**
+     * Clear all filters - search, protocol, and vendor
+     */
+    window.clearAllFilters = function() {
+        // Clear search input
+        var searchInput = document.getElementById('endpointSearch');
+        if (searchInput) {
+            searchInput.value = '';
+        }
+
+        // Reset protocol dropdown
+        var protocolSelect = document.getElementById('globalProtocolSelect');
+        if (protocolSelect) {
+            protocolSelect.value = '';
+            App.state.selectedProtocol = null;
+        }
+
+        // Reset vendor dropdown
+        var vendorSelect = document.getElementById('globalVendorSelect');
+        if (vendorSelect) {
+            vendorSelect.value = '';
+            App.state.selectedVendor = null;
+        }
+
+        // Clear port filter if active
+        App.Filters.clearPortFilter();
+
+        // Re-apply filters (will show all since everything is cleared)
+        App.Filters.apply();
+    };
 
     // Load global protocols on page load
     document.addEventListener('DOMContentLoaded', function() {

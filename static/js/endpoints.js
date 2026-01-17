@@ -469,6 +469,62 @@
         }
     };
 
+    /**
+     * Handle keyboard navigation for endpoint table
+     */
+    function handleKeyboardNavigation(e) {
+        // Only handle arrow keys when on network tab
+        if (App.state.activeTab !== 'network') return;
+
+        // Don't interfere with input fields
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+            return;
+        }
+
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && e.key !== 'Escape') {
+            return;
+        }
+
+        e.preventDefault();
+
+        // Handle Escape to deselect
+        if (e.key === 'Escape') {
+            App.Endpoints.unselectNode();
+            return;
+        }
+
+        // Get all visible endpoint rows
+        var rows = Array.from(document.querySelectorAll('.endpoint-row')).filter(function(row) {
+            return row.style.display !== 'none' && row.offsetParent !== null;
+        });
+
+        if (rows.length === 0) return;
+
+        // Find currently selected row
+        var selectedRow = document.querySelector('.endpoint-row.selected');
+        var currentIndex = selectedRow ? rows.indexOf(selectedRow) : -1;
+
+        var newIndex;
+        if (e.key === 'ArrowDown') {
+            newIndex = currentIndex < rows.length - 1 ? currentIndex + 1 : 0;
+        } else {
+            newIndex = currentIndex > 0 ? currentIndex - 1 : rows.length - 1;
+        }
+
+        var newRow = rows[newIndex];
+        if (newRow) {
+            var nodeId = newRow.dataset.endpoint;
+            if (nodeId) {
+                App.Endpoints.selectNode(nodeId);
+                // Scroll row into view
+                newRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+    }
+
+    // Add keyboard event listener
+    document.addEventListener('keydown', handleKeyboardNavigation);
+
     // Expose functions globally for onclick handlers
     window.selectNode = App.Endpoints.selectNode;
     window.unselectNode = App.Endpoints.unselectNode;

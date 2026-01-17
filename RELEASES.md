@@ -1,6 +1,6 @@
 # Release Notes
 
-## [0.5.3]
+## [0.5.4]
 
 ### Added
 - **TV Model Detection** - Samsung, LG, Sony, and Vizio TVs now auto-classified by model number
@@ -20,6 +20,15 @@
   - Pulsing green indicator appears in filter bar during scans
   - Displays current scan phase and progress percentage
   - Polls every 2 seconds for status updates
+- **Keyboard Navigation** - Arrow keys now navigate endpoint table
+  - Up/Down arrows move selection between visible rows
+  - Escape key deselects current endpoint
+  - Wraps around from last to first (and vice versa)
+  - Selected row scrolls into view automatically
+- **Clear Filters Button** - One-click reset for all filters
+  - Clears search input
+  - Resets Protocol and Vendor dropdowns
+  - Clears any active port filter
 
 ### Changed
 - **Auto-refresh Behavior** - No longer refreshes on Internet and Settings tabs
