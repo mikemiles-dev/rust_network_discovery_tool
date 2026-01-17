@@ -88,10 +88,11 @@
                     } else if (App.state.activeTab === 'scanner') {
                         // Don't reload page when on scanner tab - scanner has its own polling
                         if (App.Scanner) App.Scanner.pollStatus();
-                    } else {
+                    } else if (App.state.activeTab === 'network') {
                         // Reload page for network tab, preserving sort and selection
                         App.Refresh.reloadWithState();
                     }
+                    // No auto-refresh for internet and settings tabs
                 }, seconds * 1000);
             }
         },
@@ -124,9 +125,10 @@
                 if (App.Tabs) App.Tabs.refreshDnsEntries();
             } else if (App.state.activeTab === 'scanner') {
                 if (App.Scanner) App.Scanner.pollStatus();
-            } else {
+            } else if (App.state.activeTab === 'network') {
                 App.Refresh.reloadWithState();
             }
+            // No action for internet and settings tabs
         },
 
         /**
