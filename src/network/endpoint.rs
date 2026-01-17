@@ -1572,6 +1572,53 @@ fn is_soundbar_model(model: &str) -> bool {
         .any(|prefix| model_lower.starts_with(prefix))
 }
 
+/// Check if a model name indicates a TV
+fn is_tv_model(model: &str) -> bool {
+    let model_lower = model.to_lowercase();
+    let model_upper = model.to_uppercase();
+
+    // Check for known TV model patterns
+    // Samsung TV model patterns
+    if model_upper.starts_with("QN")
+        || model_upper.starts_with("UN")
+        || model_upper.starts_with("UA")
+    {
+        // QN = QLED, UN/UA = LED TVs
+        // e.g., QN43LS03TAFXZA (The Frame), UN55TU8000FXZA
+        return true;
+    }
+
+    // Samsung Frame TVs (LS series)
+    if model_upper.contains("LS03") || model_upper.contains("LS01") {
+        return true;
+    }
+
+    // LG TV model patterns
+    if model_upper.starts_with("OLED") || model_upper.starts_with("NANO") {
+        return true;
+    }
+
+    // Sony Bravia
+    if model_lower.contains("bravia")
+        || model_upper.starts_with("XR")
+        || model_upper.starts_with("KD-")
+    {
+        return true;
+    }
+
+    // Vizio
+    if model_lower.contains("vizio") {
+        return true;
+    }
+
+    // Check for generic TV indicators in model name
+    if model_lower.contains("the frame") || model_lower.contains("samsung tv") {
+        return true;
+    }
+
+    false
+}
+
 /// Normalize a TV/device model number to a friendly name
 /// e.g., "QN43LS03TAFXZA" -> "Samsung The Frame"
 /// e.g., "OLED55C3PUA" -> "LG OLED C3"
@@ -3163,6 +3210,13 @@ impl EndPoint {
             return Some(CLASSIFICATION_SOUNDBAR);
         }
 
+        // Check for TV models (Samsung Frame, QLED, LG OLED, etc.)
+        if let Some(m) = model
+            && is_tv_model(m)
+        {
+            return Some(CLASSIFICATION_TV);
+        }
+
         // Check for LG ThinQ appliances FIRST (they advertise AirPlay but aren't TVs)
         if let Some(h) = lower
             && is_lg_appliance(h)
@@ -3329,6 +3383,21 @@ impl EndPoint {
             conn.execute("ALTER TABLE endpoints ADD COLUMN custom_vendor TEXT", [])?;
         }
 
+        // Migration: Add auto_device_type column for persisting auto-detected device type
+        let has_auto_device_type: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_table_info('endpoints') WHERE name = 'auto_device_type'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !has_auto_device_type {
+            conn.execute(
+                "ALTER TABLE endpoints ADD COLUMN auto_device_type TEXT",
+                [],
+            )?;
+        }
+
         // Create internet_destinations table for tracking external hosts
         conn.execute(
             "CREATE TABLE IF NOT EXISTS internet_destinations (
@@ -3438,6 +3507,42 @@ impl EndPoint {
             "UPDATE endpoints SET manual_device_type = ? WHERE LOWER(name) = LOWER(?) OR LOWER(custom_name) = LOWER(?)",
             params![device_type, endpoint_name, endpoint_name],
         )
+    }
+
+    /// Set the auto-detected device type for an endpoint (persists across renames)
+    pub fn set_auto_device_type(
+        conn: &Connection,
+        endpoint_name: &str,
+        device_type: &str,
+    ) -> Result<usize> {
+        conn.execute(
+            "UPDATE endpoints SET auto_device_type = ?1
+             WHERE id IN (
+                 SELECT DISTINCT e.id FROM endpoints e
+                 LEFT JOIN endpoint_attributes ea ON e.id = ea.endpoint_id
+                 WHERE LOWER(e.name) = LOWER(?2)
+                    OR LOWER(e.custom_name) = LOWER(?2)
+                    OR LOWER(ea.hostname) = LOWER(?2)
+                    OR LOWER(ea.ip) = LOWER(?2)
+             )",
+            params![device_type, endpoint_name],
+        )
+    }
+
+    /// Get all auto-detected device types (for endpoints without manual overrides)
+    /// Returns a map of display_name -> auto_device_type
+    pub fn get_all_auto_device_types(conn: &Connection) -> HashMap<String, String> {
+        let mut map = HashMap::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT COALESCE(custom_name, name), auto_device_type FROM endpoints WHERE auto_device_type IS NOT NULL AND (name IS NOT NULL OR custom_name IS NOT NULL)",
+        ) && let Ok(rows) = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        }) {
+            for row in rows.flatten() {
+                map.insert(row.0, row.1);
+            }
+        }
+        map
     }
 
     /// Set a custom name for an endpoint by name, existing custom_name, or hostname in endpoint_attributes
@@ -4520,6 +4625,49 @@ mod tests {
         assert_eq!(is_soundbar_hostname("jbl-bar-5.1"), true);
 
         assert_eq!(is_soundbar_hostname("samsung-tv"), false);
+    }
+
+    #[test]
+    fn test_is_tv_model() {
+        use super::*;
+
+        // Samsung QLED TVs
+        assert!(is_tv_model("QN43LS03TAFXZA")); // The Frame
+        assert!(is_tv_model("QN65Q80AAFXZA")); // QLED Q80A
+        assert!(is_tv_model("QN55QN90AAFXZA")); // Neo QLED
+
+        // Samsung LED TVs
+        assert!(is_tv_model("UN55TU8000FXZA"));
+        assert!(is_tv_model("UA43AU7000KXXS"));
+
+        // Samsung The Frame specific
+        assert!(is_tv_model("LS03T"));
+        assert!(is_tv_model("QN43LS01TAFXZA")); // The Serif
+
+        // LG OLED TVs
+        assert!(is_tv_model("OLED55C3PUA"));
+        assert!(is_tv_model("OLED65G3PUA"));
+
+        // LG NanoCell TVs
+        assert!(is_tv_model("NANO75UPA"));
+
+        // Sony Bravia
+        assert!(is_tv_model("XR-55A80J"));
+        assert!(is_tv_model("KD-55X80K"));
+        assert!(is_tv_model("Sony Bravia"));
+
+        // Vizio
+        assert!(is_tv_model("Vizio M-Series"));
+
+        // Generic patterns
+        assert!(is_tv_model("Samsung The Frame"));
+        assert!(is_tv_model("Samsung TV"));
+
+        // Should NOT match
+        assert!(!is_tv_model("HW-MS750")); // Soundbar
+        assert!(!is_tv_model("Galaxy S23")); // Phone
+        assert!(!is_tv_model("MacBook Pro")); // Computer
+        assert!(!is_tv_model("random-device"));
     }
 
     #[test]

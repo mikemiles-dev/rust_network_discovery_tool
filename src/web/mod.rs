@@ -972,6 +972,13 @@ fn get_all_endpoint_types(
         .map(|(k, v)| (k.to_lowercase(), v.clone()))
         .collect();
 
+    // Get all auto-detected device types (persisted from first detection)
+    let auto_types = EndPoint::get_all_auto_device_types(&conn);
+    let auto_types_lower: HashMap<String, String> = auto_types
+        .iter()
+        .map(|(k, v)| (k.to_lowercase(), v.clone()))
+        .collect();
+
     // Batch fetch all IPs for all endpoints in one query
     let mut all_ips: HashMap<String, Vec<String>> = HashMap::new();
     {
@@ -1088,8 +1095,10 @@ fn get_all_endpoint_types(
 
     // Now classify each endpoint using the batch-fetched data
     for endpoint in endpoints {
+        let endpoint_lower = endpoint.to_lowercase();
+
         // Check for manual override first (case-insensitive)
-        if let Some(manual_type) = manual_types_lower.get(&endpoint.to_lowercase()) {
+        if let Some(manual_type) = manual_types_lower.get(&endpoint_lower) {
             let static_type: &'static str = match manual_type.as_str() {
                 "local" => "local",
                 "gateway" => "gateway",
@@ -1108,8 +1117,26 @@ fn get_all_endpoint_types(
             continue;
         }
 
+        // Check for stored auto-detected type (persists across renames)
+        if let Some(auto_type) = auto_types_lower.get(&endpoint_lower) {
+            let static_type: &'static str = match auto_type.as_str() {
+                "local" => "local",
+                "gateway" => "gateway",
+                "internet" => "internet",
+                "printer" => "printer",
+                "tv" => "tv",
+                "gaming" => "gaming",
+                "phone" => "phone",
+                "virtualization" => "virtualization",
+                "soundbar" => "soundbar",
+                "appliance" => "appliance",
+                _ => "other",
+            };
+            types.insert(endpoint.clone(), static_type);
+            continue;
+        }
+
         // Get IPs from batch data (case-insensitive), or try to extract from hostname
-        let endpoint_lower = endpoint.to_lowercase();
         let mut ips = all_ips.get(&endpoint_lower).cloned().unwrap_or_default();
         if ips.is_empty() {
             // Try to parse IP from hostname pattern: xxx-xxx-xxx-xxx.domain
@@ -1133,6 +1160,8 @@ fn get_all_endpoint_types(
             EndPoint::classify_endpoint(first_ip.clone(), Some(endpoint.clone()))
         {
             types.insert(endpoint.clone(), endpoint_type);
+            // Store the auto-detected type for persistence
+            let _ = EndPoint::set_auto_device_type(&conn, endpoint, endpoint_type);
         } else if let Some(device_type) = EndPoint::classify_device_type(
             Some(endpoint),
             &ips,
@@ -1141,10 +1170,14 @@ fn get_all_endpoint_types(
             ssdp_model.map(|s| s.as_str()),
         ) {
             types.insert(endpoint.clone(), device_type);
+            // Store the auto-detected type for persistence
+            let _ = EndPoint::set_auto_device_type(&conn, endpoint, device_type);
         } else if let Some(ref ip_str) = first_ip {
             // Only classify as local if the IP is actually on the local network
             if EndPoint::is_on_local_network(ip_str) {
                 types.insert(endpoint.clone(), "local");
+                // Store the auto-detected type for persistence
+                let _ = EndPoint::set_auto_device_type(&conn, endpoint, "local");
             }
         }
     }
@@ -1328,9 +1361,16 @@ fn get_endpoint_details_blocking(
     // Get device type for this endpoint
     let conn = new_connection();
     let manual_types = EndPoint::get_all_manual_device_types(&conn);
+    let auto_types = EndPoint::get_all_auto_device_types(&conn);
 
     // Check for manual override first (case-insensitive)
     let manual_type = manual_types
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(&endpoint_name))
+        .map(|(_, v)| v.clone());
+
+    // Check for stored auto-detected type (persists across renames)
+    let stored_auto_type = auto_types
         .iter()
         .find(|(k, _)| k.eq_ignore_ascii_case(&endpoint_name))
         .map(|(_, v)| v.clone());
@@ -1353,8 +1393,12 @@ fn get_endpoint_details_blocking(
 
     let (device_type, is_manual_override) = if let Some(mt) = manual_type {
         (mt, true)
+    } else if let Some(at) = stored_auto_type {
+        // Use stored auto-detected type (persists across renames)
+        (at, false)
     } else if endpoint_name.eq_ignore_ascii_case(&local_hostname) {
         // This is the local machine
+        let _ = EndPoint::set_auto_device_type(&conn, &endpoint_name, "local");
         ("local".to_string(), false)
     } else {
         // First check network-level classification (gateway, internet)
@@ -1362,6 +1406,7 @@ fn get_endpoint_details_blocking(
         if let Some(network_type) =
             EndPoint::classify_endpoint(first_ip.clone(), Some(endpoint_name.clone()))
         {
+            let _ = EndPoint::set_auto_device_type(&conn, &endpoint_name, network_type);
             (network_type.to_string(), false)
         } else {
             // Use EndPoint::classify_device_type for device-specific detection
@@ -1384,6 +1429,7 @@ fn get_endpoint_details_blocking(
                     "other"
                 }
             });
+            let _ = EndPoint::set_auto_device_type(&conn, &endpoint_name, auto_type);
             (auto_type.to_string(), false)
         }
     };

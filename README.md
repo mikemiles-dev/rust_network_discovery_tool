@@ -74,6 +74,10 @@ sudo rust_network_discovery_tool
   - **HP Printers**: Probes web interface to detect LaserJet, OfficeJet, DeskJet models
   - **Smart TVs**: Normalizes model numbers (e.g., QN43LS03TAFXZA → "Samsung The Frame")
   - **Heuristic Detection**: Infers models from MAC vendor + network behavior (Amazon Echo, Fire TV, etc.)
+- **Persistent Device Classification**: Device types persist even when renaming endpoints
+  - Auto-detected types (TV, printer, phone, etc.) stored in database
+  - Renaming a device won't change its classification
+  - Manual overrides always take priority
 - **DNS Caching**: Prevents slow lookups with DNS cache
 - **High Performance**: Optimized with database indexes, transaction batching, and connection pooling
 

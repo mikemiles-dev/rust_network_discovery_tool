@@ -1,5 +1,38 @@
 # Release Notes
 
+## [0.5.3]
+
+### Added
+- **TV Model Detection** - Samsung, LG, Sony, and Vizio TVs now auto-classified by model number
+  - Samsung: QLED (QN), LED (UN/UA), The Frame (LS03), The Serif (LS01)
+  - LG: OLED, NanoCell (NANO)
+  - Sony: Bravia (XR, KD-)
+  - Vizio models
+- **Persistent Device Classification** - Auto-detected device types now persist across renames
+  - New `auto_device_type` column stores first-detected classification
+  - Renaming an endpoint no longer changes its device type
+  - Manual overrides still take priority
+- **Internet Tab Pagination** - Internet destinations table now has pagination like mDNS
+  - Page size options: 50, 100, 250, or show all
+  - Page navigation with ellipsis for large datasets
+  - Resets to page 1 when filtering or sorting
+- **Scan Indicator on Network Tab** - Shows scan status without switching tabs
+  - Pulsing green indicator appears in filter bar during scans
+  - Displays current scan phase and progress percentage
+  - Polls every 2 seconds for status updates
+
+### Changed
+- **Auto-refresh Behavior** - No longer refreshes on Internet and Settings tabs
+  - Only Network, DNS, and Scanner tabs refresh automatically
+- **Endpoint Table Alignment** - Table now aligns with filter bar and search bar
+- **Model/Vendor Badges** - Long names now truncate with ellipsis (tooltip shows full text)
+- **Device Type Row** - Wraps with proper spacing when badges overflow
+
+### Fixed
+- **Samsung Frame Classification** - Now correctly detected as TV via SSDP model
+
+---
+
 ## [0.5.2]
 
 ### Added
