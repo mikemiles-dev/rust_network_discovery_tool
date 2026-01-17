@@ -405,7 +405,7 @@
       flex: 1;
       display: flex;
       flex-direction: column;
-      padding: 0 1.5rem;
+      padding: 0;
       overflow: hidden;
       box-sizing: border-box;
       min-height: 0;
@@ -751,6 +751,14 @@
       50% { opacity: 0.3; }
     }
 
+    .scan-indicator-pulse {
+      width: 8px;
+      height: 8px;
+      background: #10b981;
+      border-radius: 50%;
+      animation: pulse 1s infinite;
+    }
+
     .stop-refresh-btn {
       padding: 0.25rem 0.5rem;
       background: transparent;
@@ -983,7 +991,8 @@
       height: 100%;
       background: rgba(30, 41, 59, 0.95);
       border-left: 1px solid rgba(51, 65, 85, 0.6);
-      padding: 1rem;
+      margin-left: 1rem;
+      padding: 0.5rem 1rem 1rem 1rem;
       overflow-y: auto;
       box-sizing: border-box;
     }
@@ -1447,6 +1456,11 @@
           <option value="{{ vendor }}">{{ vendor }}</option>
           {% endfor %}
         </select>
+        <div id="scan-indicator" style="display: none; align-items: center; gap: 0.5rem; padding: 0.25rem 0.75rem; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 0.375rem; font-size: 0.75rem; color: #10b981;">
+          <span class="scan-indicator-pulse"></span>
+          <span>Scanning: <span id="scan-indicator-phase">...</span></span>
+          <span id="scan-indicator-progress" style="font-weight: 600;"></span>
+        </div>
       </div>
       <div class="filter-row">
         <div class="filter-checkboxes">
@@ -1633,7 +1647,7 @@
           </div>
           <!-- Device Type Dropdown -->
           {% set endpoint_type = endpoint_types | get(key=endpoint, default="other") %}
-          <div style="margin-bottom: 0.75rem;">
+          <div style="margin-bottom: 0.75rem; display: flex; flex-wrap: wrap; align-items: center; row-gap: 0.5rem;">
             <div class="device-type-selector" {% if not endpoint %}style="display: none;"{% endif %}>
               <button class="device-type-btn {% if endpoint in manual_overrides %}manual-override{% endif %}" onclick="toggleDeviceTypeDropdown(event)" id="device-type-btn">
                 <span>Type:</span>
@@ -1668,8 +1682,8 @@
               </div>
             </div>
             <span id="manual-override-indicator" style="font-size: 0.625rem; color: var(--accent-secondary); margin-left: 0.5rem; {% if not endpoint in manual_overrides %}display: none;{% endif %}">(manually set)</span>
-            <span id="device-vendor-badge" onclick="showVendorEdit()" style="font-size: 0.875rem; font-weight: bold; color: #60a5fa; background: rgba(59, 130, 246, 0.15); padding: 0.25rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem; cursor: pointer; {% if not device_vendor %}display: none;{% endif %}" title="Click to edit vendor">{{ device_vendor }}</span>
-            <span id="device-model-badge" onclick="showModelEdit()" style="font-size: 0.875rem; font-weight: bold; color: #a78bfa; background: rgba(139, 92, 246, 0.15); padding: 0.25rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem; cursor: pointer; {% if not device_model %}display: none;{% endif %}" title="Click to edit model">{{ device_model }}</span>
+            <span id="device-vendor-badge" onclick="showVendorEdit()" style="font-size: 0.875rem; font-weight: bold; color: #60a5fa; background: rgba(59, 130, 246, 0.15); padding: 0.25rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem; cursor: pointer; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: {% if not device_vendor %}none{% else %}inline-block{% endif %};" title="{{ device_vendor }} (click to edit)">{{ device_vendor }}</span>
+            <span id="device-model-badge" onclick="showModelEdit()" style="font-size: 0.875rem; font-weight: bold; color: #a78bfa; background: rgba(139, 92, 246, 0.15); padding: 0.25rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem; cursor: pointer; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: {% if not device_model %}none{% else %}inline-block{% endif %};" title="{{ device_model }} (click to edit)">{{ device_model }}</span>
             {% if endpoint %}<button onclick="showVendorEdit()" style="background: none; border: none; cursor: pointer; padding: 0.125rem; margin-left: 0.25rem; color: #60a5fa; font-size: 0.625rem; {% if device_vendor %}display: none;{% endif %}" title="Set vendor" id="add-vendor-btn">+Vendor</button>{% endif %}
             {% if endpoint %}<button onclick="showModelEdit()" style="background: none; border: none; cursor: pointer; padding: 0.125rem; margin-left: 0.25rem; color: #a78bfa; font-size: 0.625rem; {% if device_model %}display: none;{% endif %}" title="Set model" id="add-model-btn">+Model</button>{% endif %}
           </div>

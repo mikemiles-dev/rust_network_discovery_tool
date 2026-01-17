@@ -223,6 +223,9 @@
             App.Pcap.init();
         }
 
+        // Start scan indicator polling for network tab
+        App.startScanIndicatorPolling();
+
         // Restore scroll positions after refresh
         var savedScroll = sessionStorage.getItem('scrollPosition');
         var savedTableScroll = sessionStorage.getItem('tableScrollPosition');
@@ -412,6 +415,39 @@
                 App.Pagination.goToPage('endpoints', pageNum, { skipScroll: true });
             }
         }
+    };
+
+    /**
+     * Poll scan status and update indicator on network tab
+     */
+    App.startScanIndicatorPolling = function() {
+        var indicator = document.getElementById('scan-indicator');
+        if (!indicator) return;
+
+        function updateIndicator() {
+            fetch('/api/scan/status')
+                .then(function(response) { return response.json(); })
+                .then(function(status) {
+                    if (status.running) {
+                        indicator.style.display = 'flex';
+                        var phase = document.getElementById('scan-indicator-phase');
+                        var progress = document.getElementById('scan-indicator-progress');
+                        if (phase) phase.textContent = status.current_phase || '...';
+                        if (progress) progress.textContent = status.progress_percent + '%';
+                    } else {
+                        indicator.style.display = 'none';
+                    }
+                })
+                .catch(function() {
+                    indicator.style.display = 'none';
+                });
+        }
+
+        // Initial check
+        updateIndicator();
+
+        // Poll every 2 seconds
+        setInterval(updateIndicator, 2000);
     };
 
 })(window.App);
