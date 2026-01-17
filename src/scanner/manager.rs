@@ -153,7 +153,7 @@ impl ScanManager {
 
             let total_phases = scan_types.len();
             let mut completed_phases = 0;
-            let mut total_discovered: u32 = 0;
+            let mut discovered_ips: HashSet<IpAddr> = HashSet::new();
 
             for scan_type in &scan_types {
                 // Check stop signal
@@ -229,19 +229,27 @@ impl ScanManager {
                     _ => Vec::new(), // Skip if no privilege
                 };
 
-                // Send results
+                // Send results and track unique IPs
                 for result in &results {
                     let _ = result_tx.send(result.clone()).await;
+                    // Extract IP from result for unique device counting
+                    let ip = match result {
+                        ScanResult::Arp(r) => r.ip,
+                        ScanResult::Icmp(r) => r.ip,
+                        ScanResult::Ndp(r) => r.ip,
+                        ScanResult::Port(r) => r.ip,
+                        ScanResult::Ssdp(r) => r.ip,
+                    };
+                    discovered_ips.insert(ip);
                 }
 
-                total_discovered += results.len() as u32;
                 completed_phases += 1;
 
                 // Update progress
                 {
                     let mut s = status.write().await;
                     s.progress_percent = ((completed_phases * 100) / total_phases.max(1)) as u8;
-                    s.discovered_count = total_discovered;
+                    s.discovered_count = discovered_ips.len() as u32;
                 }
             }
 
