@@ -1213,6 +1213,39 @@ async fn get_dns_entries_api() -> impl Responder {
     HttpResponse::Ok().json(get_dns_entries())
 }
 
+#[derive(serde::Serialize)]
+struct InternetDestinationsResponse {
+    destinations: Vec<crate::network::endpoint::InternetDestination>,
+}
+
+/// Get all internet destinations
+#[get("/api/internet")]
+async fn get_internet_destinations() -> impl Responder {
+    let result = task::spawn_blocking(|| {
+        let conn = new_connection();
+        crate::network::endpoint::EndPoint::get_internet_destinations(&conn)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(destinations)) => {
+            HttpResponse::Ok().json(InternetDestinationsResponse { destinations })
+        }
+        Ok(Err(e)) => {
+            eprintln!("Failed to get internet destinations: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to fetch internet destinations"
+            }))
+        }
+        Err(e) => {
+            eprintln!("Task error getting internet destinations: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Internal error"
+            }))
+        }
+    }
+}
+
 #[derive(serde::Deserialize)]
 struct ProbeRequest {
     ip: String,
@@ -1721,6 +1754,7 @@ pub fn start(preferred_port: u16) {
                         .service(delete_endpoint)
                         .service(probe_endpoint_model)
                         .service(get_dns_entries_api)
+                        .service(get_internet_destinations)
                         .service(probe_hostname)
                         .service(get_endpoint_details)
                         .service(get_protocol_endpoints)

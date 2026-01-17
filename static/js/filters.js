@@ -46,7 +46,6 @@
         selectAll: function() {
             document.getElementById('filterLocal').checked = true;
             document.getElementById('filterGateway').checked = true;
-            document.getElementById('filterInternet').checked = true;
             document.getElementById('filterPrinter').checked = true;
             document.getElementById('filterTv').checked = true;
             document.getElementById('filterGaming').checked = true;
@@ -64,7 +63,6 @@
         selectNone: function() {
             document.getElementById('filterLocal').checked = false;
             document.getElementById('filterGateway').checked = false;
-            document.getElementById('filterInternet').checked = false;
             document.getElementById('filterPrinter').checked = false;
             document.getElementById('filterTv').checked = false;
             document.getElementById('filterGaming').checked = false;
@@ -77,49 +75,12 @@
         },
 
         /**
-         * Select all local device type filters (everything except internet)
-         */
-        selectLocal: function() {
-            document.getElementById('filterLocal').checked = true;
-            document.getElementById('filterGateway').checked = true;
-            document.getElementById('filterInternet').checked = false;
-            document.getElementById('filterPrinter').checked = true;
-            document.getElementById('filterTv').checked = true;
-            document.getElementById('filterGaming').checked = true;
-            document.getElementById('filterPhone').checked = true;
-            document.getElementById('filterVirtualization').checked = true;
-            document.getElementById('filterSoundbar').checked = true;
-            document.getElementById('filterAppliance').checked = true;
-            document.getElementById('filterOther').checked = true;
-            App.Filters.apply();
-        },
-
-        /**
-         * Select home device type filters (local devices you'd find in a home)
-         */
-        selectHome: function() {
-            document.getElementById('filterLocal').checked = false;
-            document.getElementById('filterGateway').checked = false;
-            document.getElementById('filterInternet').checked = false;
-            document.getElementById('filterPrinter').checked = true;
-            document.getElementById('filterTv').checked = true;
-            document.getElementById('filterGaming').checked = true;
-            document.getElementById('filterPhone').checked = true;
-            document.getElementById('filterVirtualization').checked = false;
-            document.getElementById('filterSoundbar').checked = true;
-            document.getElementById('filterAppliance').checked = true;
-            document.getElementById('filterOther').checked = false;
-            App.Filters.apply();
-        },
-
-        /**
          * Select only the specified filter (uncheck all others)
          */
         selectOnly: function(filterId) {
             // Uncheck all filters first
             document.getElementById('filterLocal').checked = false;
             document.getElementById('filterGateway').checked = false;
-            document.getElementById('filterInternet').checked = false;
             document.getElementById('filterPrinter').checked = false;
             document.getElementById('filterTv').checked = false;
             document.getElementById('filterGaming').checked = false;
@@ -157,7 +118,6 @@
             // Get filter checkbox states
             var showLocal = document.getElementById('filterLocal')?.checked ?? true;
             var showGateway = document.getElementById('filterGateway')?.checked ?? true;
-            var showInternet = document.getElementById('filterInternet')?.checked ?? true;
             var showPrinter = document.getElementById('filterPrinter')?.checked ?? true;
             var showTv = document.getElementById('filterTv')?.checked ?? true;
             var showGaming = document.getElementById('filterGaming')?.checked ?? true;
@@ -176,7 +136,6 @@
                 var url = new URL(window.location.href);
                 url.searchParams.set('filter_local', showLocal ? '1' : '0');
                 url.searchParams.set('filter_gateway', showGateway ? '1' : '0');
-                url.searchParams.set('filter_internet', showInternet ? '1' : '0');
                 url.searchParams.set('filter_printer', showPrinter ? '1' : '0');
                 url.searchParams.set('filter_tv', showTv ? '1' : '0');
                 url.searchParams.set('filter_gaming', showGaming ? '1' : '0');
@@ -201,7 +160,6 @@
 
                 if (rowType === 'local' && showLocal) shouldShowByType = true;
                 else if (rowType === 'gateway' && showGateway) shouldShowByType = true;
-                else if (rowType === 'internet' && showInternet) shouldShowByType = true;
                 else if (rowType === 'printer' && showPrinter) shouldShowByType = true;
                 else if (rowType === 'tv' && showTv) shouldShowByType = true;
                 else if (rowType === 'gaming' && showGaming) shouldShowByType = true;
@@ -226,8 +184,13 @@
                 // Apply vendor filter if selected
                 var shouldShowByVendor = true;
                 if (App.state.selectedVendor) {
-                    var rowVendor = (row.dataset.endpointVendor || '').toLowerCase();
-                    shouldShowByVendor = rowVendor === App.state.selectedVendor.toLowerCase();
+                    var rowVendor = (row.dataset.endpointVendor || '').toLowerCase().trim();
+                    if (App.state.selectedVendor === '__none__') {
+                        // Show only endpoints with no vendor (unknown/uncharacterized)
+                        shouldShowByVendor = rowVendor === '';
+                    } else {
+                        shouldShowByVendor = rowVendor === App.state.selectedVendor.toLowerCase();
+                    }
                 }
 
                 // Set filtered-out attribute for pagination to use
@@ -241,24 +204,6 @@
             // Update pagination after filtering
             if (App.Pagination) {
                 App.Pagination.resetToFirstPage('endpoints');
-            }
-
-            // Filter IPs in endpoint details based on internet filter
-            if (!showInternet) {
-                var ipItems = document.querySelectorAll('#ips-container .hostname-item');
-                ipItems.forEach(function(item) {
-                    var ip = item.textContent.trim();
-                    if (!App.Filters.isLocalIP(ip)) {
-                        item.style.display = 'none';
-                    } else {
-                        item.style.display = 'block';
-                    }
-                });
-            } else {
-                var ipItems = document.querySelectorAll('#ips-container .hostname-item');
-                ipItems.forEach(function(item) {
-                    item.style.display = 'block';
-                });
             }
         },
 
@@ -633,8 +578,6 @@
     window.applyFilters = App.Filters.apply;
     window.selectAllFilters = App.Filters.selectAll;
     window.selectNoneFilters = App.Filters.selectNone;
-    window.selectLocalFilters = App.Filters.selectLocal;
-    window.selectHomeFilters = App.Filters.selectHome;
     window.selectOnlyFilter = App.Filters.selectOnly;
     window.handleFilterClick = App.Filters.handleClick;
     window.filterHostnamesList = App.Filters.filterHostnamesList;

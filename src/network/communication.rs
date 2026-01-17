@@ -352,6 +352,9 @@ impl Communication {
             Err(InsertEndpointError::ConstraintViolation) => {
                 return Ok(()); // Skip insertion on constraint violation
             }
+            Err(InsertEndpointError::InternetDestination) => {
+                return Ok(()); // Skip - internet destinations are tracked separately
+            }
             Err(InsertEndpointError::DatabaseError(e)) => {
                 return Err(e);
             }
@@ -375,6 +378,9 @@ impl Communication {
             }
             Err(InsertEndpointError::ConstraintViolation) => {
                 return Ok(()); // Skip insertion on constraint violation
+            }
+            Err(InsertEndpointError::InternetDestination) => {
+                return Ok(()); // Skip - internet destinations are tracked separately
             }
             Err(InsertEndpointError::DatabaseError(e)) => {
                 // Handle the database error (e.g., log it, return a specific error, etc.)

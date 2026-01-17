@@ -42,6 +42,11 @@
                 App.Tabs.refreshDnsEntries();
             }
 
+            // If switching to Internet tab, refresh internet destinations
+            if (tabName === 'internet' && App.Internet) {
+                App.Internet.refresh();
+            }
+
             // If switching to Scanner tab, check capabilities
             if (tabName === 'scanner' && App.Scanner) {
                 App.Scanner.checkCapabilities();

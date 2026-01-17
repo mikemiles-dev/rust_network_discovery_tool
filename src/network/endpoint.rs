@@ -2,6 +2,7 @@ use dns_lookup::{get_hostname, lookup_addr};
 use pnet::datalink::interfaces;
 use pnet::ipnetwork::IpNetwork;
 use rusqlite::{Connection, Result, params};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -3009,6 +3010,8 @@ pub enum InsertEndpointError {
     BothMacAndIpNone,
     LocallyAdministeredMac,
     ConstraintViolation,
+    /// IP is an internet destination - recorded in internet_destinations table instead
+    InternetDestination,
     DatabaseError(rusqlite::Error),
 }
 
@@ -3023,6 +3026,18 @@ impl From<rusqlite::Error> for InsertEndpointError {
             _ => InsertEndpointError::DatabaseError(err),
         }
     }
+}
+
+/// Represents an internet destination (external host) tracked separately from local endpoints
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InternetDestination {
+    pub id: i64,
+    pub hostname: String,
+    pub first_seen_at: i64,
+    pub last_seen_at: i64,
+    pub packet_count: i64,
+    pub bytes_in: i64,
+    pub bytes_out: i64,
 }
 
 #[derive(Default, Debug)]
@@ -3302,7 +3317,98 @@ impl EndPoint {
             conn.execute("ALTER TABLE endpoints ADD COLUMN custom_model TEXT", [])?;
         }
 
+        // Create internet_destinations table for tracking external hosts
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS internet_destinations (
+                id INTEGER PRIMARY KEY,
+                hostname TEXT NOT NULL UNIQUE,
+                first_seen_at INTEGER NOT NULL,
+                last_seen_at INTEGER NOT NULL,
+                packet_count INTEGER DEFAULT 1,
+                bytes_in INTEGER DEFAULT 0,
+                bytes_out INTEGER DEFAULT 0
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_internet_destinations_hostname ON internet_destinations (hostname);",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_internet_destinations_last_seen ON internet_destinations (last_seen_at);",
+            [],
+        )?;
+
         Ok(())
+    }
+
+    /// Insert or update an internet destination (external host)
+    /// This is called when traffic is detected to/from a non-local IP
+    pub fn insert_or_update_internet_destination(
+        conn: &Connection,
+        hostname: &str,
+        bytes: i64,
+        is_outbound: bool,
+    ) -> Result<()> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // Try to insert a new record
+        let inserted = conn.execute(
+            "INSERT OR IGNORE INTO internet_destinations (hostname, first_seen_at, last_seen_at, packet_count, bytes_in, bytes_out)
+             VALUES (?1, ?2, ?2, 1, ?3, ?4)",
+            params![
+                hostname,
+                now,
+                if is_outbound { 0i64 } else { bytes },
+                if is_outbound { bytes } else { 0i64 }
+            ],
+        )?;
+
+        // If insert was ignored (record exists), update instead
+        if inserted == 0 {
+            if is_outbound {
+                conn.execute(
+                    "UPDATE internet_destinations SET last_seen_at = ?1, packet_count = packet_count + 1, bytes_out = bytes_out + ?2 WHERE hostname = ?3",
+                    params![now, bytes, hostname],
+                )?;
+            } else {
+                conn.execute(
+                    "UPDATE internet_destinations SET last_seen_at = ?1, packet_count = packet_count + 1, bytes_in = bytes_in + ?2 WHERE hostname = ?3",
+                    params![now, bytes, hostname],
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get all internet destinations sorted by last_seen_at descending
+    pub fn get_internet_destinations(conn: &Connection) -> Result<Vec<InternetDestination>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, hostname, first_seen_at, last_seen_at, packet_count, bytes_in, bytes_out
+             FROM internet_destinations
+             ORDER BY last_seen_at DESC",
+        )?;
+
+        let destinations = stmt
+            .query_map([], |row| {
+                Ok(InternetDestination {
+                    id: row.get(0)?,
+                    hostname: row.get(1)?,
+                    first_seen_at: row.get(2)?,
+                    last_seen_at: row.get(3)?,
+                    packet_count: row.get(4)?,
+                    bytes_in: row.get(5)?,
+                    bytes_out: row.get(6)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(destinations)
     }
 
     /// Set the manual device type for an endpoint by name or custom_name
@@ -3518,6 +3624,24 @@ impl EndPoint {
         if is_local_ip && !has_identifier {
             return Err(InsertEndpointError::BothMacAndIpNone);
         }
+
+        // For INTERNET IPs (non-local), record in internet_destinations table instead of creating endpoint
+        // This separates external hosts from local network devices
+        if let Some(ref ip_str) = ip {
+            if !Self::is_on_local_network(ip_str) {
+                // Use hostname if we have one, otherwise use the IP address
+                let dest_name = dhcp_hostname
+                    .clone()
+                    .or_else(|| Self::lookup_hostname(ip.clone(), mac.clone(), protocol.clone(), payload))
+                    .unwrap_or_else(|| ip_str.clone());
+
+                // Record this internet destination (ignore errors - best effort)
+                let _ = Self::insert_or_update_internet_destination(conn, &dest_name, 0, true);
+
+                return Err(InsertEndpointError::InternetDestination);
+            }
+        }
+
         // Strip .local and other local suffixes from hostnames and normalize to lowercase
         // Prefer DHCP hostname (Option 12) when available - this is the device's actual name
         let hostname = dhcp_hostname
@@ -4117,11 +4241,11 @@ mod tests {
     fn test_endpoint_insertion() {
         let conn = new_test_connection();
 
-        // Insert an endpoint
+        // Insert an endpoint - use loopback IP which is always local
         let result = EndPoint::get_or_insert_endpoint(
             &conn,
             Some("00:11:22:33:44:55".to_string()),
-            Some("192.168.1.100".to_string()),
+            Some("127.0.0.2".to_string()),
             None,
             &[],
         );
@@ -4145,11 +4269,11 @@ mod tests {
     fn test_duplicate_endpoint_returns_same_id() {
         let conn = new_test_connection();
 
-        // Insert endpoint first time
+        // Insert endpoint first time - use loopback IP which is always local
         let id1 = EndPoint::get_or_insert_endpoint(
             &conn,
             Some("00:11:22:33:44:55".to_string()),
-            Some("192.168.1.100".to_string()),
+            Some("127.0.0.2".to_string()),
             None,
             &[],
         )
@@ -4159,7 +4283,7 @@ mod tests {
         let id2 = EndPoint::get_or_insert_endpoint(
             &conn,
             Some("00:11:22:33:44:55".to_string()),
-            Some("192.168.1.100".to_string()),
+            Some("127.0.0.2".to_string()),
             None,
             &[],
         )

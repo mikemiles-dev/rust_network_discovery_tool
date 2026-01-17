@@ -452,7 +452,8 @@ mod tests {
     #[test]
     fn test_communication_insertion_to_db() {
         let conn = new_test_connection();
-        let packet_data = PacketBuilder::https_packet("192.168.1.100", "8.8.8.8");
+        // Use loopback IPs which are always considered local
+        let packet_data = PacketBuilder::https_packet("127.0.0.2", "127.0.0.3");
         let eth_packet = EthernetPacket::new(&packet_data).unwrap();
 
         let comm = Communication::new_with_source(eth_packet, Some("test".to_string()));
@@ -555,11 +556,12 @@ mod tests {
         let conn = new_test_connection();
 
         // Test TCP packet (use unicast MACs - LSB of first octet must be 0)
+        // Use loopback IPs which are always considered local
         let tcp_packet = PacketBuilder::tcp_packet(
-            "aa:bb:cc:dd:ee:ff", // 0xAA = 0b10101010, LSB=0, unicast ✓
-            "00:22:33:44:55:66", // 0x00 = 0b00000000, LSB=0, unicast ✓
-            "192.168.1.100",
-            "8.8.8.8",
+            "aa:bb:cc:dd:ee:ff", // 0xAA = 0b10101010, LSB=0, unicast
+            "00:22:33:44:55:66", // 0x00 = 0b00000000, LSB=0, unicast
+            "127.0.0.2",
+            "127.0.0.3",
             12345,
             443,
         );
@@ -572,8 +574,8 @@ mod tests {
         let udp_packet = PacketBuilder::udp_packet(
             "aa:bb:cc:dd:ee:ff",
             "00:22:33:44:55:66",
-            "192.168.1.100",
-            "8.8.8.8",
+            "127.0.0.2",
+            "127.0.0.3",
             54321,
             53,
         );

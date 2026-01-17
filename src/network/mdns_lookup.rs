@@ -337,13 +337,18 @@ impl MDnsLookup {
     /// Spawn a background task to probe for hostname and cache it
     /// This is non-blocking and runs in the background
     pub fn probe_hostname_async(ip: String, _endpoint_id: i64) {
-        task::spawn_blocking(move || {
-            // Small delay to avoid hammering the network
-            std::thread::sleep(std::time::Duration::from_millis(100));
+        // Check if there's a Tokio runtime available before spawning
+        // This prevents panics when called from non-async tests
+        if tokio::runtime::Handle::try_current().is_ok() {
+            task::spawn_blocking(move || {
+                // Small delay to avoid hammering the network
+                std::thread::sleep(std::time::Duration::from_millis(100));
 
-            // Just probe and cache - the result is stored in MDNS_LOOKUPS by probe_hostname()
-            // Database updates removed to avoid lock contention with SQLWriter
-            let _ = Self::probe_hostname(&ip);
-        });
+                // Just probe and cache - the result is stored in MDNS_LOOKUPS by probe_hostname()
+                // Database updates removed to avoid lock contention with SQLWriter
+                let _ = Self::probe_hostname(&ip);
+            });
+        }
+        // If no runtime available, silently skip the async probe
     }
 }
