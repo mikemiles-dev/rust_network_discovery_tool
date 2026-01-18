@@ -170,7 +170,9 @@ impl EndPointAttribute {
         )?;
 
         let endpoint_ids: Vec<(i64, String, String, String)> = stmt
-            .query_map([mac], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))?
+            .query_map([mac], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
         // If only one endpoint, nothing to merge
@@ -197,7 +199,8 @@ impl EndPointAttribute {
         let mut merge_ids: Vec<i64> = Vec::new();
         for (id, _name, custom_vendor, device_type) in endpoint_ids.iter().skip(1) {
             // Skip if vendors conflict (both have custom vendors set and they differ)
-            if !keep_vendor.is_empty() && !custom_vendor.is_empty() && keep_vendor != custom_vendor {
+            if !keep_vendor.is_empty() && !custom_vendor.is_empty() && keep_vendor != custom_vendor
+            {
                 eprintln!(
                     "Skipping merge of endpoint {} - vendor conflict: '{}' vs '{}'",
                     id, keep_vendor, custom_vendor
@@ -206,7 +209,10 @@ impl EndPointAttribute {
             }
 
             // Skip if device types conflict (both set and different)
-            if !keep_device_type.is_empty() && !device_type.is_empty() && keep_device_type != device_type {
+            if !keep_device_type.is_empty()
+                && !device_type.is_empty()
+                && keep_device_type != device_type
+            {
                 eprintln!(
                     "Skipping merge of endpoint {} - device type conflict: '{}' vs '{}'",
                     id, keep_device_type, device_type

@@ -119,13 +119,16 @@
 
         // Restore endpoint search from URL and autofocus
         var searchValue = urlParams.get('search');
+        var selectedEndpoint = urlParams.get('node');
         var searchInput = document.getElementById('endpointSearch');
         if (searchInput) {
             if (searchValue) {
                 searchInput.value = searchValue;
             }
-            // Autofocus the search input
-            searchInput.focus();
+            // Autofocus the search input only if no endpoint is selected
+            if (!selectedEndpoint) {
+                searchInput.focus();
+            }
         }
 
         // Restore right pane search filters from URL

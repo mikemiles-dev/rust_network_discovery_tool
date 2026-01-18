@@ -1509,7 +1509,12 @@ fn is_printer_hostname(hostname: &str) -> bool {
 
 /// Check if hostname indicates a TV/streaming device
 fn is_tv_hostname(hostname: &str) -> bool {
-    matches_pattern(hostname, TV_PATTERNS) || matches_prefix(hostname, TV_PREFIXES)
+    if matches_pattern(hostname, TV_PATTERNS) || matches_prefix(hostname, TV_PREFIXES) {
+        return true;
+    }
+    // Roku serial number as hostname (e.g., YN00NJ468680)
+    let hostname_upper = hostname.to_uppercase();
+    is_roku_serial_number(&hostname_upper)
 }
 
 /// Check if hostname indicates a gaming console
@@ -1626,6 +1631,27 @@ fn is_tv_model(model: &str) -> bool {
     false
 }
 
+/// Check if a string is a Roku serial number
+/// Roku serial numbers follow the pattern: 2 letters + 2 digits + 2 letters + 6 digits (12 chars total)
+/// Examples: YN00NJ468680, YK00KM123456
+fn is_roku_serial_number(s: &str) -> bool {
+    if s.len() != 12 {
+        return false;
+    }
+    let chars: Vec<char> = s.chars().collect();
+    // First 2 chars: letters
+    chars[0].is_ascii_alphabetic()
+        && chars[1].is_ascii_alphabetic()
+        // Next 2 chars: digits
+        && chars[2].is_ascii_digit()
+        && chars[3].is_ascii_digit()
+        // Next 2 chars: letters
+        && chars[4].is_ascii_alphabetic()
+        && chars[5].is_ascii_alphabetic()
+        // Last 6 chars: digits
+        && chars[6..12].iter().all(|c| c.is_ascii_digit())
+}
+
 /// Check if model is a Roku TV platform identifier
 /// Roku TV models follow patterns like 7105X, 7000X, 6500X, 3800X
 fn is_roku_tv_model(model: &str) -> bool {
@@ -1642,6 +1668,12 @@ fn is_roku_tv_model(model: &str) -> bool {
                 return matches!(first_digit, '3' | '4' | '5' | '6' | '7' | '8' | '9');
             }
         }
+    }
+
+    // Roku serial number format used as hostname (e.g., YN00NJ468680)
+    // Pattern: 2 letters + 2 digits + 2 letters + 6 digits (12 chars total)
+    if is_roku_serial_number(&model_upper) {
+        return true;
     }
     false
 }
@@ -1859,6 +1891,10 @@ pub fn get_hostname_vendor(hostname: &str) -> Option<&'static str> {
     if lower.contains("roku") {
         return Some("Roku");
     }
+    // Roku serial number as hostname (e.g., YN00NJ468680) - typically TCL Roku TVs
+    if is_roku_serial_number(&hostname.to_uppercase()) {
+        return Some("TCL");
+    }
     // Sonos
     if lower.contains("sonos") {
         return Some("Sonos");
@@ -1984,6 +2020,11 @@ pub fn get_model_from_hostname(hostname: &str) -> Option<String> {
                 return Some(model.to_string());
             }
         }
+    }
+
+    // Roku serial number as hostname (e.g., YN00NJ468680) - typically TCL Roku TVs
+    if is_roku_serial_number(&hostname.to_uppercase()) {
+        return Some("Roku TV".to_string());
     }
 
     // PlayStation: PS4-XXXXX, PS5-XXXXX
@@ -4670,9 +4711,36 @@ mod tests {
         assert_eq!(is_tv_hostname("lg-oled55"), true);
         assert_eq!(is_tv_hostname("firetv-stick"), true);
 
+        // Roku serial number hostnames (e.g., YN00NJ468680)
+        assert_eq!(is_tv_hostname("YN00NJ468680"), true);
+        assert_eq!(is_tv_hostname("yn00nj468680"), true); // lowercase
+        assert_eq!(is_tv_hostname("YK00KM123456"), true);
+
         // Non-TVs
         assert_eq!(is_tv_hostname("my-laptop"), false);
         assert_eq!(is_tv_hostname("printer"), false);
+    }
+
+    #[test]
+    fn test_roku_serial_number_detection() {
+        use super::*;
+
+        // Valid Roku serial numbers: 2 letters + 2 digits + 2 letters + 6 digits
+        assert_eq!(is_roku_serial_number("YN00NJ468680"), true);
+        assert_eq!(is_roku_serial_number("YK00KM123456"), true);
+        assert_eq!(is_roku_serial_number("AB12CD345678"), true);
+
+        // Invalid patterns
+        assert_eq!(is_roku_serial_number("YN00NJ46868"), false); // Too short (11 chars)
+        assert_eq!(is_roku_serial_number("YN00NJ4686801"), false); // Too long (13 chars)
+        assert_eq!(is_roku_serial_number("1N00NJ468680"), false); // First char not letter
+        assert_eq!(is_roku_serial_number("YNA0NJ468680"), false); // Third char not digit
+        assert_eq!(is_roku_serial_number("YN0ANJ468680"), false); // Fourth char not digit
+        assert_eq!(is_roku_serial_number("YN001J468680"), false); // Fifth char not letter
+        assert_eq!(is_roku_serial_number("YN00N1468680"), false); // Sixth char not letter
+        assert_eq!(is_roku_serial_number("YN00NJA68680"), false); // Seventh char not digit
+        assert_eq!(is_roku_serial_number("samsung-tv"), false); // Wrong format
+        assert_eq!(is_roku_serial_number("7105X"), false); // Roku model, not serial
     }
 
     #[test]
@@ -4698,11 +4766,30 @@ mod tests {
         assert_eq!(is_roku_tv_model("710X"), false); // Only 3 digits
         assert_eq!(is_roku_tv_model("7105Y"), false); // Wrong suffix
 
+        // Roku serial numbers should also be detected as Roku TV models
+        assert_eq!(is_roku_tv_model("YN00NJ468680"), true);
+        assert_eq!(is_roku_tv_model("yn00nj468680"), true); // lowercase
+
         // Vendor detection from model
         assert_eq!(get_vendor_from_model("7105X"), Some("TCL"));
         assert_eq!(get_vendor_from_model("7000X"), Some("TCL"));
+        assert_eq!(get_vendor_from_model("YN00NJ468680"), Some("TCL")); // Roku serial number
         assert_eq!(get_vendor_from_model("HW-MS750"), Some("Samsung"));
         assert_eq!(get_vendor_from_model("OLED55C3"), Some("LG"));
+
+        // Vendor detection from hostname
+        assert_eq!(get_hostname_vendor("YN00NJ468680"), Some("TCL"));
+        assert_eq!(get_hostname_vendor("yn00nj468680"), Some("TCL"));
+
+        // Model detection from hostname
+        assert_eq!(
+            get_model_from_hostname("YN00NJ468680"),
+            Some("Roku TV".to_string())
+        );
+        assert_eq!(
+            get_model_from_hostname("yn00nj468680"),
+            Some("Roku TV".to_string())
+        );
     }
 
     #[test]
