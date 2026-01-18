@@ -1,6 +1,8 @@
+use std::net::Ipv4Addr;
+
 use rusqlite::{Connection, OptionalExtension, Result, params};
 
-use super::endpoint::strip_local_suffix;
+use super::endpoint::{get_mac_vendor, strip_local_suffix};
 
 #[derive(Default, Debug)]
 pub struct EndPointAttribute;
@@ -151,11 +153,14 @@ impl EndPointAttribute {
     }
 
     /// Merge duplicate endpoints that share the same MAC address
+    /// Only merges if vendors are compatible and IPs are in same subnet
     /// Keeps the endpoint with a non-empty name (or lowest ID if all empty)
     fn merge_duplicate_endpoints_by_mac(conn: &Connection, mac: &str) -> Result<()> {
-        // Find all endpoints with this MAC
+        // Find all endpoints with this MAC, including their vendor info and IPs
         let mut stmt = conn.prepare(
-            "SELECT DISTINCT ea.endpoint_id, COALESCE(e.name, '') as name
+            "SELECT DISTINCT ea.endpoint_id, COALESCE(e.name, '') as name,
+                    COALESCE(e.custom_vendor, '') as custom_vendor,
+                    COALESCE(e.manual_device_type, '') as device_type
              FROM endpoint_attributes ea
              JOIN endpoints e ON ea.endpoint_id = e.id
              WHERE LOWER(ea.mac) = LOWER(?1)
@@ -164,8 +169,8 @@ impl EndPointAttribute {
                ea.endpoint_id ASC",
         )?;
 
-        let endpoint_ids: Vec<(i64, String)> = stmt
-            .query_map([mac], |row| Ok((row.get(0)?, row.get(1)?)))?
+        let endpoint_ids: Vec<(i64, String, String, String)> = stmt
+            .query_map([mac], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
         // If only one endpoint, nothing to merge
@@ -173,9 +178,89 @@ impl EndPointAttribute {
             return Ok(());
         }
 
+        // Get the MAC vendor for comparison
+        let mac_vendor = get_mac_vendor(mac);
+
         // Keep the first one (has non-empty name or lowest ID)
         let keep_id = endpoint_ids[0].0;
-        let merge_ids: Vec<i64> = endpoint_ids.iter().skip(1).map(|(id, _)| *id).collect();
+        let keep_vendor = &endpoint_ids[0].2;
+        let keep_device_type = &endpoint_ids[0].3;
+
+        // Get IPs for the endpoint we're keeping
+        let keep_ips: Vec<String> = conn
+            .prepare("SELECT DISTINCT ip FROM endpoint_attributes WHERE endpoint_id = ?1")?
+            .query_map([keep_id], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        // Check each candidate for merge compatibility
+        let mut merge_ids: Vec<i64> = Vec::new();
+        for (id, _name, custom_vendor, device_type) in endpoint_ids.iter().skip(1) {
+            // Skip if vendors conflict (both have custom vendors set and they differ)
+            if !keep_vendor.is_empty() && !custom_vendor.is_empty() && keep_vendor != custom_vendor {
+                eprintln!(
+                    "Skipping merge of endpoint {} - vendor conflict: '{}' vs '{}'",
+                    id, keep_vendor, custom_vendor
+                );
+                continue;
+            }
+
+            // Skip if device types conflict (both set and different)
+            if !keep_device_type.is_empty() && !device_type.is_empty() && keep_device_type != device_type {
+                eprintln!(
+                    "Skipping merge of endpoint {} - device type conflict: '{}' vs '{}'",
+                    id, keep_device_type, device_type
+                );
+                continue;
+            }
+
+            // Get IPs for this endpoint
+            let other_ips: Vec<String> = conn
+                .prepare("SELECT DISTINCT ip FROM endpoint_attributes WHERE endpoint_id = ?1")?
+                .query_map([id], |row| row.get(0))?
+                .filter_map(|r| r.ok())
+                .collect();
+
+            // Check if IPs are in compatible subnets (at least one pair should be in same /24)
+            let subnets_compatible = Self::check_subnet_compatibility(&keep_ips, &other_ips);
+            if !subnets_compatible && !keep_ips.is_empty() && !other_ips.is_empty() {
+                eprintln!(
+                    "Skipping merge of endpoint {} - IPs not in compatible subnets: {:?} vs {:?}",
+                    id, keep_ips, other_ips
+                );
+                continue;
+            }
+
+            // Check if the other endpoint has MACs with different vendors
+            let other_macs: Vec<String> = conn
+                .prepare("SELECT DISTINCT mac FROM endpoint_attributes WHERE endpoint_id = ?1 AND mac IS NOT NULL")?
+                .query_map([id], |row| row.get(0))?
+                .filter_map(|r| r.ok())
+                .collect();
+
+            let has_conflicting_mac_vendor = other_macs.iter().any(|other_mac| {
+                if let (Some(v1), Some(v2)) = (mac_vendor, get_mac_vendor(other_mac)) {
+                    v1 != v2
+                } else {
+                    false
+                }
+            });
+
+            if has_conflicting_mac_vendor {
+                eprintln!(
+                    "Skipping merge of endpoint {} - conflicting MAC vendors detected",
+                    id
+                );
+                continue;
+            }
+
+            merge_ids.push(*id);
+        }
+
+        // If nothing to merge after filtering, return
+        if merge_ids.is_empty() {
+            return Ok(());
+        }
 
         // Merge communications
         for merge_id in &merge_ids {
@@ -211,6 +296,26 @@ impl EndPointAttribute {
         }
 
         Ok(())
+    }
+
+    /// Check if two sets of IPs have at least one pair in the same /24 subnet
+    fn check_subnet_compatibility(ips1: &[String], ips2: &[String]) -> bool {
+        for ip1 in ips1 {
+            if let Ok(addr1) = ip1.parse::<Ipv4Addr>() {
+                let subnet1 = u32::from(addr1) & 0xFFFFFF00; // /24 mask
+                for ip2 in ips2 {
+                    if let Ok(addr2) = ip2.parse::<Ipv4Addr>() {
+                        let subnet2 = u32::from(addr2) & 0xFFFFFF00;
+                        if subnet1 == subnet2 {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        // If we couldn't parse IPs (e.g., IPv6), allow merge
+        // TODO: Add IPv6 subnet compatibility check
+        ips1.iter().any(|ip| ip.contains(':')) || ips2.iter().any(|ip| ip.contains(':'))
     }
 
     #[allow(dead_code)]

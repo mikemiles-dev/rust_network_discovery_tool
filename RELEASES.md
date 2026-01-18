@@ -18,6 +18,17 @@
 - **Explicit Interface Selection** - `--interface` flag now bypasses default filters
   - Allows selecting loopback (lo0) and other normally-filtered interfaces
   - Previously, explicit interface selection still applied automatic exclusion rules
+- **Conservative Endpoint Merging** - Prevents incorrect merging of unrelated devices
+  - Now checks MAC vendor compatibility before merging (e.g., Intel won't merge with Amazon)
+  - Validates IP addresses are in same /24 subnet
+  - Checks for conflicting custom vendor or device type settings
+  - Logs skipped merges to stderr for debugging
+  - Fixes issue where devices could incorrectly inherit vendor/model from unrelated endpoints
+
+### Changed
+- **Comprehensive Initial Scan** - Startup scan now includes all scan types (ARP, ICMP, NDP, SSDP, NetBIOS, Port)
+- **NetBIOS Auto-Naming** - Discovered NetBIOS names automatically update endpoint name if currently just an IP
+- **Detail Tab Persistence** - Network tab selection now persists across page refresh
 
 ## [0.5.4]
 
