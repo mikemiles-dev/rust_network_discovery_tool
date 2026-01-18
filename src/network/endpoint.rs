@@ -3862,12 +3862,17 @@ impl EndPoint {
 
         // For locally administered (randomized/private) MACs:
         // - If we have a DHCP Client ID, we can still track the device
-        // - Otherwise reject it (can't reliably track random MACs - they change frequently)
+        // - If we have a local IP, allow it (this is likely the local device or a known local endpoint)
+        // - Otherwise reject it (can't reliably track random MACs)
         let is_randomized_mac = mac
             .as_ref()
             .map(|m| is_locally_administered_mac(m))
             .unwrap_or(false);
-        if is_randomized_mac && dhcp_client_id.is_none() {
+        let has_local_ip = ip
+            .as_ref()
+            .map(|ip| Self::is_on_local_network(ip))
+            .unwrap_or(false);
+        if is_randomized_mac && dhcp_client_id.is_none() && !has_local_ip {
             return Err(InsertEndpointError::LocallyAdministeredMac);
         }
 
