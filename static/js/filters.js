@@ -105,6 +105,7 @@
 
             // Clear other special filters
             App.state.activeOnly = false;
+            App.state.inactiveOnly = false;
             App.state.unknownVendorsOnly = false;
 
             // Set known filter state
@@ -113,6 +114,7 @@
             // Update URL to persist filter
             var url = new URL(window.location.href);
             url.searchParams.delete('active');
+            url.searchParams.delete('inactive');
             url.searchParams.delete('unknown');
             url.searchParams.set('known', '1');
             history.replaceState({}, '', url.toString());
@@ -172,6 +174,7 @@
 
             // Clear other special filters
             App.state.activeOnly = false;
+            App.state.inactiveOnly = false;
             App.state.knownVendorsOnly = false;
 
             // Set unknown filter state
@@ -180,6 +183,7 @@
             // Update URL to persist filter
             var url = new URL(window.location.href);
             url.searchParams.delete('active');
+            url.searchParams.delete('inactive');
             url.searchParams.delete('known');
             url.searchParams.set('unknown', '1');
             history.replaceState({}, '', url.toString());
@@ -238,6 +242,7 @@
             }
 
             // Clear other special filters
+            App.state.inactiveOnly = false;
             App.state.knownVendorsOnly = false;
             App.state.unknownVendorsOnly = false;
 
@@ -246,9 +251,79 @@
 
             // Update URL to persist filter
             var url = new URL(window.location.href);
+            url.searchParams.delete('inactive');
             url.searchParams.delete('known');
             url.searchParams.delete('unknown');
             url.searchParams.set('active', '1');
+            history.replaceState({}, '', url.toString());
+
+            // Update button states
+            App.Filters.updateFilterButtonStates();
+
+            // Apply filters (skip URL update to preserve our state)
+            App.Filters.apply(true);
+        },
+
+        /**
+         * Toggle showing only endpoints that are currently inactive (offline)
+         */
+        showOnlyInactive: function() {
+            // Toggle the inactive filter
+            if (App.state.inactiveOnly) {
+                // Turn off the filter
+                App.state.inactiveOnly = false;
+                var url = new URL(window.location.href);
+                url.searchParams.delete('inactive');
+                history.replaceState({}, '', url.toString());
+                App.Filters.updateFilterButtonStates();
+                App.Filters.apply(true);
+                return;
+            }
+
+            // First, show all device types
+            document.getElementById('filterLocal').checked = true;
+            document.getElementById('filterGateway').checked = true;
+            document.getElementById('filterPrinter').checked = true;
+            document.getElementById('filterTv').checked = true;
+            document.getElementById('filterGaming').checked = true;
+            document.getElementById('filterPhone').checked = true;
+            document.getElementById('filterVirtualization').checked = true;
+            document.getElementById('filterSoundbar').checked = true;
+            document.getElementById('filterAppliance').checked = true;
+            document.getElementById('filterOther').checked = true;
+
+            // Clear search
+            var searchInput = document.getElementById('endpointSearch');
+            if (searchInput) searchInput.value = '';
+
+            // Clear protocol filter
+            var protocolSelect = document.getElementById('globalProtocolSelect');
+            if (protocolSelect) {
+                protocolSelect.value = '';
+                App.state.selectedProtocol = null;
+            }
+
+            // Clear vendor dropdown
+            var vendorSelect = document.getElementById('globalVendorSelect');
+            if (vendorSelect) {
+                vendorSelect.value = '';
+                App.state.selectedVendor = null;
+            }
+
+            // Clear other special filters
+            App.state.activeOnly = false;
+            App.state.knownVendorsOnly = false;
+            App.state.unknownVendorsOnly = false;
+
+            // Set inactive filter state
+            App.state.inactiveOnly = true;
+
+            // Update URL to persist filter
+            var url = new URL(window.location.href);
+            url.searchParams.delete('active');
+            url.searchParams.delete('known');
+            url.searchParams.delete('unknown');
+            url.searchParams.set('inactive', '1');
             history.replaceState({}, '', url.toString());
 
             // Update button states
@@ -336,14 +411,16 @@
             if (!skipUrlUpdate) {
                 // Clear special filters when user changes other filters
                 // This prevents confusion where these filters persist invisibly
-                if (App.state.activeOnly || App.state.knownVendorsOnly || App.state.unknownVendorsOnly) {
+                if (App.state.activeOnly || App.state.inactiveOnly || App.state.knownVendorsOnly || App.state.unknownVendorsOnly) {
                     App.state.activeOnly = false;
+                    App.state.inactiveOnly = false;
                     App.state.knownVendorsOnly = false;
                     App.state.unknownVendorsOnly = false;
                 }
 
                 var url = new URL(window.location.href);
                 url.searchParams.delete('active');
+                url.searchParams.delete('inactive');
                 url.searchParams.delete('known');
                 url.searchParams.delete('unknown');
                 url.searchParams.set('filter_local', showLocal ? '1' : '0');
@@ -426,8 +503,15 @@
                     shouldShowByActive = isOnline;
                 }
 
+                // Apply "inactive only" filter if active
+                var shouldShowByInactive = true;
+                if (App.state.inactiveOnly) {
+                    var isOffline = row.dataset.endpointOnline !== 'true';
+                    shouldShowByInactive = isOffline;
+                }
+
                 // Set filtered-out attribute for pagination to use
-                var isFilteredOut = !(shouldShowByType && shouldShowBySearch && shouldShowByVendor && shouldShowByKnown && shouldShowByUnknown && shouldShowByActive);
+                var isFilteredOut = !(shouldShowByType && shouldShowBySearch && shouldShowByVendor && shouldShowByKnown && shouldShowByUnknown && shouldShowByActive && shouldShowByInactive);
                 row.dataset.filteredOut = isFilteredOut ? 'true' : 'false';
             });
 
@@ -458,6 +542,16 @@
                     } else {
                         btn.style.background = 'rgba(34, 197, 94, 0.2)';
                         btn.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+                        btn.style.boxShadow = 'none';
+                    }
+                } else if (onclick.includes('showOnlyInactive')) {
+                    if (App.state.inactiveOnly) {
+                        btn.style.background = 'rgba(107, 114, 128, 0.5)';
+                        btn.style.borderColor = '#6b7280';
+                        btn.style.boxShadow = '0 0 8px rgba(107, 114, 128, 0.4)';
+                    } else {
+                        btn.style.background = 'rgba(107, 114, 128, 0.2)';
+                        btn.style.borderColor = 'rgba(107, 114, 128, 0.4)';
                         btn.style.boxShadow = 'none';
                     }
                 } else if (onclick.includes('showOnlyKnownVendors')) {
@@ -871,6 +965,7 @@
     window.showOnlyKnownVendors = App.Filters.showOnlyKnownVendors;
     window.showOnlyUnknown = App.Filters.showOnlyUnknown;
     window.showOnlyActive = App.Filters.showOnlyActive;
+    window.showOnlyInactive = App.Filters.showOnlyInactive;
 
     /**
      * Clear all filters - search, protocol, vendor, known, and active
@@ -905,10 +1000,14 @@
         // Clear active only filter
         App.state.activeOnly = false;
 
+        // Clear inactive only filter
+        App.state.inactiveOnly = false;
+
         var url = new URL(window.location.href);
         url.searchParams.delete('known');
         url.searchParams.delete('unknown');
         url.searchParams.delete('active');
+        url.searchParams.delete('inactive');
         history.replaceState({}, '', url.toString());
 
         // Clear port filter if active

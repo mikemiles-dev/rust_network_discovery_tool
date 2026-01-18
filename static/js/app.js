@@ -211,6 +211,12 @@
             App.state.activeOnly = true;
         }
 
+        // Restore "inactive only" filter from URL before applying filters
+        var inactiveParam = urlParams.get('inactive');
+        if (inactiveParam === '1') {
+            App.state.inactiveOnly = true;
+        }
+
         // Apply filters on page load
         if (App.Filters) {
             App.Filters.apply(true);

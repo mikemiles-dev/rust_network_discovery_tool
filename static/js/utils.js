@@ -21,6 +21,7 @@
             currentThinQDeviceType: null,
             restoringState: false,
             activeOnly: false,
+            inactiveOnly: false,
             knownVendorsOnly: false,
             unknownVendorsOnly: false
         }
