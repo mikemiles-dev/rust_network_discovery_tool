@@ -1346,8 +1346,10 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("f8:d0:ac", "Samsung"),
     ("fc:a1:3e", "Samsung"),
     ("fc:f1:36", "Samsung"),
-    // Samjin (SmartThings sensors, IoT devices for Samsung)
-    ("28:6d:97", "Samjin"),
+    // Samjin (SmartThings sensors, IoT devices for Samsung) - display as Samsung
+    ("28:6d:97", "Samsung"),
+    // Wisol (SmartThings sensors, IoT modules for Samsung) - display as Samsung
+    ("70:2c:1f", "Samsung"),
     // Roku
     ("08:05:81", "Roku"),
     ("10:59:32", "Roku"),
@@ -1818,7 +1820,6 @@ const APPLIANCE_VENDORS: &[&str] = &[
     "Wyze",
     "iRobot",
     "Tuya",
-    "Wisol",
     "Dyson",
 ];
 
@@ -2836,6 +2837,15 @@ pub fn infer_model_with_context(
 
 /// Infer model from MAC vendor when hostname detection fails
 pub fn get_model_from_mac(mac: &str) -> Option<String> {
+    // Check specific MAC prefixes first (for vendors mapped to parent company)
+    let mac_lower = mac.to_lowercase().replace(['-', '.'], ":");
+    let prefix = if mac_lower.len() >= 8 { &mac_lower[..8] } else { "" };
+
+    // SmartThings sensors (Wisol and Samjin make sensors for Samsung)
+    if prefix == "70:2c:1f" || prefix == "28:6d:97" {
+        return Some("SmartThings Sensor".to_string());
+    }
+
     let vendor = get_mac_vendor(mac)?;
 
     match vendor {
@@ -2864,6 +2874,7 @@ pub fn get_model_from_mac(mac: &str) -> Option<String> {
         "Hisense" => Some("Hisense TV".to_string()),
         "Texas Instruments" => Some("TI IoT Device".to_string()),
         "Samjin" => Some("SmartThings Sensor".to_string()),
+        "Wisol" => Some("SmartThings Sensor".to_string()),
         _ => None,
     }
 }
@@ -2966,8 +2977,15 @@ pub fn get_model_from_vendor_and_type(vendor: &str, device_type: &str) -> Option
 
 /// Check if any MAC address matches known IoT/appliance vendor OUIs
 fn is_appliance_mac(macs: &[String]) -> bool {
-    macs.iter()
-        .any(|mac| get_mac_vendor(mac).is_some_and(|v| APPLIANCE_VENDORS.contains(&v)))
+    macs.iter().any(|mac| {
+        // Check vendor list
+        if get_mac_vendor(mac).is_some_and(|v| APPLIANCE_VENDORS.contains(&v)) {
+            return true;
+        }
+        // Check SmartThings sensor MAC prefixes (mapped to Samsung vendor)
+        let mac_lower = mac.to_lowercase();
+        mac_lower.starts_with("70:2c:1f") || mac_lower.starts_with("28:6d:97")
+    })
 }
 
 /// Check if any MAC address matches known gaming vendor OUIs
@@ -4126,6 +4144,18 @@ impl EndPoint {
                 let _ = conn.execute(
                     "DELETE FROM communications WHERE src_endpoint_id = ?1 OR dst_endpoint_id = ?1",
                     [sibling_id],
+                );
+                let _ = conn.execute(
+                    "UPDATE OR IGNORE open_ports SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+                    params![target_endpoint_id, sibling_id],
+                );
+                let _ = conn.execute(
+                    "DELETE FROM open_ports WHERE endpoint_id = ?1",
+                    [sibling_id],
+                );
+                let _ = conn.execute(
+                    "UPDATE scan_results SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+                    params![target_endpoint_id, sibling_id],
                 );
                 let _ = conn.execute("DELETE FROM endpoints WHERE id = ?1", [sibling_id]);
                 println!(

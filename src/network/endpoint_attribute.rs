@@ -297,6 +297,22 @@ impl EndPointAttribute {
                 params![merge_id],
             )?;
 
+            // Move open_ports (ignore duplicates)
+            conn.execute(
+                "UPDATE OR IGNORE open_ports SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+                params![keep_id, merge_id],
+            )?;
+            conn.execute(
+                "DELETE FROM open_ports WHERE endpoint_id = ?1",
+                params![merge_id],
+            )?;
+
+            // Move scan_results
+            conn.execute(
+                "UPDATE scan_results SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+                params![keep_id, merge_id],
+            )?;
+
             // Delete duplicate endpoint
             conn.execute("DELETE FROM endpoints WHERE id = ?1", params![merge_id])?;
         }

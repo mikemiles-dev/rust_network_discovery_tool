@@ -517,6 +517,23 @@ impl SQLWriter {
                     [merge_id],
                 )?;
 
+                // Move open_ports (ignore duplicates)
+                conn.execute(
+                    "UPDATE OR IGNORE open_ports SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+                    rusqlite::params![keep_id, merge_id],
+                )?;
+                // Delete any that couldn't be moved (duplicates)
+                conn.execute(
+                    "DELETE FROM open_ports WHERE endpoint_id = ?1",
+                    [merge_id],
+                )?;
+
+                // Move scan_results
+                conn.execute(
+                    "UPDATE scan_results SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+                    rusqlite::params![keep_id, merge_id],
+                )?;
+
                 // Delete the duplicate endpoint
                 conn.execute("DELETE FROM endpoints WHERE id = ?1", [merge_id])?;
 
@@ -617,6 +634,22 @@ impl SQLWriter {
                     conn.execute(
                         "DELETE FROM communications WHERE src_endpoint_id = ?1 OR dst_endpoint_id = ?1",
                         [merge_id],
+                    )?;
+
+                    // Move open_ports
+                    conn.execute(
+                        "UPDATE OR IGNORE open_ports SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+                        rusqlite::params![keep_id, merge_id],
+                    )?;
+                    conn.execute(
+                        "DELETE FROM open_ports WHERE endpoint_id = ?1",
+                        [merge_id],
+                    )?;
+
+                    // Move scan_results
+                    conn.execute(
+                        "UPDATE scan_results SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+                        rusqlite::params![keep_id, merge_id],
                     )?;
 
                     // Delete the duplicate endpoint

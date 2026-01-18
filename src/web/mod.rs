@@ -2977,6 +2977,20 @@ async fn delete_endpoint(body: Json<DeleteEndpointRequest>) -> impl Responder {
             )
             .unwrap_or(0);
 
+        // Delete open ports
+        conn.execute(
+            "DELETE FROM open_ports WHERE endpoint_id = ?1",
+            params![endpoint_id],
+        )
+        .unwrap_or(0);
+
+        // Delete scan results
+        conn.execute(
+            "DELETE FROM scan_results WHERE endpoint_id = ?1",
+            params![endpoint_id],
+        )
+        .unwrap_or(0);
+
         // Delete the endpoint itself
         deleted_endpoints += conn
             .execute("DELETE FROM endpoints WHERE id = ?1", params![endpoint_id])
