@@ -21,8 +21,8 @@ use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::device_control::DeviceController;
 use crate::network::endpoint::{
     EndPoint, get_hostname_vendor, get_mac_vendor, get_model_from_hostname, get_model_from_mac,
-    get_model_from_vendor_and_type, infer_model_with_context, normalize_model_name,
-    strip_local_suffix,
+    get_model_from_vendor_and_type, get_vendor_from_model, infer_model_with_context,
+    normalize_model_name, strip_local_suffix,
 };
 use crate::network::mdns_lookup::MDnsLookup;
 use crate::network::protocol::ProtocolPort;
@@ -216,13 +216,10 @@ fn probe_and_save_hp_printer_model_blocking(ip: &str, endpoint_id: i64) {
     if let Some(model) = probe_hp_printer_model_blocking(ip) {
         // Save the model to the database
         if let Ok(conn) = new_connection_result() {
-            match conn.execute(
+            let _ = conn.execute(
                 "UPDATE endpoints SET ssdp_model = ?1 WHERE id = ?2 AND (ssdp_model IS NULL OR ssdp_model = '')",
                 params![model, endpoint_id],
-            ) {
-                Ok(rows) => eprintln!("HP probe updated {} rows for endpoint {}", rows, endpoint_id),
-                Err(e) => eprintln!("HP probe DB error: {}", e),
-            }
+            );
         }
     }
 }
@@ -1414,11 +1411,17 @@ fn parse_ping_latency(output: &str) -> Option<f64> {
     for line in output.lines() {
         if let Some(time_idx) = line.find("time=") {
             let after_time = &line[time_idx + 5..];
-            if let Some(latency) = after_time.find(" ms").and_then(|idx| after_time[..idx].parse::<f64>().ok()) {
+            if let Some(latency) = after_time
+                .find(" ms")
+                .and_then(|idx| after_time[..idx].parse::<f64>().ok())
+            {
                 return Some(latency);
             }
             // Also try without space (time=1.23ms)
-            if let Some(latency) = after_time.find("ms").and_then(|idx| after_time[..idx].parse::<f64>().ok()) {
+            if let Some(latency) = after_time
+                .find("ms")
+                .and_then(|idx| after_time[..idx].parse::<f64>().ok())
+            {
                 return Some(latency);
             }
         }
@@ -1642,15 +1645,34 @@ fn get_endpoint_details_blocking(
         "Murata",
     ];
 
-    let device_vendor: String = match (hostname_vendor, mac_vendor) {
+    // Get SSDP model early so we can use it for vendor detection
+    let ssdp_model_for_vendor: Option<String> = conn
+        .query_row(
+            "SELECT e.ssdp_model FROM endpoints e
+             WHERE (LOWER(e.name) = LOWER(?1) OR LOWER(e.custom_name) = LOWER(?1))
+             AND e.ssdp_model IS NOT NULL AND e.ssdp_model != ''
+             LIMIT 1",
+            rusqlite::params![&endpoint_name],
+            |row| row.get(0),
+        )
+        .ok();
+
+    // Try to detect vendor from model (e.g., "7105X" -> TCL)
+    let model_vendor = ssdp_model_for_vendor
+        .as_ref()
+        .and_then(|m| get_vendor_from_model(m));
+
+    let device_vendor: String = match (hostname_vendor, mac_vendor, model_vendor) {
         // Hostname vendor identified (e.g., LG from "ldf7774st") - prefer it
-        (Some(hv), _) => hv,
+        (Some(hv), _, _) => hv,
+        // Model vendor identified (e.g., TCL from "7105X") - use it before MAC
+        (None, _, Some(mv)) => mv,
         // MAC vendor is a component manufacturer - don't show it
-        (None, Some(mv)) if COMPONENT_VENDORS.contains(&mv) => "",
+        (None, Some(mv), None) if COMPONENT_VENDORS.contains(&mv) => "",
         // MAC vendor is a product manufacturer - show it
-        (None, Some(mv)) => mv,
+        (None, Some(mv), None) => mv,
         // No vendor identified
-        (None, None) => "",
+        (None, None, None) => "",
     }
     .to_string();
 
@@ -1689,14 +1711,6 @@ fn get_endpoint_details_blocking(
     let needs_model = custom_model.as_ref().is_none_or(|m| m.is_empty())
         && ssdp_model.as_ref().is_none_or(|m| m.is_empty());
 
-    // Debug logging for HP probe
-    if device_vendor == "HP" {
-        eprintln!(
-            "HP device check: vendor={}, custom_model={:?}, ssdp_model={:?}, needs_model={}",
-            device_vendor, custom_model, ssdp_model, needs_model
-        );
-    }
-
     if device_vendor == "HP"
         && needs_model
         && let Some(ip) = ips.first().cloned()
@@ -1718,7 +1732,6 @@ fn get_endpoint_details_blocking(
         };
 
         if should_probe {
-            eprintln!("Auto-probing HP device at {} (endpoint {})", ip, endpoint_id);
             // Spawn a thread for the probe (we're already in a blocking context)
             std::thread::spawn(move || {
                 probe_and_save_hp_printer_model_blocking(&ip, endpoint_id);
@@ -2204,8 +2217,8 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         get_all_endpoints_last_seen(&dropdown_for_seen, scan_interval)
     });
     let online_status_future = tokio::task::spawn_blocking(move || {
-        // Get active threshold from settings (default 60 seconds = 1 minute)
-        let active_threshold = get_setting_i64("active_threshold_seconds", 60) as u64;
+        // Get active threshold from settings (default 7200 seconds = 120 minutes)
+        let active_threshold = get_setting_i64("active_threshold_seconds", 7200) as u64;
         get_all_endpoints_online_status(&dropdown_for_online, active_threshold)
     });
     let all_types_future =

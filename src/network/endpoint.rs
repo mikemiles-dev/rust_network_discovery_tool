@@ -1611,11 +1611,38 @@ fn is_tv_model(model: &str) -> bool {
         return true;
     }
 
+    // Roku TV platform identifiers (TCL, Hisense, etc. running Roku OS)
+    // Format: 4 digits followed by optional X (e.g., 7105X, 7000X, 6500X, 3800X)
+    // 7XXX series = TCL TVs, 6XXX = mid-range, 3XXX = budget models
+    if is_roku_tv_model(&model_upper) {
+        return true;
+    }
+
     // Check for generic TV indicators in model name
     if model_lower.contains("the frame") || model_lower.contains("samsung tv") {
         return true;
     }
 
+    false
+}
+
+/// Check if model is a Roku TV platform identifier
+/// Roku TV models follow patterns like 7105X, 7000X, 6500X, 3800X
+fn is_roku_tv_model(model: &str) -> bool {
+    let model_upper = model.to_uppercase();
+    // Pattern: 4 digits, optionally followed by X
+    if model_upper.len() >= 4 && model_upper.len() <= 5 {
+        let chars: Vec<char> = model_upper.chars().collect();
+        // First 4 chars must be digits
+        if chars[0..4].iter().all(|c| c.is_ascii_digit()) {
+            // 5th char (if present) must be X
+            if chars.len() == 4 || chars[4] == 'X' {
+                // Roku TV models typically start with 3, 4, 5, 6, or 7
+                let first_digit = chars[0];
+                return matches!(first_digit, '3' | '4' | '5' | '6' | '7' | '8' | '9');
+            }
+        }
+    }
     false
 }
 
@@ -1715,6 +1742,12 @@ pub fn normalize_model_name(model: &str, vendor: Option<&str>) -> Option<String>
                 return Some(format!("Sony {}", name));
             }
         }
+    }
+
+    // Roku TV platform identifiers (TCL, Hisense TVs running Roku OS)
+    // Models like 7105X, 7000X, 6500X are typically TCL Roku TVs
+    if is_roku_tv_model(&model_upper) {
+        return Some("TCL Roku TV".to_string());
     }
 
     None
@@ -1876,6 +1909,61 @@ pub fn get_hostname_vendor(hostname: &str) -> Option<&'static str> {
     // Brother printers
     if lower.starts_with("brn") || lower.starts_with("brw") || lower.contains("brother") {
         return Some("Brother");
+    }
+
+    None
+}
+
+/// Get vendor name from model number patterns
+/// This helps identify vendor when MAC OUI and hostname don't provide info
+pub fn get_vendor_from_model(model: &str) -> Option<&'static str> {
+    let model_upper = model.to_uppercase();
+    let model_lower = model.to_lowercase();
+
+    // Samsung TV models: QN/UN/UA prefix
+    if model_upper.starts_with("QN")
+        || model_upper.starts_with("UN")
+        || model_upper.starts_with("UA")
+    {
+        return Some("Samsung");
+    }
+
+    // Samsung soundbars: HW- prefix
+    if model_lower.starts_with("hw-") || model_lower.starts_with("spk-") {
+        return Some("Samsung");
+    }
+
+    // LG TV models: OLED/NANO prefix
+    if model_upper.starts_with("OLED") || model_upper.starts_with("NANO") {
+        return Some("LG");
+    }
+
+    // LG soundbars: SL/SN/SP prefix (without dash)
+    if model_lower.starts_with("sl")
+        || model_lower.starts_with("sn")
+        || model_lower.starts_with("sp")
+    {
+        // Make sure it's followed by a digit (to avoid false positives)
+        if model.len() > 2
+            && model
+                .chars()
+                .nth(2)
+                .map(|c| c.is_ascii_digit())
+                .unwrap_or(false)
+        {
+            return Some("LG");
+        }
+    }
+
+    // Sony Bravia TVs: XR/KD- prefix
+    if model_upper.starts_with("XR") || model_upper.starts_with("KD-") {
+        return Some("Sony");
+    }
+
+    // Roku TV platform identifiers (TCL, Hisense TVs running Roku OS)
+    // Models like 7105X, 7000X, 6500X are TCL Roku TVs
+    if is_roku_tv_model(&model_upper) {
+        return Some("TCL");
     }
 
     None
@@ -4572,6 +4660,36 @@ mod tests {
         // Non-TVs
         assert_eq!(is_tv_hostname("my-laptop"), false);
         assert_eq!(is_tv_hostname("printer"), false);
+    }
+
+    #[test]
+    fn test_roku_tv_model_detection() {
+        use super::*;
+
+        // Roku TV platform identifiers (TCL, Hisense TVs running Roku OS)
+        assert_eq!(is_roku_tv_model("7105X"), true);
+        assert_eq!(is_roku_tv_model("7000X"), true);
+        assert_eq!(is_roku_tv_model("6500X"), true);
+        assert_eq!(is_roku_tv_model("3800X"), true);
+        assert_eq!(is_roku_tv_model("4200"), true); // Without X suffix
+        assert_eq!(is_roku_tv_model("8500X"), true);
+
+        // Should be recognized as TV
+        assert_eq!(is_tv_model("7105X"), true);
+        assert_eq!(is_tv_model("7000X"), true);
+
+        // Non-Roku TV models
+        assert_eq!(is_roku_tv_model("HW-MS750"), false); // Samsung soundbar
+        assert_eq!(is_roku_tv_model("OLED55C3"), false); // LG TV (different format)
+        assert_eq!(is_roku_tv_model("12345X"), false); // Too many digits
+        assert_eq!(is_roku_tv_model("710X"), false); // Only 3 digits
+        assert_eq!(is_roku_tv_model("7105Y"), false); // Wrong suffix
+
+        // Vendor detection from model
+        assert_eq!(get_vendor_from_model("7105X"), Some("TCL"));
+        assert_eq!(get_vendor_from_model("7000X"), Some("TCL"));
+        assert_eq!(get_vendor_from_model("HW-MS750"), Some("Samsung"));
+        assert_eq!(get_vendor_from_model("OLED55C3"), Some("LG"));
     }
 
     #[test]
