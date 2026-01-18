@@ -3484,6 +3484,18 @@ impl EndPoint {
             conn.execute("ALTER TABLE endpoints ADD COLUMN auto_device_type TEXT", [])?;
         }
 
+        // Migration: Add netbios_name column for NetBIOS discovered names
+        let has_netbios_name: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_table_info('endpoints') WHERE name = 'netbios_name'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !has_netbios_name {
+            conn.execute("ALTER TABLE endpoints ADD COLUMN netbios_name TEXT", [])?;
+        }
+
         // Create internet_destinations table for tracking external hosts
         conn.execute(
             "CREATE TABLE IF NOT EXISTS internet_destinations (

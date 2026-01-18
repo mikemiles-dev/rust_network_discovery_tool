@@ -12,6 +12,7 @@ use tokio::time::interval;
 use super::arp::ArpScanner;
 use super::icmp::IcmpScanner;
 use super::ndp::NdpScanner;
+use super::netbios::NetBiosScanner;
 use super::port::{DEFAULT_PORTS, PortScanner};
 use super::ssdp::SsdpScanner;
 use super::{ScanCapabilities, ScanResult, ScanType, check_scan_privileges};
@@ -41,6 +42,7 @@ impl Default for ScanConfig {
         let mut enabled = HashSet::new();
         enabled.insert(ScanType::Arp);
         enabled.insert(ScanType::Ndp); // IPv6 neighbor discovery
+        enabled.insert(ScanType::NetBios); // NetBIOS name discovery
         enabled.insert(ScanType::Ssdp);
 
         Self {
@@ -226,6 +228,19 @@ impl ScanManager {
                             .map(ScanResult::Ssdp)
                             .collect()
                     }
+                    ScanType::NetBios if capabilities.can_netbios => {
+                        let mut all_ips = Vec::new();
+                        for subnet in &subnets {
+                            all_ips.extend(subnet.iter().map(IpAddr::V4));
+                        }
+                        let scanner = NetBiosScanner::new().with_timeout(cfg.timeout_ms);
+                        scanner
+                            .scan_ips(&all_ips)
+                            .await
+                            .into_iter()
+                            .map(ScanResult::NetBios)
+                            .collect()
+                    }
                     _ => Vec::new(), // Skip if no privilege
                 };
 
@@ -237,6 +252,7 @@ impl ScanManager {
                         ScanResult::Arp(r) => r.ip,
                         ScanResult::Icmp(r) => r.ip,
                         ScanResult::Ndp(r) => r.ip,
+                        ScanResult::NetBios(r) => r.ip,
                         ScanResult::Port(r) => r.ip,
                         ScanResult::Ssdp(r) => r.ip,
                     };

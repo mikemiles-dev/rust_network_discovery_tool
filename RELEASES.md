@@ -8,6 +8,11 @@
   - Green indicator when active (receiving packets), yellow when paused
   - API endpoints: `/api/capture/status`, `/api/capture/pause`, `/api/capture/set-pause`
   - Useful for replaying pcap files without interference from live network traffic
+- **NetBIOS Name Discovery** - Active scan now queries devices for NetBIOS names
+  - Sends NBSTAT requests to UDP port 137 to discover Windows/SMB device names
+  - Captures computer name, workgroup/domain name, and MAC address
+  - Results stored in `netbios_name` column on endpoints
+  - Enabled by default in active network scans
 
 ### Fixed
 - **Explicit Interface Selection** - `--interface` flag now bypasses default filters

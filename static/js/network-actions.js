@@ -208,6 +208,53 @@
         },
 
         /**
+         * Probe NetBIOS name (Windows/SMB devices)
+         */
+        probeNetBios: function() {
+            var ip = App.NetworkActions.getDeviceIp();
+            if (!ip) {
+                alert('No device IP available');
+                return;
+            }
+
+            var resultEl = document.getElementById('probe-netbios-result');
+            if (resultEl) {
+                resultEl.style.display = 'block';
+                resultEl.innerHTML = '<span style="color: var(--text-secondary);">Querying NetBIOS for ' + ip + '...</span>';
+            }
+
+            fetch('/api/probe-netbios', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip: ip })
+            })
+            .then(function(response) { return response.json(); })
+            .then(function(result) {
+                if (resultEl) {
+                    if (result.netbios_name) {
+                        var html = '<span style="color: #22c55e;">&#10003; NetBIOS name: </span>' +
+                            '<span style="color: var(--text-primary); font-weight: 500;">' + App.Utils.escapeHtml(result.netbios_name) + '</span>';
+                        if (result.group_name) {
+                            html += '<br><span style="color: var(--text-secondary);">Workgroup: ' + App.Utils.escapeHtml(result.group_name) + '</span>';
+                        }
+                        if (result.mac) {
+                            html += '<br><span style="color: var(--text-secondary);">MAC: ' + App.Utils.escapeHtml(result.mac) + '</span>';
+                        }
+                        resultEl.innerHTML = html;
+                    } else {
+                        resultEl.innerHTML = '<span style="color: #f59e0b;">No NetBIOS response</span><br>' +
+                            '<span style="color: var(--text-secondary);">Device may not support NetBIOS (non-Windows)</span>';
+                    }
+                }
+            })
+            .catch(function(error) {
+                if (resultEl) {
+                    resultEl.innerHTML = '<span style="color: #ef4444;">Error: ' + error.message + '</span>';
+                }
+            });
+        },
+
+        /**
          * Apply a discovered hostname as the endpoint name
          */
         applyHostname: function(hostname) {

@@ -16,6 +16,7 @@
             if (document.getElementById('scan-icmp').checked) scanTypes.push('icmp');
             if (document.getElementById('scan-port').checked) scanTypes.push('port');
             if (document.getElementById('scan-ssdp').checked) scanTypes.push('ssdp');
+            if (document.getElementById('scan-netbios').checked) scanTypes.push('netbios');
 
             if (scanTypes.length === 0) {
                 alert('Please select at least one scan type');

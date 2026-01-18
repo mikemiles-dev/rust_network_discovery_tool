@@ -1336,6 +1336,82 @@ async fn probe_hostname(body: Json<ProbeRequest>) -> impl Responder {
     })
 }
 
+#[derive(Serialize)]
+struct NetBiosProbeResponse {
+    ip: String,
+    netbios_name: Option<String>,
+    group_name: Option<String>,
+    mac: Option<String>,
+    success: bool,
+}
+
+/// Probe a device for its NetBIOS name
+#[post("/api/probe-netbios")]
+async fn probe_netbios(body: Json<ProbeRequest>) -> impl Responder {
+    use crate::scanner::netbios::NetBiosScanner;
+    use std::net::Ipv4Addr;
+
+    let ip_str = body.ip.clone();
+
+    // Parse IP address
+    let ip: Ipv4Addr = match ip_str.parse() {
+        Ok(ip) => ip,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(NetBiosProbeResponse {
+                ip: ip_str,
+                netbios_name: None,
+                group_name: None,
+                mac: None,
+                success: false,
+            });
+        }
+    };
+
+    // Run the NetBIOS query in a blocking task
+    let result = tokio::task::spawn_blocking(move || {
+        let scanner = NetBiosScanner::new().with_timeout(2000);
+        scanner.query_ip(ip)
+    })
+    .await;
+
+    match result {
+        Ok(Some(netbios)) => {
+            // Save NetBIOS name to endpoint if found
+            let netbios_name = netbios.netbios_name.clone();
+            let ip_for_db = ip_str.clone();
+            tokio::task::spawn_blocking(move || {
+                if let Ok(conn) = new_connection_result() {
+                    // Find endpoint by IP and update netbios_name
+                    let _ = conn.execute(
+                        "UPDATE endpoints SET netbios_name = ?1 WHERE id IN (SELECT endpoint_id FROM endpoint_attributes WHERE ip = ?2) AND (netbios_name IS NULL OR netbios_name = '')",
+                        rusqlite::params![netbios_name, ip_for_db],
+                    );
+                    // Also update endpoint name if it's currently just an IP address
+                    let _ = conn.execute(
+                        "UPDATE endpoints SET name = ?1 WHERE id IN (SELECT endpoint_id FROM endpoint_attributes WHERE ip = ?2) AND (name = ?2 OR name GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*')",
+                        rusqlite::params![netbios_name, ip_for_db],
+                    );
+                }
+            });
+
+            HttpResponse::Ok().json(NetBiosProbeResponse {
+                ip: ip_str,
+                netbios_name: Some(netbios.netbios_name),
+                group_name: netbios.group_name,
+                mac: netbios.mac,
+                success: true,
+            })
+        }
+        _ => HttpResponse::Ok().json(NetBiosProbeResponse {
+            ip: ip_str,
+            netbios_name: None,
+            group_name: None,
+            mac: None,
+            success: false,
+        }),
+    }
+}
+
 #[derive(Deserialize)]
 struct PingRequest {
     ip: String,
@@ -2066,6 +2142,7 @@ pub fn start(preferred_port: u16) {
                         .service(get_dns_entries_api)
                         .service(get_internet_destinations)
                         .service(probe_hostname)
+                        .service(probe_netbios)
                         .service(ping_endpoint)
                         .service(port_scan_endpoint)
                         .service(get_endpoint_details)
@@ -2103,19 +2180,23 @@ pub fn start(preferred_port: u16) {
                         }
                         println!("Web server listening on http://127.0.0.1:{}", port);
 
-                        // Start initial network scan on startup
+                        // Start initial network scan on startup with ALL scan types
                         tokio::spawn(async {
                             // Small delay to let the server fully initialize
                             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                             let manager = get_scan_manager();
-                            let config = manager.get_config().await;
-                            let scan_types: Vec<ScanType> =
-                                config.enabled_scanners.into_iter().collect();
-                            if !scan_types.is_empty() {
-                                println!("Starting initial network scan...");
-                                if let Err(e) = manager.start_scan(scan_types).await {
-                                    eprintln!("Failed to start initial scan: {}", e);
-                                }
+                            // Use all scan types for the initial scan to get comprehensive discovery
+                            let scan_types = vec![
+                                ScanType::Arp,
+                                ScanType::Icmp,
+                                ScanType::Ndp,
+                                ScanType::Ssdp,
+                                ScanType::NetBios,
+                                ScanType::Port,
+                            ];
+                            println!("Starting initial network scan (all types)...");
+                            if let Err(e) = manager.start_scan(scan_types).await {
+                                eprintln!("Failed to start initial scan: {}", e);
                             }
                         });
 
@@ -3342,6 +3423,36 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
                     Some(ndp.response_time_ms as i64),
                     None,
                 )?;
+            }
+        }
+        ScanResult::NetBios(netbios) => {
+            let ip_str = netbios.ip.to_string();
+            // For NetBIOS (no MAC from packet), only record if endpoint already exists
+            if let Some(endpoint_id) = find_existing_endpoint_by_ip(&conn, &ip_str) {
+                let details = serde_json::json!({
+                    "netbios_name": netbios.netbios_name,
+                    "group_name": netbios.group_name,
+                    "mac": netbios.mac,
+                });
+                insert_scan_result(
+                    &conn,
+                    endpoint_id,
+                    "netbios",
+                    None,
+                    Some(&details.to_string()),
+                )?;
+
+                // Save NetBIOS name to endpoint if not already set
+                let _ = conn.execute(
+                    "UPDATE endpoints SET netbios_name = ?1 WHERE id = ?2 AND (netbios_name IS NULL OR netbios_name = '')",
+                    params![netbios.netbios_name, endpoint_id],
+                );
+
+                // Also update endpoint name if it's currently just an IP address
+                let _ = conn.execute(
+                    "UPDATE endpoints SET name = ?1 WHERE id = ?2 AND (name = ?3 OR name GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*')",
+                    params![netbios.netbios_name, endpoint_id, ip_str],
+                );
             }
         }
     }
