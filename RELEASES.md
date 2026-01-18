@@ -1,5 +1,19 @@
 # Release Notes
 
+## [0.5.5]
+
+### Added
+- **Pause Traffic Capture** - Pause live packet capture for clean PCAP playback
+  - New control card on PCAP tab with status indicator and toggle button
+  - Green indicator when active (receiving packets), yellow when paused
+  - API endpoints: `/api/capture/status`, `/api/capture/pause`, `/api/capture/set-pause`
+  - Useful for replaying pcap files without interference from live network traffic
+
+### Fixed
+- **Explicit Interface Selection** - `--interface` flag now bypasses default filters
+  - Allows selecting loopback (lo0) and other normally-filtered interfaces
+  - Previously, explicit interface selection still applied automatic exclusion rules
+
 ## [0.5.4]
 
 ### Added

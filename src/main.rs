@@ -13,10 +13,24 @@ use pnet::datalink::Channel::Ethernet;
 use pnet::datalink::NetworkInterface;
 use pnet::packet::ethernet::EthernetPacket;
 use std::env;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::{io, task};
 
 use db::SQLWriter;
 use {network::communication::Communication, network::mdns_lookup::MDnsLookup};
+
+/// Global flag to pause packet capture (allows pcap playback without live interference)
+static CAPTURE_PAUSED: AtomicBool = AtomicBool::new(false);
+
+/// Check if packet capture is paused
+pub fn is_capture_paused() -> bool {
+    CAPTURE_PAUSED.load(Ordering::Relaxed)
+}
+
+/// Set the capture paused state
+pub fn set_capture_paused(paused: bool) {
+    CAPTURE_PAUSED.store(paused, Ordering::Relaxed);
+}
 
 /// Network discovery tool that monitors network interfaces and captures traffic
 #[derive(Parser, Debug)]
@@ -223,11 +237,9 @@ async fn main() -> io::Result<()> {
     let filtered_interfaces: Vec<NetworkInterface> = interfaces
         .into_iter()
         .filter(|iface| {
-            // If specific interfaces are configured, only monitor those
-            if let Some(ref selected) = selected_interfaces
-                && !selected.contains(&iface.name)
-            {
-                return false;
+            // If specific interfaces are configured, only monitor those (bypass all other filters)
+            if let Some(ref selected) = selected_interfaces {
+                return selected.contains(&iface.name);
             }
 
             let name = iface.name.to_lowercase();
@@ -406,6 +418,11 @@ fn capture_packets(
     loop {
         match rx.next() {
             Ok(packet) => {
+                // Skip processing if capture is paused (allows pcap playback without interference)
+                if is_capture_paused() {
+                    continue;
+                }
+
                 // Parse ethernet packet
                 let ethernet_packet = match EthernetPacket::new(packet) {
                     Some(pkt) => pkt,

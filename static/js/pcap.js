@@ -16,6 +16,72 @@
             if (form) {
                 form.addEventListener('submit', App.Pcap.handleUpload);
             }
+            // Fetch initial capture status
+            App.Pcap.refreshCaptureStatus();
+        },
+
+        /**
+         * Refresh the capture status from the server
+         */
+        refreshCaptureStatus: function() {
+            fetch('/api/capture/status')
+                .then(function(response) { return response.json(); })
+                .then(function(result) {
+                    App.Pcap.updateCaptureUI(result.paused);
+                })
+                .catch(function(error) {
+                    console.error('Failed to get capture status:', error);
+                });
+        },
+
+        /**
+         * Toggle the capture pause state
+         */
+        toggleCapture: function() {
+            var btn = document.getElementById('capture-toggle-btn');
+            if (btn) {
+                btn.disabled = true;
+            }
+
+            fetch('/api/capture/pause', { method: 'POST' })
+                .then(function(response) { return response.json(); })
+                .then(function(result) {
+                    App.Pcap.updateCaptureUI(result.paused);
+                    if (btn) btn.disabled = false;
+                })
+                .catch(function(error) {
+                    console.error('Failed to toggle capture:', error);
+                    if (btn) btn.disabled = false;
+                });
+        },
+
+        /**
+         * Update the capture UI based on paused state
+         */
+        updateCaptureUI: function(isPaused) {
+            var indicator = document.getElementById('capture-status-indicator');
+            var statusText = document.getElementById('capture-status-text');
+            var btn = document.getElementById('capture-toggle-btn');
+
+            if (isPaused) {
+                if (indicator) indicator.style.background = '#f59e0b';
+                if (statusText) statusText.textContent = 'Paused - live packets ignored';
+                if (btn) {
+                    btn.textContent = 'Resume Capture';
+                    btn.style.background = 'rgba(34, 197, 94, 0.2)';
+                    btn.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+                    btn.style.color = '#22c55e';
+                }
+            } else {
+                if (indicator) indicator.style.background = '#22c55e';
+                if (statusText) statusText.textContent = 'Active - receiving packets';
+                if (btn) {
+                    btn.textContent = 'Pause Capture';
+                    btn.style.background = 'rgba(245, 158, 11, 0.2)';
+                    btn.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+                    btn.style.color = '#f59e0b';
+                }
+            }
         },
 
         /**
@@ -177,6 +243,11 @@
 
             tbody.innerHTML = html;
         }
+    };
+
+    // Expose toggle function globally for onclick handler
+    App.toggleCaptureState = function() {
+        App.Pcap.toggleCapture();
     };
 
 })(window.App);

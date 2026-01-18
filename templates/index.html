@@ -2354,6 +2354,26 @@
           Upload packet capture files (.pcap, .pcapng, .cap) to analyze network communications.
         </p>
 
+        <!-- Live Capture Control -->
+        <div class="card" style="padding: 1rem; margin-bottom: 1rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <div id="capture-status-indicator" style="width: 10px; height: 10px; border-radius: 50%; background: #22c55e;"></div>
+              <div>
+                <div style="font-size: 0.875rem; font-weight: 500; color: var(--text-primary);">Live Capture</div>
+                <div id="capture-status-text" style="font-size: 0.75rem; color: var(--text-secondary);">Active - receiving packets</div>
+              </div>
+            </div>
+            <button id="capture-toggle-btn" onclick="App.toggleCaptureState()"
+              style="padding: 0.5rem 1rem; background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4); color: #f59e0b; border-radius: 0.375rem; cursor: pointer; font-size: 0.8rem; font-weight: 500; transition: all 0.2s;">
+              Pause Capture
+            </button>
+          </div>
+          <p style="font-size: 0.7rem; color: var(--text-tertiary); margin-top: 0.75rem; margin-bottom: 0;">
+            Pause live capture to replay PCAP files without interference from live network traffic.
+          </p>
+        </div>
+
         <div class="card" style="padding: 1.5rem;">
           <form id="pcap-upload-form" style="display: flex; flex-direction: column; gap: 1rem;">
             <!-- File Input -->

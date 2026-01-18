@@ -2087,6 +2087,9 @@ pub fn start(preferred_port: u16) {
                         .service(set_scan_config)
                         .service(get_settings)
                         .service(update_setting)
+                        .service(get_capture_status)
+                        .service(toggle_capture_pause)
+                        .service(set_capture_pause)
                         .service(upload_pcap)
                 })
                 .bind(("127.0.0.1", port))
@@ -3515,6 +3518,71 @@ async fn update_setting(body: Json<UpdateSettingRequest>) -> impl Responder {
             message: "Failed to update setting".to_string(),
         }),
     }
+}
+
+// ============================================================================
+// Capture Pause Endpoint
+// ============================================================================
+
+#[derive(Serialize)]
+struct CapturePauseResponse {
+    success: bool,
+    paused: bool,
+    message: String,
+}
+
+/// Get capture pause status
+#[get("/api/capture/status")]
+async fn get_capture_status() -> impl Responder {
+    let paused = crate::is_capture_paused();
+    HttpResponse::Ok().json(CapturePauseResponse {
+        success: true,
+        paused,
+        message: if paused {
+            "Capture is paused".to_string()
+        } else {
+            "Capture is running".to_string()
+        },
+    })
+}
+
+/// Toggle capture pause state
+#[post("/api/capture/pause")]
+async fn toggle_capture_pause() -> impl Responder {
+    let currently_paused = crate::is_capture_paused();
+    let new_state = !currently_paused;
+    crate::set_capture_paused(new_state);
+
+    HttpResponse::Ok().json(CapturePauseResponse {
+        success: true,
+        paused: new_state,
+        message: if new_state {
+            "Capture paused - live traffic will be ignored".to_string()
+        } else {
+            "Capture resumed - live traffic will be processed".to_string()
+        },
+    })
+}
+
+/// Set capture pause state explicitly
+#[derive(Deserialize)]
+struct SetCapturePauseRequest {
+    paused: bool,
+}
+
+#[post("/api/capture/set-pause")]
+async fn set_capture_pause(body: Json<SetCapturePauseRequest>) -> impl Responder {
+    crate::set_capture_paused(body.paused);
+
+    HttpResponse::Ok().json(CapturePauseResponse {
+        success: true,
+        paused: body.paused,
+        message: if body.paused {
+            "Capture paused - live traffic will be ignored".to_string()
+        } else {
+            "Capture resumed - live traffic will be processed".to_string()
+        },
+    })
 }
 
 // ============================================================================
