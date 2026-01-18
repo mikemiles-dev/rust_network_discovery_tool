@@ -31,6 +31,9 @@
          * Load device capabilities from the API
          */
         loadCapabilities: function() {
+            // Mark as loading to prevent refresh interruption
+            App.state.deviceCapabilitiesLoaded = false;
+
             var loadingEl = document.getElementById('control-loading');
             var contentEl = document.getElementById('control-content');
             var noControlEl = document.getElementById('no-control-message');

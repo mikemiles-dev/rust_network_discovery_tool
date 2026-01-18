@@ -250,14 +250,16 @@
         // Start scan indicator polling for network tab
         App.startScanIndicatorPolling();
 
-        // Restore scroll positions after refresh
+        // Restore scroll positions and detail tab after refresh
         var savedScroll = sessionStorage.getItem('scrollPosition');
         var savedTableScroll = sessionStorage.getItem('tableScrollPosition');
         var savedDetailsScroll = sessionStorage.getItem('detailsScrollPosition');
-        if (savedScroll || savedTableScroll || savedDetailsScroll) {
+        var savedDetailTab = sessionStorage.getItem('activeDetailTab');
+        if (savedScroll || savedTableScroll || savedDetailsScroll || savedDetailTab) {
             sessionStorage.removeItem('scrollPosition');
             sessionStorage.removeItem('tableScrollPosition');
             sessionStorage.removeItem('detailsScrollPosition');
+            sessionStorage.removeItem('activeDetailTab');
             // Delay to ensure DOM is fully rendered and all other init is complete
             setTimeout(function() {
                 if (savedScroll) {
@@ -273,6 +275,13 @@
                     var detailsPane = document.querySelector('.protocols-overlay');
                     if (detailsPane) {
                         detailsPane.scrollTop = parseInt(savedDetailsScroll, 10);
+                    }
+                }
+                // Restore active detail tab
+                if (savedDetailTab) {
+                    var tabButton = document.querySelector('.detail-tab[data-tab="' + savedDetailTab + '"]');
+                    if (tabButton && App.DeviceControl) {
+                        App.DeviceControl.switchDetailTab(tabButton, savedDetailTab);
                     }
                 }
             }, 150);

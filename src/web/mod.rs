@@ -1339,6 +1339,185 @@ async fn probe_hostname(body: Json<ProbeRequest>) -> impl Responder {
     })
 }
 
+#[derive(Deserialize)]
+struct PingRequest {
+    ip: String,
+}
+
+#[derive(Serialize)]
+struct PingResponse {
+    success: bool,
+    latency_ms: Option<f64>,
+    message: Option<String>,
+}
+
+/// Ping a device using ICMP echo
+#[post("/api/ping")]
+async fn ping_endpoint(body: Json<PingRequest>) -> impl Responder {
+    use std::net::IpAddr;
+    use std::process::Command;
+    use std::time::Instant;
+
+    let ip = body.ip.clone();
+
+    // Validate IP address
+    if ip.parse::<IpAddr>().is_err() {
+        return HttpResponse::BadRequest().json(PingResponse {
+            success: false,
+            latency_ms: None,
+            message: Some("Invalid IP address".to_string()),
+        });
+    }
+
+    // Use system ping command (works without root on most systems)
+    // macOS uses -t for timeout, Linux uses -W
+    let start = Instant::now();
+    #[cfg(target_os = "macos")]
+    let output = Command::new("ping")
+        .args(["-c", "1", "-t", "2", &ip])
+        .output();
+    #[cfg(not(target_os = "macos"))]
+    let output = Command::new("ping")
+        .args(["-c", "1", "-W", "2", &ip])
+        .output();
+
+    match output {
+        Ok(result) => {
+            let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+            if result.status.success() {
+                // Try to parse actual latency from ping output
+                let stdout = String::from_utf8_lossy(&result.stdout);
+                let latency = parse_ping_latency(&stdout).unwrap_or(elapsed);
+                HttpResponse::Ok().json(PingResponse {
+                    success: true,
+                    latency_ms: Some(latency),
+                    message: None,
+                })
+            } else {
+                HttpResponse::Ok().json(PingResponse {
+                    success: false,
+                    latency_ms: None,
+                    message: Some("Host unreachable".to_string()),
+                })
+            }
+        }
+        Err(e) => HttpResponse::Ok().json(PingResponse {
+            success: false,
+            latency_ms: None,
+            message: Some(format!("Ping failed: {}", e)),
+        }),
+    }
+}
+
+/// Parse latency from ping output (e.g., "time=1.23 ms")
+fn parse_ping_latency(output: &str) -> Option<f64> {
+    for line in output.lines() {
+        if let Some(time_idx) = line.find("time=") {
+            let after_time = &line[time_idx + 5..];
+            if let Some(ms_idx) = after_time.find(" ms") {
+                if let Ok(latency) = after_time[..ms_idx].parse::<f64>() {
+                    return Some(latency);
+                }
+            }
+            // Also try without space (time=1.23ms)
+            if let Some(ms_idx) = after_time.find("ms") {
+                if let Ok(latency) = after_time[..ms_idx].parse::<f64>() {
+                    return Some(latency);
+                }
+            }
+        }
+    }
+    None
+}
+
+#[derive(Deserialize)]
+struct PortScanRequest {
+    ip: String,
+}
+
+#[derive(Serialize)]
+struct OpenPort {
+    port: u16,
+    service: Option<String>,
+}
+
+#[derive(Serialize)]
+struct PortScanResponse {
+    success: bool,
+    open_ports: Vec<OpenPort>,
+    message: Option<String>,
+}
+
+/// Scan common ports on a device
+#[post("/api/port-scan")]
+async fn port_scan_endpoint(body: Json<PortScanRequest>) -> impl Responder {
+    use std::net::{IpAddr, SocketAddr, TcpStream};
+    use std::time::Duration;
+
+    let ip = body.ip.clone();
+
+    // Validate IP address
+    let ip_addr: IpAddr = match ip.parse() {
+        Ok(addr) => addr,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(PortScanResponse {
+                success: false,
+                open_ports: vec![],
+                message: Some("Invalid IP address".to_string()),
+            });
+        }
+    };
+
+    // Common ports to scan
+    let ports_to_scan: Vec<(u16, &str)> = vec![
+        (21, "FTP"),
+        (22, "SSH"),
+        (23, "Telnet"),
+        (25, "SMTP"),
+        (53, "DNS"),
+        (80, "HTTP"),
+        (110, "POP3"),
+        (143, "IMAP"),
+        (443, "HTTPS"),
+        (445, "SMB"),
+        (993, "IMAPS"),
+        (995, "POP3S"),
+        (3389, "RDP"),
+        (5000, "UPnP"),
+        (5900, "VNC"),
+        (8080, "HTTP-Alt"),
+        (8443, "HTTPS-Alt"),
+        (8888, "HTTP-Alt"),
+        (9000, "HTTP-Alt"),
+    ];
+
+    // Scan ports concurrently
+    let ip_for_scan = ip_addr;
+    let open_ports = tokio::task::spawn_blocking(move || {
+        let mut open = Vec::new();
+        let timeout = Duration::from_millis(500);
+
+        for (port, service) in ports_to_scan {
+            let addr = SocketAddr::new(ip_for_scan, port);
+            if TcpStream::connect_timeout(&addr, timeout).is_ok() {
+                open.push(OpenPort {
+                    port,
+                    service: Some(service.to_string()),
+                });
+            }
+        }
+        open
+    })
+    .await
+    .unwrap_or_default();
+
+    HttpResponse::Ok().json(PortScanResponse {
+        success: true,
+        open_ports,
+        message: None,
+    })
+}
+
 #[get("/api/endpoint/{name}/details")]
 async fn get_endpoint_details(
     path: actix_web::web::Path<String>,
@@ -1878,6 +2057,8 @@ pub fn start(preferred_port: u16) {
                         .service(get_dns_entries_api)
                         .service(get_internet_destinations)
                         .service(probe_hostname)
+                        .service(ping_endpoint)
+                        .service(port_scan_endpoint)
                         .service(get_endpoint_details)
                         .service(get_protocol_endpoints)
                         .service(get_all_protocols_api)

@@ -16,7 +16,7 @@
             savedRefreshInterval: null,
             currentDeviceIp: null,
             currentDeviceType: null,
-            deviceCapabilitiesLoaded: false,
+            deviceCapabilitiesLoaded: true,
             currentThinQDeviceId: null,
             currentThinQDeviceType: null,
             restoringState: false,

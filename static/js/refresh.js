@@ -82,6 +82,11 @@
 
                 // Set new interval - behavior depends on active tab
                 App.state.refreshIntervalId = setInterval(function() {
+                    // Skip refresh if device capabilities are loading
+                    if (!App.state.deviceCapabilitiesLoaded) {
+                        return;
+                    }
+
                     if (App.state.activeTab === 'dns') {
                         // Refresh DNS entries without page reload
                         if (App.Tabs) App.Tabs.refreshDnsEntries();
@@ -178,6 +183,12 @@
             var detailsPane = document.querySelector('.protocols-overlay');
             if (detailsPane) {
                 sessionStorage.setItem('detailsScrollPosition', detailsPane.scrollTop.toString());
+            }
+
+            // Save active detail tab (Details, Network, Control)
+            var activeDetailTab = document.querySelector('.detail-tab.active');
+            if (activeDetailTab) {
+                sessionStorage.setItem('activeDetailTab', activeDetailTab.dataset.tab);
             }
 
             // Navigate to URL with state
