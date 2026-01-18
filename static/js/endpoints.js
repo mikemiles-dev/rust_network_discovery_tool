@@ -309,6 +309,24 @@
             // Stop any existing model polling
             App.Endpoints.stopModelPolling();
 
+            // Reset to Details tab when selecting a new endpoint
+            var detailsTabBtn = document.querySelector('.detail-tab[data-tab="details-tab-content"]');
+            if (detailsTabBtn && App.DeviceControl) {
+                App.DeviceControl.switchDetailTab(detailsTabBtn, 'details-tab-content');
+            }
+
+            // Reset device capabilities loaded flag for new device
+            App.state.deviceCapabilitiesLoaded = true;
+
+            // Clear Network tab results from previous endpoint
+            ['ping-result', 'probe-hostname-result', 'probe-model-result', 'port-scan-result'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) {
+                    el.style.display = 'none';
+                    el.innerHTML = '';
+                }
+            });
+
             // Show the endpoint details overlay (may be hidden when no endpoint selected)
             var overlay = document.querySelector('.protocols-overlay');
             if (overlay) {

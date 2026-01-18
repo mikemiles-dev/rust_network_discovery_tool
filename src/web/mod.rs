@@ -1414,16 +1414,12 @@ fn parse_ping_latency(output: &str) -> Option<f64> {
     for line in output.lines() {
         if let Some(time_idx) = line.find("time=") {
             let after_time = &line[time_idx + 5..];
-            if let Some(ms_idx) = after_time.find(" ms") {
-                if let Ok(latency) = after_time[..ms_idx].parse::<f64>() {
-                    return Some(latency);
-                }
+            if let Some(latency) = after_time.find(" ms").and_then(|idx| after_time[..idx].parse::<f64>().ok()) {
+                return Some(latency);
             }
             // Also try without space (time=1.23ms)
-            if let Some(ms_idx) = after_time.find("ms") {
-                if let Ok(latency) = after_time[..ms_idx].parse::<f64>() {
-                    return Some(latency);
-                }
+            if let Some(latency) = after_time.find("ms").and_then(|idx| after_time[..idx].parse::<f64>().ok()) {
+                return Some(latency);
             }
         }
     }
