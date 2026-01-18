@@ -44,11 +44,9 @@ pub fn new_connection_result() -> Result<Connection, rusqlite::Error> {
 /// Get a setting value from the database
 pub fn get_setting(key: &str) -> Option<String> {
     let conn = new_connection();
-    conn.query_row(
-        "SELECT value FROM settings WHERE key = ?1",
-        [key],
-        |row| row.get(0),
-    )
+    conn.query_row("SELECT value FROM settings WHERE key = ?1", [key], |row| {
+        row.get(0)
+    })
     .ok()
 }
 
@@ -391,11 +389,12 @@ impl SQLWriter {
 
     fn cleanup_old_data(conn: &Connection) -> rusqlite::Result<()> {
         // Read retention from settings first, then env var, then default to 7 days
-        let retention_days = get_setting_i64("data_retention_days",
+        let retention_days = get_setting_i64(
+            "data_retention_days",
             env::var("DATA_RETENTION_DAYS")
                 .ok()
                 .and_then(|val| val.parse::<i64>().ok())
-                .unwrap_or(7)
+                .unwrap_or(7),
         );
 
         let retention_seconds = retention_days * 24 * 60 * 60;

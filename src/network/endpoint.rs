@@ -3392,10 +3392,7 @@ impl EndPoint {
             )
             .unwrap_or(false);
         if !has_auto_device_type {
-            conn.execute(
-                "ALTER TABLE endpoints ADD COLUMN auto_device_type TEXT",
-                [],
-            )?;
+            conn.execute("ALTER TABLE endpoints ADD COLUMN auto_device_type TEXT", [])?;
         }
 
         // Create internet_destinations table for tracking external hosts
@@ -3775,7 +3772,9 @@ impl EndPoint {
             // Use hostname if we have one, otherwise use the IP address
             let dest_name = dhcp_hostname
                 .clone()
-                .or_else(|| Self::lookup_hostname(ip.clone(), mac.clone(), protocol.clone(), payload))
+                .or_else(|| {
+                    Self::lookup_hostname(ip.clone(), mac.clone(), protocol.clone(), payload)
+                })
                 .unwrap_or_else(|| ip_str.clone());
 
             // Record this internet destination (ignore errors - best effort)
@@ -3933,7 +3932,10 @@ impl EndPoint {
             .filter_map(|ip| {
                 let parts: Vec<&str> = ip.split(':').collect();
                 if parts.len() >= 4 {
-                    Some(format!("{}:{}:{}:{}", parts[0], parts[1], parts[2], parts[3]))
+                    Some(format!(
+                        "{}:{}:{}:{}",
+                        parts[0], parts[1], parts[2], parts[3]
+                    ))
                 } else {
                     None
                 }

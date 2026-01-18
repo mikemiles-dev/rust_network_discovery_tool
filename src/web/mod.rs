@@ -13,7 +13,10 @@ use std::io::Write;
 use tera::{Context, Tera};
 use tokio::task;
 
-use crate::db::{SQLWriter, new_connection, new_connection_result, get_all_settings, get_setting_i64, set_setting};
+use crate::db::{
+    SQLWriter, get_all_settings, get_setting_i64, new_connection, new_connection_result,
+    set_setting,
+};
 use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::device_control::DeviceController;
 use crate::network::endpoint::{
@@ -579,7 +582,12 @@ fn get_endpoint_vendor_classes(endpoints: &[String]) -> HashMap<String, String> 
 }
 
 /// Model/Vendor data tuple: (custom_model, ssdp_model, ssdp_friendly_name, custom_vendor)
-type EndpointModelData = (Option<String>, Option<String>, Option<String>, Option<String>);
+type EndpointModelData = (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
 
 /// Get SSDP model, friendly name, custom model, and custom vendor for all endpoints
 /// Returns: (custom_model, ssdp_model, ssdp_friendly_name, custom_vendor)
@@ -613,9 +621,15 @@ fn get_endpoint_ssdp_models(endpoints: &[String]) -> HashMap<String, EndpointMod
         let (name, custom_model, ssdp_model, friendly_name, custom_vendor) = row;
         let name_lower = name.to_lowercase();
         if endpoints_lower.contains(&name_lower)
-            && (custom_model.is_some() || ssdp_model.is_some() || friendly_name.is_some() || custom_vendor.is_some())
+            && (custom_model.is_some()
+                || ssdp_model.is_some()
+                || friendly_name.is_some()
+                || custom_vendor.is_some())
         {
-            result.insert(name_lower, (custom_model, ssdp_model, friendly_name, custom_vendor));
+            result.insert(
+                name_lower,
+                (custom_model, ssdp_model, friendly_name, custom_vendor),
+            );
         }
     }
 
@@ -1228,7 +1242,7 @@ fn get_dns_entries() -> Vec<DnsEntryView> {
                 .map(|d| {
                     let secs = d.as_secs();
                     let dt = chrono::DateTime::from_timestamp(secs as i64, 0).unwrap_or_default();
-                    dt.format("%Y-%m-%d %H:%M:%S").to_string()
+                    dt.format("%b %d, %Y, %I:%M:%S %p").to_string()
                 })
                 .unwrap_or_else(|_| "Unknown".to_string());
 
@@ -1781,7 +1795,10 @@ fn get_all_endpoints_last_seen(
 
 /// Get online status for all endpoints
 /// An endpoint is considered "online" if it had traffic within the threshold (in seconds)
-fn get_all_endpoints_online_status(endpoints: &[String], threshold_seconds: u64) -> HashMap<String, bool> {
+fn get_all_endpoints_online_status(
+    endpoints: &[String],
+    threshold_seconds: u64,
+) -> HashMap<String, bool> {
     let conn = new_connection();
     let mut result: HashMap<String, bool> = HashMap::new();
 
@@ -2067,7 +2084,8 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
             let endpoint_lower = endpoint.to_lowercase();
 
             // Check custom_vendor first (user-set vendor takes priority)
-            if let Some((_, _, _, Some(custom_vendor))) = endpoint_ssdp_models.get(&endpoint_lower) {
+            if let Some((_, _, _, Some(custom_vendor))) = endpoint_ssdp_models.get(&endpoint_lower)
+            {
                 return Some((endpoint_lower, custom_vendor.clone()));
             }
 
@@ -2077,14 +2095,13 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
             }
             // Fall back to MAC-based detection, but filter out component manufacturers
             // Use lowercase for case-insensitive lookup
-            let mac_vendor =
-                endpoint_ips_macs
-                    .get(&endpoint_lower)
-                    .and_then(|(_, macs)| {
-                        macs.iter().find_map(|mac| {
-                            get_mac_vendor(mac).filter(|v| !component_vendors.contains(v))
-                        })
-                    });
+            let mac_vendor = endpoint_ips_macs
+                .get(&endpoint_lower)
+                .and_then(|(_, macs)| {
+                    macs.iter().find_map(|mac| {
+                        get_mac_vendor(mac).filter(|v| !component_vendors.contains(v))
+                    })
+                });
             mac_vendor.map(|v| (endpoint_lower, v.to_string()))
         })
         .collect();
@@ -2177,7 +2194,9 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     endpoint_types.insert(hostname.clone(), "local");
     // Ensure the selected endpoint is always in endpoint_types (for URL navigation)
     if !selected_endpoint.is_empty() {
-        endpoint_types.entry(selected_endpoint.clone()).or_insert("other");
+        endpoint_types
+            .entry(selected_endpoint.clone())
+            .or_insert("other");
     }
 
     // Second pass: enhance models using vendor + device type for endpoints without models
@@ -2290,8 +2309,8 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         .or_else(|| get_model_from_hostname(&selected_endpoint))
         .or_else(|| {
             // Context-aware MAC detection for Amazon devices etc.
-            let has_ssdp =
-                models_data.is_some_and(|(_, ssdp, friendly, _)| ssdp.is_some() || friendly.is_some());
+            let has_ssdp = models_data
+                .is_some_and(|(_, ssdp, friendly, _)| ssdp.is_some() || friendly.is_some());
             macs.iter().find_map(|mac| {
                 infer_model_with_context(mac, has_ssdp, false, false, &[])
                     .or_else(|| get_model_from_mac(mac))
@@ -2323,10 +2342,14 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let selected_lower = selected_endpoint.to_lowercase();
     let mut endpoint_vendors = endpoint_vendors;
     if !device_vendor.is_empty() {
-        endpoint_vendors.entry(selected_lower.clone()).or_insert(device_vendor.clone());
+        endpoint_vendors
+            .entry(selected_lower.clone())
+            .or_insert(device_vendor.clone());
     }
     if !device_model.is_empty() {
-        endpoint_models.entry(selected_lower).or_insert(device_model.clone());
+        endpoint_models
+            .entry(selected_lower)
+            .or_insert(device_model.clone());
     }
 
     let mut context = Context::new();

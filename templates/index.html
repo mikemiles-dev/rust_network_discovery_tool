@@ -2147,19 +2147,19 @@
       <table class="dns-table" id="mdns-table">
         <thead>
           <tr>
-            <th>Timestamp</th>
             <th>IP Address</th>
             <th>Hostname</th>
             <th>Services</th>
+            <th>Seen</th>
           </tr>
         </thead>
         <tbody>
           {% for entry in dns_entries %}
           <tr>
-            <td>{{ entry.timestamp }}</td>
             <td>{{ entry.ip }}</td>
             <td>{{ entry.hostname }}</td>
             <td>{{ entry.services }}</td>
+            <td>{{ entry.timestamp }}</td>
           </tr>
           {% endfor %}
           {% if dns_entries | length == 0 %}
