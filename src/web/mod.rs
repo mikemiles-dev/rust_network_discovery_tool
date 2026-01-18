@@ -2283,6 +2283,14 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
             if let Some(vendor) = get_hostname_vendor(endpoint) {
                 return Some((endpoint_lower, vendor.to_string()));
             }
+
+            // Try model-based detection (e.g., "7105X" -> TCL for Roku TVs)
+            if let Some((_, Some(ssdp_model), _, _)) = endpoint_ssdp_models.get(&endpoint_lower)
+                && let Some(vendor) = get_vendor_from_model(ssdp_model)
+            {
+                return Some((endpoint_lower, vendor.to_string()));
+            }
+
             // Fall back to MAC-based detection, but filter out component manufacturers
             // Use lowercase for case-insensitive lookup
             let mac_vendor = endpoint_ips_macs
