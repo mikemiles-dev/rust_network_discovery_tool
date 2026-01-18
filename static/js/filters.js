@@ -4,6 +4,19 @@
 (function(App) {
     'use strict';
 
+    // Debounce tracking for toggle buttons
+    var lastToggleTime = 0;
+    var TOGGLE_DEBOUNCE_MS = 300;
+
+    function canToggle() {
+        var now = Date.now();
+        if (now - lastToggleTime < TOGGLE_DEBOUNCE_MS) {
+            return false;
+        }
+        lastToggleTime = now;
+        return true;
+    }
+
     App.Filters = {
         /**
          * Check if an IP is on the local network (private IP ranges)
@@ -61,6 +74,8 @@
          * Toggle showing only endpoints with known vendors
          */
         showOnlyKnownVendors: function() {
+            if (!canToggle()) return;
+
             // Toggle the known filter
             if (App.state.knownVendorsOnly) {
                 // Turn off the filter
@@ -130,6 +145,8 @@
          * Toggle showing only endpoints with unknown vendors
          */
         showOnlyUnknown: function() {
+            if (!canToggle()) return;
+
             // Toggle the unknown filter
             if (App.state.unknownVendorsOnly) {
                 // Turn off the filter
@@ -196,21 +213,9 @@
         },
 
         /**
-         * Toggle showing only endpoints that are currently active (online)
+         * Show only endpoints that are currently active (online)
          */
         showOnlyActive: function() {
-            // Toggle the active filter
-            if (App.state.activeOnly) {
-                // Turn off the filter
-                App.state.activeOnly = false;
-                var url = new URL(window.location.href);
-                url.searchParams.delete('active');
-                history.replaceState({}, '', url.toString());
-                App.Filters.updateFilterButtonStates();
-                App.Filters.apply(true);
-                return;
-            }
-
             // First, show all device types
             document.getElementById('filterLocal').checked = true;
             document.getElementById('filterGateway').checked = true;
@@ -265,21 +270,9 @@
         },
 
         /**
-         * Toggle showing only endpoints that are currently inactive (offline)
+         * Show only endpoints that are currently inactive (offline)
          */
         showOnlyInactive: function() {
-            // Toggle the inactive filter
-            if (App.state.inactiveOnly) {
-                // Turn off the filter
-                App.state.inactiveOnly = false;
-                var url = new URL(window.location.href);
-                url.searchParams.delete('inactive');
-                history.replaceState({}, '', url.toString());
-                App.Filters.updateFilterButtonStates();
-                App.Filters.apply(true);
-                return;
-            }
-
             // First, show all device types
             document.getElementById('filterLocal').checked = true;
             document.getElementById('filterGateway').checked = true;
