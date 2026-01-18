@@ -238,6 +238,16 @@
             if (App.Classification) {
                 App.Classification.setEndpointName(data.endpoint_name);
             }
+
+            // Update control-content data attributes for network actions (ping, probe, etc.)
+            var controlContent = document.getElementById('control-content');
+            if (controlContent) {
+                controlContent.dataset.ips = data.ips.join(',');
+                controlContent.dataset.endpointName = data.endpoint_name;
+                if (data.device_type) {
+                    controlContent.dataset.deviceType = data.device_type;
+                }
+            }
         },
 
         /**
