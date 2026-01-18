@@ -3620,7 +3620,7 @@ impl EndPoint {
     pub fn get_all_auto_device_types(conn: &Connection) -> HashMap<String, String> {
         let mut map = HashMap::new();
         if let Ok(mut stmt) = conn.prepare(
-            "SELECT COALESCE(custom_name, name), auto_device_type FROM endpoints WHERE auto_device_type IS NOT NULL AND (name IS NOT NULL OR custom_name IS NOT NULL)",
+            "SELECT COALESCE(custom_name, name), auto_device_type FROM endpoints WHERE auto_device_type IS NOT NULL AND auto_device_type != '' AND (name IS NOT NULL OR custom_name IS NOT NULL)",
         ) && let Ok(rows) = stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         }) {
