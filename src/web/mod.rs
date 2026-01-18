@@ -2217,8 +2217,8 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         get_all_endpoints_last_seen(&dropdown_for_seen, scan_interval)
     });
     let online_status_future = tokio::task::spawn_blocking(move || {
-        // Get active threshold from settings (default 7200 seconds = 120 minutes)
-        let active_threshold = get_setting_i64("active_threshold_seconds", 7200) as u64;
+        // Get active threshold from settings (default 120 seconds = 2 minutes)
+        let active_threshold = get_setting_i64("active_threshold_seconds", 120) as u64;
         get_all_endpoints_online_status(&dropdown_for_online, active_threshold)
     });
     let all_types_future =

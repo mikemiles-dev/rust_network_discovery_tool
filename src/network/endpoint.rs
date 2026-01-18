@@ -1746,8 +1746,9 @@ pub fn normalize_model_name(model: &str, vendor: Option<&str>) -> Option<String>
 
     // Roku TV platform identifiers (TCL, Hisense TVs running Roku OS)
     // Models like 7105X, 7000X, 6500X are typically TCL Roku TVs
+    // Vendor is set separately to TCL, so just return "Roku TV" as model
     if is_roku_tv_model(&model_upper) {
-        return Some("TCL Roku TV".to_string());
+        return Some("Roku TV".to_string());
     }
 
     None
