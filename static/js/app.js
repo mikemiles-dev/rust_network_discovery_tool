@@ -199,6 +199,12 @@
             App.state.knownVendorsOnly = true;
         }
 
+        // Restore "unknown vendors only" filter from URL before applying filters
+        var unknownParam = urlParams.get('unknown');
+        if (unknownParam === '1') {
+            App.state.unknownVendorsOnly = true;
+        }
+
         // Restore "active only" filter from URL before applying filters
         var activeParam = urlParams.get('active');
         if (activeParam === '1') {
