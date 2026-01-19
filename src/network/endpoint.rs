@@ -739,6 +739,12 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("48:3f:da", "Espressif"),
     ("c4:4f:33", "Espressif"),
     ("70:03:9f", "Espressif"),
+    // SoftEnergy Co., Ltd. (Korean electronics)
+    ("00:08:61", "SoftEnergy"),
+    // Seongji Industry Company (Korean electronics)
+    ("88:57:1d", "Seongji"),
+    // Private/Anonymous vendor (manufacturer chose not to disclose identity)
+    ("60:74:f4", "Private"),
     // LG Electronics (used for some smart appliances)
     ("00:1e:75", "LG Electronics"),
     ("10:68:3f", "LG Electronics"),
@@ -1634,10 +1640,12 @@ fn is_tv_model(model: &str) -> bool {
 }
 
 /// Check if a string is a Roku serial number
-/// Roku serial numbers follow the pattern: 2 letters + 2 digits + 2 letters + 6 digits (12 chars total)
-/// Examples: YN00NJ468680, YK00KM123456
+/// Roku serial numbers follow the pattern: 2 letters + 2 digits + 2 letters + N digits
+/// - 12 chars total: 2 letters + 2 digits + 2 letters + 6 digits (e.g., YN00NJ468680)
+/// - 10 chars total: 2 letters + 2 digits + 2 letters + 4 digits (e.g., BR23AM1691)
 fn is_roku_serial_number(s: &str) -> bool {
-    if s.len() != 12 {
+    // Must be 10 or 12 characters
+    if s.len() != 10 && s.len() != 12 {
         return false;
     }
     let chars: Vec<char> = s.chars().collect();
@@ -1650,8 +1658,8 @@ fn is_roku_serial_number(s: &str) -> bool {
         // Next 2 chars: letters
         && chars[4].is_ascii_alphabetic()
         && chars[5].is_ascii_alphabetic()
-        // Last 6 chars: digits
-        && chars[6..12].iter().all(|c| c.is_ascii_digit())
+        // Remaining chars (4 or 6): all digits
+        && chars[6..].iter().all(|c| c.is_ascii_digit())
 }
 
 /// Check if model is a Roku TV platform identifier
@@ -2839,7 +2847,11 @@ pub fn infer_model_with_context(
 pub fn get_model_from_mac(mac: &str) -> Option<String> {
     // Check specific MAC prefixes first (for vendors mapped to parent company)
     let mac_lower = mac.to_lowercase().replace(['-', '.'], ":");
-    let prefix = if mac_lower.len() >= 8 { &mac_lower[..8] } else { "" };
+    let prefix = if mac_lower.len() >= 8 {
+        &mac_lower[..8]
+    } else {
+        ""
+    };
 
     // SmartThings sensors (Wisol and Samjin make sensors for Samsung)
     if prefix == "70:2c:1f" || prefix == "28:6d:97" {
@@ -3203,7 +3215,6 @@ pub fn extract_mac_from_ipv6_eui64(ip: &str) -> Option<String> {
 #[derive(Debug)]
 pub enum InsertEndpointError {
     BothMacAndIpNone,
-    LocallyAdministeredMac,
     ConstraintViolation,
     /// IP is an internet destination - recorded in internet_destinations table instead
     InternetDestination,
@@ -3879,20 +3890,12 @@ impl EndPoint {
         }
 
         // For locally administered (randomized/private) MACs:
-        // - If we have a DHCP Client ID, we can still track the device
-        // - If we have a local IP, allow it (this is likely the local device or a known local endpoint)
-        // - Otherwise reject it (can't reliably track random MACs)
+        // Don't use them for endpoint matching (they change frequently)
+        // But still allow endpoint creation based on IP so communications can be recorded
         let is_randomized_mac = mac
             .as_ref()
             .map(|m| is_locally_administered_mac(m))
             .unwrap_or(false);
-        let has_local_ip = ip
-            .as_ref()
-            .map(|ip| Self::is_on_local_network(ip))
-            .unwrap_or(false);
-        if is_randomized_mac && dhcp_client_id.is_none() && !has_local_ip {
-            return Err(InsertEndpointError::LocallyAdministeredMac);
-        }
 
         // For randomized MACs, don't use the MAC for lookups - use IP or DHCP Client ID instead
         let lookup_mac = if is_randomized_mac { None } else { mac.clone() };
@@ -3911,18 +3914,12 @@ impl EndPoint {
             return Err(InsertEndpointError::BothMacAndIpNone);
         }
 
-        // For LOCAL network IPs, require a MAC (even randomized) or DHCP Client ID to create an endpoint
-        // This prevents creating orphan IP-only entries for local devices
-        // (Remote/internet IPs are allowed without MAC since they're tracked by IP)
+        // Check if this is a local network IP
         let is_local_ip = ip
             .as_ref()
             .map(|ip| Self::is_on_local_network(ip))
             .unwrap_or(false);
         let has_any_mac = mac.is_some() && mac != Some("00:00:00:00:00:00".to_string());
-        let has_identifier = has_any_mac || dhcp_client_id.is_some();
-        if is_local_ip && !has_identifier {
-            return Err(InsertEndpointError::BothMacAndIpNone);
-        }
 
         // For INTERNET IPs (non-local), record in internet_destinations table instead of creating endpoint
         // This separates external hosts from local network devices
@@ -4755,13 +4752,18 @@ mod tests {
     fn test_roku_serial_number_detection() {
         use super::*;
 
-        // Valid Roku serial numbers: 2 letters + 2 digits + 2 letters + 6 digits
+        // Valid Roku serial numbers: 2 letters + 2 digits + 2 letters + 6 digits (12 chars)
         assert_eq!(is_roku_serial_number("YN00NJ468680"), true);
         assert_eq!(is_roku_serial_number("YK00KM123456"), true);
         assert_eq!(is_roku_serial_number("AB12CD345678"), true);
 
+        // Valid Roku serial numbers: 2 letters + 2 digits + 2 letters + 4 digits (10 chars)
+        assert_eq!(is_roku_serial_number("BR23AM1691"), true);
+        assert_eq!(is_roku_serial_number("AB12CD3456"), true);
+        assert_eq!(is_roku_serial_number("XY99ZZ0000"), true);
+
         // Invalid patterns
-        assert_eq!(is_roku_serial_number("YN00NJ46868"), false); // Too short (11 chars)
+        assert_eq!(is_roku_serial_number("YN00NJ46868"), false); // 11 chars - invalid length
         assert_eq!(is_roku_serial_number("YN00NJ4686801"), false); // Too long (13 chars)
         assert_eq!(is_roku_serial_number("1N00NJ468680"), false); // First char not letter
         assert_eq!(is_roku_serial_number("YNA0NJ468680"), false); // Third char not digit
@@ -4771,6 +4773,7 @@ mod tests {
         assert_eq!(is_roku_serial_number("YN00NJA68680"), false); // Seventh char not digit
         assert_eq!(is_roku_serial_number("samsung-tv"), false); // Wrong format
         assert_eq!(is_roku_serial_number("7105X"), false); // Roku model, not serial
+        assert_eq!(is_roku_serial_number("BR23AM169"), false); // 9 chars - too short
     }
 
     #[test]

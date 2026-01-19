@@ -346,9 +346,6 @@ impl Communication {
             Err(InsertEndpointError::BothMacAndIpNone) => {
                 return Ok(()); // Skip insertion if both MAC and IP are None
             }
-            Err(InsertEndpointError::LocallyAdministeredMac) => {
-                return Ok(()); // Skip insertion for randomized/private MACs without DHCP Client ID
-            }
             Err(InsertEndpointError::ConstraintViolation) => {
                 return Ok(()); // Skip insertion on constraint violation
             }
@@ -373,9 +370,6 @@ impl Communication {
             Err(InsertEndpointError::BothMacAndIpNone) => {
                 return Ok(()); // Skip insertion if both MAC and IP are None
             }
-            Err(InsertEndpointError::LocallyAdministeredMac) => {
-                return Ok(()); // Skip insertion for randomized/private MACs without DHCP Client ID
-            }
             Err(InsertEndpointError::ConstraintViolation) => {
                 return Ok(()); // Skip insertion on constraint violation
             }
@@ -383,7 +377,6 @@ impl Communication {
                 return Ok(()); // Skip - internet destinations are tracked separately
             }
             Err(InsertEndpointError::DatabaseError(e)) => {
-                // Handle the database error (e.g., log it, return a specific error, etc.)
                 return Err(e);
             }
         };

@@ -228,6 +228,7 @@ fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
     let conn = new_connection();
     // Use JOIN instead of correlated subquery for better performance
     // Fall back to IP address if no valid hostname exists (will be resolved via mDNS)
+    // Filter out endpoints that ONLY have locally administered (randomized) MACs
     let mut stmt = conn
         .prepare(
             "
@@ -254,6 +255,24 @@ fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
                 GROUP BY endpoint_id
             ) ea_ip ON ea_ip.endpoint_id = e.id
             WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
+            AND (
+                -- Has at least one real (non-locally-administered) MAC
+                EXISTS (
+                    SELECT 1 FROM endpoint_attributes ea2
+                    WHERE ea2.endpoint_id = e.id
+                    AND ea2.mac IS NOT NULL
+                    AND ea2.mac != ''
+                    AND UPPER(SUBSTR(ea2.mac, 2, 1)) NOT IN ('2', '6', 'A', 'E')
+                )
+                OR
+                -- Or has no MACs at all (allow IP-only endpoints)
+                NOT EXISTS (
+                    SELECT 1 FROM endpoint_attributes ea3
+                    WHERE ea3.endpoint_id = e.id
+                    AND ea3.mac IS NOT NULL
+                    AND ea3.mac != ''
+                )
+            )
         ",
         )
         .expect("Failed to prepare statement");
@@ -759,6 +778,8 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
 
     // Use CTE to pre-compute display names and IPs for each endpoint
     // This avoids correlated subqueries which are slow
+    // Filter out endpoints that ONLY have locally administered (randomized) MACs
+    // Locally administered MACs have 2nd hex digit of 2, 6, A, or E
     let endpoint_info_cte = "
         WITH endpoint_info AS (
             SELECT
@@ -769,6 +790,24 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
                 MIN(ea.ip) AS ip
             FROM endpoints e
             LEFT JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
+            WHERE (
+                -- Has at least one real (non-locally-administered) MAC
+                EXISTS (
+                    SELECT 1 FROM endpoint_attributes ea2
+                    WHERE ea2.endpoint_id = e.id
+                    AND ea2.mac IS NOT NULL
+                    AND ea2.mac != ''
+                    AND UPPER(SUBSTR(ea2.mac, 2, 1)) NOT IN ('2', '6', 'A', 'E')
+                )
+                OR
+                -- Or has no MACs at all (allow IP-only endpoints)
+                NOT EXISTS (
+                    SELECT 1 FROM endpoint_attributes ea3
+                    WHERE ea3.endpoint_id = e.id
+                    AND ea3.mac IS NOT NULL
+                    AND ea3.mac != ''
+                )
+            )
             GROUP BY e.id
         )";
 
