@@ -170,6 +170,20 @@
                 url.searchParams.delete('search');
             }
 
+            // Preserve filter states (known/unknown/active/inactive)
+            if (App.state.knownVendorsOnly) {
+                url.searchParams.set('known', '1');
+            }
+            if (App.state.unknownVendorsOnly) {
+                url.searchParams.set('unknown', '1');
+            }
+            if (App.state.activeOnly) {
+                url.searchParams.set('active', '1');
+            }
+            if (App.state.inactiveOnly) {
+                url.searchParams.set('inactive', '1');
+            }
+
             // Save scroll positions before reload
             sessionStorage.setItem('scrollPosition', window.scrollY.toString());
 
