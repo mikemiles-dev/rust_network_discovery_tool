@@ -746,6 +746,8 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("88:57:1d", "Seongji"),
     // Private/Anonymous vendor (manufacturer chose not to disclose identity)
     ("60:74:f4", "Private"),
+    // Commscope (owns ARRIS) - cable modems, routers, networking equipment
+    ("70:54:25", "Commscope"),
     // USI (Universal Scientific Industrial) - major Apple supplier/manufacturer
     // Their devices are almost always Apple products (iPhone, Apple Watch, etc.)
     ("e0:4f:43", "Apple"),
@@ -1840,6 +1842,21 @@ const GAMING_VENDORS: &[&str] = &["Nintendo", "Sony"];
 
 // TV/streaming vendors that should be classified as TV
 const TV_VENDORS: &[&str] = &["Roku"];
+
+// Gateway/router vendors - cable modems, routers, networking equipment
+const GATEWAY_VENDORS: &[&str] = &[
+    "Commscope", // ARRIS cable modems/routers
+    "ARRIS",     // Cable modems, routers
+    "Netgear",   // Routers, modems
+    "Linksys",   // Routers
+    "Ubiquiti",  // UniFi networking equipment
+    "MikroTik",  // Routers
+    "Cisco",     // Networking equipment
+    "Juniper",   // Networking equipment
+    "Fortinet",  // Firewalls/routers
+    "pfSense",   // Firewalls
+    "Asus",      // Routers (among other things)
+];
 
 // Services that indicate a Mac (desktop/laptop) vs mobile device
 // Macs typically advertise file sharing services; iPhones/iPads don't
@@ -2993,6 +3010,22 @@ pub fn get_model_from_vendor_and_type(vendor: &str, device_type: &str) -> Option
         ("Tuya", _) => Some("Tuya Smart Device".to_string()),
         ("Dyson", _) => Some("Dyson Air Purifier".to_string()),
 
+        // Networking equipment vendors
+        ("Commscope", "gateway") => Some("ARRIS Modem/Router".to_string()),
+        ("Commscope", _) => Some("ARRIS Device".to_string()),
+        ("ARRIS", "gateway") => Some("ARRIS Modem/Router".to_string()),
+        ("ARRIS", _) => Some("ARRIS Device".to_string()),
+        ("Netgear", "gateway") => Some("Netgear Router".to_string()),
+        ("Netgear", _) => Some("Netgear Device".to_string()),
+        ("Linksys", "gateway") => Some("Linksys Router".to_string()),
+        ("Linksys", _) => Some("Linksys Device".to_string()),
+        ("Ubiquiti", "gateway") => Some("UniFi Gateway".to_string()),
+        ("Ubiquiti", _) => Some("UniFi Device".to_string()),
+        ("MikroTik", "gateway") => Some("MikroTik Router".to_string()),
+        ("MikroTik", _) => Some("MikroTik Device".to_string()),
+        ("Cisco", "gateway") => Some("Cisco Router".to_string()),
+        ("Cisco", _) => Some("Cisco Device".to_string()),
+
         _ => None,
     }
 }
@@ -3026,6 +3059,12 @@ fn is_tv_mac(macs: &[String]) -> bool {
 fn is_apple_mac(macs: &[String]) -> bool {
     macs.iter()
         .any(|mac| get_mac_vendor(mac).is_some_and(|v| v == "Apple"))
+}
+
+/// Check if any MAC address matches known gateway/router vendor OUIs
+fn is_gateway_mac(macs: &[String]) -> bool {
+    macs.iter()
+        .any(|mac| get_mac_vendor(mac).is_some_and(|v| GATEWAY_VENDORS.contains(&v)))
 }
 
 /// Check if device is likely a phone based on MAC and services
@@ -3446,7 +3485,11 @@ impl EndPoint {
         }
 
         // MAC-based detection (identifies devices by vendor OUI)
-        // Check phone first - Apple devices without desktop services are likely iPhones/iPads
+        // Check gateway first - networking equipment vendors
+        if is_gateway_mac(macs) {
+            return Some(CLASSIFICATION_GATEWAY);
+        }
+        // Check phone - Apple devices without desktop services are likely iPhones/iPads
         if is_phone_mac(macs, ips, lower) {
             return Some(CLASSIFICATION_PHONE);
         }

@@ -4,6 +4,30 @@ use rusqlite::{Connection, OptionalExtension, Result, params};
 
 use super::endpoint::{get_mac_vendor, strip_local_suffix};
 
+/// Check if MAC is from a gateway/router vendor (for similar-MAC merging)
+/// These vendors often have multiple NICs with sequential MACs on the same device
+fn is_gateway_vendor_mac(mac: &str) -> bool {
+    const GATEWAY_MERGE_VENDORS: &[&str] = &[
+        "Commscope",
+        "ARRIS",
+        "Netgear",
+        "Linksys",
+        "Ubiquiti",
+        "MikroTik",
+        "Cisco",
+        "Juniper",
+        "Fortinet",
+        "TP-Link",
+        "Asus",
+        "D-Link",
+        "Belkin",
+        "ZyXEL",
+        "Huawei",
+    ];
+
+    get_mac_vendor(mac).is_some_and(|v| GATEWAY_MERGE_VENDORS.contains(&v))
+}
+
 #[derive(Default, Debug)]
 pub struct EndPointAttribute;
 
@@ -115,6 +139,32 @@ impl EndPointAttribute {
             // If we found a match, check for duplicates and merge them
             Self::merge_duplicate_endpoints_by_mac(conn, mac_addr).ok();
             return Some(id);
+        }
+
+        // Try 1.5: Match by similar MAC (same first 5 bytes) for multi-interface devices
+        // Routers/modems often have multiple NICs with sequential MACs (e.g., :50, :51, :52)
+        // Only do this for gateway vendors to avoid false merges
+        if let Some(ref mac_addr) = mac
+            && mac_addr.len() >= 14  // xx:xx:xx:xx:xx format minimum
+            && is_gateway_vendor_mac(mac_addr)
+        {
+            // Get the MAC prefix (first 5 bytes: xx:xx:xx:xx:xx)
+            let mac_prefix = &mac_addr[..14].to_lowercase();
+            if let Ok(mut stmt) = conn.prepare(
+                "SELECT ea.endpoint_id
+                 FROM endpoint_attributes ea
+                 JOIN endpoints e ON ea.endpoint_id = e.id
+                 WHERE LOWER(SUBSTR(ea.mac, 1, 14)) = ?1
+                   AND ea.mac IS NOT NULL
+                   AND LENGTH(ea.mac) >= 14
+                 ORDER BY
+                   CASE WHEN e.name IS NOT NULL AND e.name != '' THEN 0 ELSE 1 END,
+                   ea.endpoint_id ASC
+                 LIMIT 1",
+            ) && let Ok(Some(id)) = stmt.query_row([mac_prefix], |row| row.get(0)).optional()
+            {
+                return Some(id);
+            }
         }
 
         // Try 2: Match by DHCP Client ID (for devices with randomized MACs)
