@@ -54,7 +54,7 @@
         },
 
         /**
-         * Select all device type filters
+         * Select all device type filters and clear known/unknown/active/inactive filters
          */
         selectAll: function() {
             document.getElementById('filterLocal').checked = true;
@@ -67,6 +67,13 @@
             document.getElementById('filterSoundbar').checked = true;
             document.getElementById('filterAppliance').checked = true;
             document.getElementById('filterOther').checked = true;
+
+            // Clear known/unknown/active/inactive filter states
+            App.state.knownVendorsOnly = false;
+            App.state.unknownVendorsOnly = false;
+            App.state.activeOnly = false;
+            App.state.inactiveOnly = false;
+
             App.Filters.apply();
         },
 

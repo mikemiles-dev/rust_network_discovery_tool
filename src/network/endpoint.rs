@@ -746,6 +746,9 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("88:57:1d", "Seongji"),
     // Private/Anonymous vendor (manufacturer chose not to disclose identity)
     ("60:74:f4", "Private"),
+    // USI (Universal Scientific Industrial) - major Apple supplier/manufacturer
+    // Their devices are almost always Apple products (iPhone, Apple Watch, etc.)
+    ("e0:4f:43", "Apple"),
     // LG Electronics (used for some smart appliances)
     ("00:1e:75", "LG Electronics"),
     ("10:68:3f", "LG Electronics"),
