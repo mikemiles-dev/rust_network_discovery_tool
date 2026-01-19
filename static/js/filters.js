@@ -81,57 +81,13 @@
                 return;
             }
 
-            // First, show all device types
-            document.getElementById('filterLocal').checked = true;
-            document.getElementById('filterGateway').checked = true;
-            document.getElementById('filterPrinter').checked = true;
-            document.getElementById('filterTv').checked = true;
-            document.getElementById('filterGaming').checked = true;
-            document.getElementById('filterPhone').checked = true;
-            document.getElementById('filterVirtualization').checked = true;
-            document.getElementById('filterSoundbar').checked = true;
-            document.getElementById('filterAppliance').checked = true;
-            document.getElementById('filterOther').checked = true;
-
-            // Clear search
-            var searchInput = document.getElementById('endpointSearch');
-            if (searchInput) searchInput.value = '';
-
-            // Clear protocol filter
-            var protocolSelect = document.getElementById('globalProtocolSelect');
-            if (protocolSelect) {
-                protocolSelect.value = '';
-                App.state.selectedProtocol = null;
-            }
-
-            // Clear vendor dropdown (we're using knownVendorsOnly instead)
-            var vendorSelect = document.getElementById('globalVendorSelect');
-            if (vendorSelect) {
-                vendorSelect.value = '';
-                App.state.selectedVendor = null;
-            }
-
-            // Clear other special filters
-            App.state.activeOnly = false;
-            App.state.inactiveOnly = false;
+            // Known and Unknown are mutually exclusive
             App.state.unknownVendorsOnly = false;
-
-            // Set known filter state
             App.state.knownVendorsOnly = true;
 
-            // Update URL to persist filter
-            var url = new URL(window.location.href);
-            url.searchParams.delete('active');
-            url.searchParams.delete('inactive');
-            url.searchParams.delete('unknown');
-            url.searchParams.set('known', '1');
-            history.replaceState({}, '', url.toString());
-
-            // Update button states
+            // Update button states and apply filters
             App.Filters.updateFilterButtonStates();
-
-            // Apply filters (skip URL update to preserve our state)
-            App.Filters.apply(true);
+            App.Filters.apply();
         },
 
         /**
@@ -145,171 +101,49 @@
                 return;
             }
 
-            // First, show all device types
-            document.getElementById('filterLocal').checked = true;
-            document.getElementById('filterGateway').checked = true;
-            document.getElementById('filterPrinter').checked = true;
-            document.getElementById('filterTv').checked = true;
-            document.getElementById('filterGaming').checked = true;
-            document.getElementById('filterPhone').checked = true;
-            document.getElementById('filterVirtualization').checked = true;
-            document.getElementById('filterSoundbar').checked = true;
-            document.getElementById('filterAppliance').checked = true;
-            document.getElementById('filterOther').checked = true;
-
-            // Clear search
-            var searchInput = document.getElementById('endpointSearch');
-            if (searchInput) searchInput.value = '';
-
-            // Clear protocol filter
-            var protocolSelect = document.getElementById('globalProtocolSelect');
-            if (protocolSelect) {
-                protocolSelect.value = '';
-                App.state.selectedProtocol = null;
-            }
-
-            // Clear vendor dropdown
-            var vendorSelect = document.getElementById('globalVendorSelect');
-            if (vendorSelect) {
-                vendorSelect.value = '';
-                App.state.selectedVendor = null;
-            }
-
-            // Clear other special filters
-            App.state.activeOnly = false;
-            App.state.inactiveOnly = false;
+            // Known and Unknown are mutually exclusive
             App.state.knownVendorsOnly = false;
-
-            // Set unknown filter state
             App.state.unknownVendorsOnly = true;
 
-            // Update URL to persist filter
-            var url = new URL(window.location.href);
-            url.searchParams.delete('active');
-            url.searchParams.delete('inactive');
-            url.searchParams.delete('known');
-            url.searchParams.set('unknown', '1');
-            history.replaceState({}, '', url.toString());
-
-            // Update button states
+            // Update button states and apply filters
             App.Filters.updateFilterButtonStates();
-
-            // Apply filters (skip URL update to preserve our state)
-            App.Filters.apply(true);
+            App.Filters.apply();
         },
 
         /**
          * Show only endpoints that are currently active (online)
          */
         showOnlyActive: function() {
-            // First, show all device types
-            document.getElementById('filterLocal').checked = true;
-            document.getElementById('filterGateway').checked = true;
-            document.getElementById('filterPrinter').checked = true;
-            document.getElementById('filterTv').checked = true;
-            document.getElementById('filterGaming').checked = true;
-            document.getElementById('filterPhone').checked = true;
-            document.getElementById('filterVirtualization').checked = true;
-            document.getElementById('filterSoundbar').checked = true;
-            document.getElementById('filterAppliance').checked = true;
-            document.getElementById('filterOther').checked = true;
-
-            // Clear search
-            var searchInput = document.getElementById('endpointSearch');
-            if (searchInput) searchInput.value = '';
-
-            // Clear protocol filter
-            var protocolSelect = document.getElementById('globalProtocolSelect');
-            if (protocolSelect) {
-                protocolSelect.value = '';
-                App.state.selectedProtocol = null;
+            // If already showing active only, do nothing
+            if (App.state.activeOnly) {
+                return;
             }
 
-            // Clear vendor dropdown
-            var vendorSelect = document.getElementById('globalVendorSelect');
-            if (vendorSelect) {
-                vendorSelect.value = '';
-                App.state.selectedVendor = null;
-            }
-
-            // Clear other special filters
+            // Active and Inactive are mutually exclusive
             App.state.inactiveOnly = false;
-            App.state.knownVendorsOnly = false;
-            App.state.unknownVendorsOnly = false;
-
-            // Set active filter state
             App.state.activeOnly = true;
 
-            // Update URL to persist filter
-            var url = new URL(window.location.href);
-            url.searchParams.delete('inactive');
-            url.searchParams.delete('known');
-            url.searchParams.delete('unknown');
-            url.searchParams.set('active', '1');
-            history.replaceState({}, '', url.toString());
-
-            // Update button states
+            // Update button states and apply filters
             App.Filters.updateFilterButtonStates();
-
-            // Apply filters (skip URL update to preserve our state)
-            App.Filters.apply(true);
+            App.Filters.apply();
         },
 
         /**
          * Show only endpoints that are currently inactive (offline)
          */
         showOnlyInactive: function() {
-            // First, show all device types
-            document.getElementById('filterLocal').checked = true;
-            document.getElementById('filterGateway').checked = true;
-            document.getElementById('filterPrinter').checked = true;
-            document.getElementById('filterTv').checked = true;
-            document.getElementById('filterGaming').checked = true;
-            document.getElementById('filterPhone').checked = true;
-            document.getElementById('filterVirtualization').checked = true;
-            document.getElementById('filterSoundbar').checked = true;
-            document.getElementById('filterAppliance').checked = true;
-            document.getElementById('filterOther').checked = true;
-
-            // Clear search
-            var searchInput = document.getElementById('endpointSearch');
-            if (searchInput) searchInput.value = '';
-
-            // Clear protocol filter
-            var protocolSelect = document.getElementById('globalProtocolSelect');
-            if (protocolSelect) {
-                protocolSelect.value = '';
-                App.state.selectedProtocol = null;
+            // If already showing inactive only, do nothing
+            if (App.state.inactiveOnly) {
+                return;
             }
 
-            // Clear vendor dropdown
-            var vendorSelect = document.getElementById('globalVendorSelect');
-            if (vendorSelect) {
-                vendorSelect.value = '';
-                App.state.selectedVendor = null;
-            }
-
-            // Clear other special filters
+            // Active and Inactive are mutually exclusive
             App.state.activeOnly = false;
-            App.state.knownVendorsOnly = false;
-            App.state.unknownVendorsOnly = false;
-
-            // Set inactive filter state
             App.state.inactiveOnly = true;
 
-            // Update URL to persist filter
-            var url = new URL(window.location.href);
-            url.searchParams.delete('active');
-            url.searchParams.delete('known');
-            url.searchParams.delete('unknown');
-            url.searchParams.set('inactive', '1');
-            history.replaceState({}, '', url.toString());
-
-            // Update button states
+            // Update button states and apply filters
             App.Filters.updateFilterButtonStates();
-
-            // Apply filters (skip URL update to preserve our state)
-            App.Filters.apply(true);
+            App.Filters.apply();
         },
 
         /**
@@ -386,22 +220,32 @@
             var searchInput = document.getElementById('endpointSearch');
             var searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
 
-            // Save filter state to URL and clear special filters on user interaction
+            // Save filter state to URL (preserve all filter states)
             if (!skipUrlUpdate) {
-                // Clear special filters when user changes other filters
-                // This prevents confusion where these filters persist invisibly
-                if (App.state.activeOnly || App.state.inactiveOnly || App.state.knownVendorsOnly || App.state.unknownVendorsOnly) {
-                    App.state.activeOnly = false;
-                    App.state.inactiveOnly = false;
-                    App.state.knownVendorsOnly = false;
-                    App.state.unknownVendorsOnly = false;
+                var url = new URL(window.location.href);
+
+                // Preserve special filter states in URL
+                if (App.state.activeOnly) {
+                    url.searchParams.set('active', '1');
+                } else {
+                    url.searchParams.delete('active');
+                }
+                if (App.state.inactiveOnly) {
+                    url.searchParams.set('inactive', '1');
+                } else {
+                    url.searchParams.delete('inactive');
+                }
+                if (App.state.knownVendorsOnly) {
+                    url.searchParams.set('known', '1');
+                } else {
+                    url.searchParams.delete('known');
+                }
+                if (App.state.unknownVendorsOnly) {
+                    url.searchParams.set('unknown', '1');
+                } else {
+                    url.searchParams.delete('unknown');
                 }
 
-                var url = new URL(window.location.href);
-                url.searchParams.delete('active');
-                url.searchParams.delete('inactive');
-                url.searchParams.delete('known');
-                url.searchParams.delete('unknown');
                 url.searchParams.set('filter_local', showLocal ? '1' : '0');
                 url.searchParams.set('filter_gateway', showGateway ? '1' : '0');
                 url.searchParams.set('filter_printer', showPrinter ? '1' : '0');
