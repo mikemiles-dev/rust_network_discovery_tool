@@ -3456,6 +3456,12 @@ impl EndPoint {
             || lower.ends_with(".lan")
             || lower.ends_with(".home")
             || lower.ends_with(".internal")
+            || lower.ends_with(".localdomain")
+            || lower.ends_with(".attlocal.net") // AT&T local network suffix
+            || lower.ends_with(".home.arpa")    // RFC 8375 home network
+            || lower.ends_with(".mynetwork")
+            || lower.ends_with(".homenet")
+            || lower.ends_with(".router")
             || !lower.contains('.')
         {
             return false;
