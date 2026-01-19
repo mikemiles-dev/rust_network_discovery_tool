@@ -72,6 +72,7 @@ const CLASSIFICATION_VIRTUALIZATION: &str = "virtualization";
 const CLASSIFICATION_SOUNDBAR: &str = "soundbar";
 const CLASSIFICATION_APPLIANCE: &str = "appliance";
 const CLASSIFICATION_PHONE: &str = "phone";
+const CLASSIFICATION_COMPUTER: &str = "computer";
 
 // Device detection patterns
 const PRINTER_PATTERNS: &[&str] = &[
@@ -2898,6 +2899,7 @@ pub fn get_model_from_vendor_and_type(vendor: &str, device_type: &str) -> Option
         // Samsung by device type
         ("Samsung", "tv") => Some("Samsung Smart TV".to_string()),
         ("Samsung", "phone") => Some("Samsung Galaxy".to_string()),
+        ("Samsung", "computer") => Some("Samsung Computer".to_string()),
         ("Samsung", "appliance") => Some("Samsung Appliance".to_string()),
         ("Samsung", "soundbar") => Some("Samsung Soundbar".to_string()),
         ("Samsung", _) => Some("Samsung Device".to_string()),
@@ -2905,6 +2907,7 @@ pub fn get_model_from_vendor_and_type(vendor: &str, device_type: &str) -> Option
         // LG by device type
         ("LG", "tv") => Some("LG Smart TV".to_string()),
         ("LG", "phone") => Some("LG Phone".to_string()),
+        ("LG", "computer") => Some("LG Computer".to_string()),
         ("LG", "appliance") => Some("LG ThinQ Appliance".to_string()),
         ("LG", "soundbar") => Some("LG Soundbar".to_string()),
         ("LG", _) => Some("LG Device".to_string()),
@@ -2912,17 +2915,20 @@ pub fn get_model_from_vendor_and_type(vendor: &str, device_type: &str) -> Option
         // Sony by device type
         ("Sony", "tv") => Some("Sony Bravia TV".to_string()),
         ("Sony", "gaming") => Some("PlayStation".to_string()),
+        ("Sony", "computer") => Some("Sony VAIO".to_string()),
         ("Sony", "soundbar") => Some("Sony Soundbar".to_string()),
         ("Sony", _) => Some("Sony Device".to_string()),
 
         // Apple by device type
         ("Apple", "phone") => Some("iPhone".to_string()),
         ("Apple", "tv") => Some("Apple TV".to_string()),
+        ("Apple", "computer") => Some("Mac".to_string()),
         ("Apple", "local") => Some("Mac".to_string()),
         ("Apple", _) => Some("Apple Device".to_string()),
 
         // Microsoft by device type
         ("Microsoft", "gaming") => Some("Xbox".to_string()),
+        ("Microsoft", "computer") => Some("Surface".to_string()),
         ("Microsoft", _) => Some("Microsoft Device".to_string()),
 
         // Nintendo
@@ -2946,6 +2952,7 @@ pub fn get_model_from_vendor_and_type(vendor: &str, device_type: &str) -> Option
 
         // HP by device type
         ("HP", "printer") => Some("HP Printer".to_string()),
+        ("HP", "computer") => Some("HP Computer".to_string()),
         ("HP", "local") => Some("HP Computer".to_string()),
         ("HP", _) => Some("HP Device".to_string()),
 
@@ -3109,6 +3116,22 @@ fn classify_by_services(services: &[String], hostname: Option<&str>) -> Option<&
         }
     }
     None
+}
+
+/// Check if port combination indicates a computer (laptop/desktop)
+/// Computers typically have remote access ports (RDP/VNC) combined with file sharing
+fn is_computer_by_ports(ports: &[u16]) -> bool {
+    let has_remote_access = ports.contains(&3389)  // RDP (Windows Remote Desktop)
+        || ports.contains(&5900)                    // VNC
+        || ports.contains(&22); // SSH
+
+    let has_file_sharing = ports.contains(&445)    // SMB (Windows file sharing)
+        || ports.contains(&548)                     // AFP (Apple file sharing)
+        || ports.contains(&139); // NetBIOS
+
+    // Must have both remote access AND file sharing to be classified as computer
+    // This avoids false positives from devices that just have SSH
+    has_remote_access && has_file_sharing
 }
 
 /// Classify by port number
@@ -3432,6 +3455,12 @@ impl EndPoint {
         }
         if is_appliance_mac(macs) {
             return Some(CLASSIFICATION_APPLIANCE);
+        }
+
+        // Computer detection based on port combinations
+        // RDP (3389) or VNC (5900) combined with file sharing ports indicates a computer
+        if is_computer_by_ports(ports) {
+            return Some(CLASSIFICATION_COMPUTER);
         }
 
         // Port-based detection (less reliable, fallback)

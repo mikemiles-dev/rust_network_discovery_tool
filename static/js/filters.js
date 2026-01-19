@@ -71,20 +71,13 @@
         },
 
         /**
-         * Toggle showing only endpoints with known vendors
+         * Show only endpoints with known vendors
          */
         showOnlyKnownVendors: function() {
             if (!canToggle()) return;
 
-            // Toggle the known filter
+            // If already showing known only, do nothing
             if (App.state.knownVendorsOnly) {
-                // Turn off the filter
-                App.state.knownVendorsOnly = false;
-                var url = new URL(window.location.href);
-                url.searchParams.delete('known');
-                history.replaceState({}, '', url.toString());
-                App.Filters.updateFilterButtonStates();
-                App.Filters.apply(true);
                 return;
             }
 
@@ -142,20 +135,13 @@
         },
 
         /**
-         * Toggle showing only endpoints with unknown vendors
+         * Show only endpoints with unknown vendors
          */
         showOnlyUnknown: function() {
             if (!canToggle()) return;
 
-            // Toggle the unknown filter
+            // If already showing unknown only, do nothing
             if (App.state.unknownVendorsOnly) {
-                // Turn off the filter
-                App.state.unknownVendorsOnly = false;
-                var url = new URL(window.location.href);
-                url.searchParams.delete('unknown');
-                history.replaceState({}, '', url.toString());
-                App.Filters.updateFilterButtonStates();
-                App.Filters.apply(true);
                 return;
             }
 
