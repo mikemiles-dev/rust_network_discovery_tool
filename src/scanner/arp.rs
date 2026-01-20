@@ -43,25 +43,19 @@ impl ArpScanner {
             .into_iter()
             .filter(|iface| iface.is_up() && !iface.is_loopback())
             .find(|iface| {
-                iface.ips.iter().any(|ip| {
-                    if let IpAddr::V4(ipv4) = ip.ip() {
-                        network.contains(ipv4)
-                    } else {
-                        false
-                    }
-                })
+                iface
+                    .ips
+                    .iter()
+                    .any(|ip| matches!(ip.ip(), IpAddr::V4(ipv4) if network.contains(ipv4)))
             })
     }
 
     /// Get the source IP and MAC for an interface
     fn get_interface_info(iface: &NetworkInterface) -> Option<(Ipv4Addr, MacAddr)> {
         let mac = iface.mac?;
-        let ip = iface.ips.iter().find_map(|ip| {
-            if let IpAddr::V4(ipv4) = ip.ip() {
-                Some(ipv4)
-            } else {
-                None
-            }
+        let ip = iface.ips.iter().find_map(|ip| match ip.ip() {
+            IpAddr::V4(ipv4) => Some(ipv4),
+            _ => None,
         })?;
         Some((ip, mac))
     }
@@ -101,33 +95,22 @@ impl ArpScanner {
 
     /// Scan a subnet for devices using ARP
     pub async fn scan_subnet(&self, network: Ipv4Network) -> Vec<ArpResult> {
-        let interface = match self.find_interface_for_network(&network) {
-            Some(iface) => iface,
-            None => {
-                eprintln!("No interface found for network {}", network);
-                return Vec::new();
-            }
+        let Some(interface) = self.find_interface_for_network(&network) else {
+            eprintln!("No interface found for network {}", network);
+            return Vec::new();
         };
 
-        let (src_ip, src_mac) = match Self::get_interface_info(&interface) {
-            Some(info) => info,
-            None => {
-                eprintln!("Could not get interface info");
-                return Vec::new();
-            }
+        let Some((src_ip, src_mac)) = Self::get_interface_info(&interface) else {
+            eprintln!("Could not get interface info");
+            return Vec::new();
         };
 
         // Create channel
-        let (mut tx, mut rx) = match datalink::channel(&interface, Default::default()) {
-            Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
-            Ok(_) => {
-                eprintln!("Unknown channel type");
-                return Vec::new();
-            }
-            Err(e) => {
-                eprintln!("Failed to create datalink channel: {}", e);
-                return Vec::new();
-            }
+        let Ok(Channel::Ethernet(mut tx, mut rx)) =
+            datalink::channel(&interface, Default::default())
+        else {
+            eprintln!("Failed to create datalink channel");
+            return Vec::new();
         };
 
         let (result_tx, mut result_rx) = mpsc::channel::<ArpResult>(256);
@@ -148,7 +131,8 @@ impl ArpScanner {
                         {
                             let ip = IpAddr::V4(arp.get_sender_proto_addr());
                             let mac = arp.get_sender_hw_addr();
-                            let response_time_ms = start.elapsed().as_millis() as u64;
+                            let response_time_ms =
+                                u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
 
                             let _ = result_tx.blocking_send(ArpResult {
                                 ip,

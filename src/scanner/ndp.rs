@@ -35,14 +35,9 @@ impl NdpScanner {
             .filter(|iface| iface.is_up() && !iface.is_loopback() && iface.mac.is_some())
             .filter_map(|iface| {
                 // Find a link-local IPv6 address (fe80::)
-                let ipv6 = iface.ips.iter().find_map(|ip| {
-                    if let IpAddr::V6(addr) = ip.ip() {
-                        // Check if it's a link-local address
-                        if addr.segments()[0] == 0xfe80 {
-                            return Some(addr);
-                        }
-                    }
-                    None
+                let ipv6 = iface.ips.iter().find_map(|ip| match ip.ip() {
+                    IpAddr::V6(addr) if addr.segments()[0] == 0xfe80 => Some(addr),
+                    _ => None,
                 })?;
                 Some((iface, ipv6))
             })
@@ -225,22 +220,16 @@ impl NdpScanner {
         let mut all_results = Vec::new();
 
         for (interface, src_ip) in interfaces {
-            let src_mac = match interface.mac {
-                Some(mac) => mac,
-                None => continue,
+            let Some(src_mac) = interface.mac else {
+                continue;
             };
 
             // Create datalink channel
-            let (mut tx, mut rx) = match datalink::channel(&interface, Default::default()) {
-                Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
-                Ok(_) => {
-                    eprintln!("Unknown channel type for {}", interface.name);
-                    continue;
-                }
-                Err(e) => {
-                    eprintln!("Failed to create channel for {}: {}", interface.name, e);
-                    continue;
-                }
+            let Ok(Channel::Ethernet(mut tx, mut rx)) =
+                datalink::channel(&interface, Default::default())
+            else {
+                eprintln!("Failed to create channel for {}", interface.name);
+                continue;
             };
 
             let (result_tx, mut result_rx) = mpsc::channel::<NdpResult>(256);
@@ -255,7 +244,8 @@ impl NdpScanner {
                     match rx.next() {
                         Ok(packet) => {
                             if let Some((ip, mac)) = Self::parse_neighbor_advertisement(packet) {
-                                let response_time_ms = start.elapsed().as_millis() as u64;
+                                let response_time_ms =
+                                    u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
                                 let _ = result_tx.blocking_send(NdpResult {
                                     ip: IpAddr::V6(ip),
                                     mac,

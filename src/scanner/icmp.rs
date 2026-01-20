@@ -81,21 +81,23 @@ impl IcmpScanner {
         !sum as u16
     }
 
+    /// Create a failed result for the given IP
+    fn failed_result(ip: Ipv4Addr) -> IcmpResult {
+        IcmpResult {
+            ip: IpAddr::V4(ip),
+            alive: false,
+            rtt_ms: None,
+            ttl: None,
+        }
+    }
+
     /// Ping a single IP address
     fn ping_ip(&self, ip: Ipv4Addr, sequence: u16) -> IcmpResult {
         let start = Instant::now();
 
         // Create raw ICMP socket
-        let socket = match Socket::new(Domain::IPV4, Type::RAW, Some(Protocol::ICMPV4)) {
-            Ok(s) => s,
-            Err(_) => {
-                return IcmpResult {
-                    ip: IpAddr::V4(ip),
-                    alive: false,
-                    rtt_ms: None,
-                    ttl: None,
-                };
-            }
+        let Ok(socket) = Socket::new(Domain::IPV4, Type::RAW, Some(Protocol::ICMPV4)) else {
+            return Self::failed_result(ip);
         };
 
         // Set timeout
@@ -108,12 +110,7 @@ impl IcmpScanner {
         let addr = SocketAddr::new(IpAddr::V4(ip), 0);
 
         if socket.send_to(&packet, &addr.into()).is_err() {
-            return IcmpResult {
-                ip: IpAddr::V4(ip),
-                alive: false,
-                rtt_ms: None,
-                ttl: None,
-            };
+            return Self::failed_result(ip);
         }
 
         // Wait for reply - use MaybeUninit buffer as required by socket2
@@ -129,7 +126,7 @@ impl IcmpScanner {
 
                 if icmp_type == 0 {
                     // Echo Reply
-                    let rtt = start.elapsed().as_millis() as u64;
+                    let rtt = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
                     return IcmpResult {
                         ip: IpAddr::V4(ip),
                         alive: true,
@@ -141,12 +138,7 @@ impl IcmpScanner {
             _ => {}
         }
 
-        IcmpResult {
-            ip: IpAddr::V4(ip),
-            alive: false,
-            rtt_ms: None,
-            ttl: None,
-        }
+        Self::failed_result(ip)
     }
 
     /// Ping sweep multiple IP addresses
@@ -158,7 +150,8 @@ impl IcmpScanner {
             if let IpAddr::V4(ipv4) = ip {
                 let sem = semaphore.clone();
                 let timeout_ms = self.timeout_ms;
-                let seq = sequence as u16;
+                // Wrap sequence number at u16::MAX (65535) - this is fine for ICMP identification
+                let seq = (sequence % (u16::MAX as usize + 1)) as u16;
 
                 handles.push(tokio::task::spawn_blocking(move || {
                     // Use try_acquire_owned in blocking context

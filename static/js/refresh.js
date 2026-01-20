@@ -87,6 +87,20 @@
                         return;
                     }
 
+                    // Skip refresh if any edit input is visible (user is editing)
+                    var editInputs = document.querySelectorAll('#endpoint-rename-input, #vendor-edit-input, #model-edit-input');
+                    for (var i = 0; i < editInputs.length; i++) {
+                        if (editInputs[i].style.display !== 'none') {
+                            return;
+                        }
+                    }
+
+                    // Skip refresh if device type dropdown is open
+                    var deviceTypeDropdown = document.getElementById('device-type-dropdown');
+                    if (deviceTypeDropdown && deviceTypeDropdown.classList.contains('open')) {
+                        return;
+                    }
+
                     if (App.state.activeTab === 'dns') {
                         // Refresh DNS entries without page reload
                         if (App.Tabs) App.Tabs.refreshDnsEntries();

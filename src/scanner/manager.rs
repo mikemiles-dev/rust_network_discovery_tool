@@ -153,8 +153,8 @@ impl ScanManager {
             let subnets = Self::get_local_subnets();
             let capabilities = check_scan_privileges();
 
-            let total_phases = scan_types.len();
-            let mut completed_phases = 0;
+            let total_phases: usize = scan_types.len();
+            let mut completed_phases: usize = 0;
             let mut discovered_ips: HashSet<IpAddr> = HashSet::new();
 
             for scan_type in &scan_types {
@@ -261,11 +261,16 @@ impl ScanManager {
 
                 completed_phases += 1;
 
-                // Update progress
+                // Update progress (using saturating arithmetic to prevent overflow)
                 {
                     let mut s = status.write().await;
-                    s.progress_percent = ((completed_phases * 100) / total_phases.max(1)) as u8;
-                    s.discovered_count = discovered_ips.len() as u32;
+                    let percent = completed_phases
+                        .saturating_mul(100)
+                        .checked_div(total_phases.max(1))
+                        .unwrap_or(0)
+                        .min(100);
+                    s.progress_percent = percent as u8;
+                    s.discovered_count = discovered_ips.len().min(u32::MAX as usize) as u32;
                 }
             }
 

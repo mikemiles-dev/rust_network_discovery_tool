@@ -144,73 +144,61 @@ fn resolve_from_mdns_cache(name: &str) -> Option<String> {
     }
 }
 
+/// Check if a model string looks like an HP printer model
+fn is_hp_printer_model(model: &str) -> bool {
+    let lower = model.to_lowercase();
+    lower.contains("hp ")
+        || lower.starts_with("hp")
+        || lower.contains("laserjet")
+        || lower.contains("officejet")
+        || lower.contains("deskjet")
+        || lower.contains("envy")
+}
+
+/// Extract text content between HTML tags (case-insensitive tag matching)
+fn extract_tag_content<'a>(html: &'a str, html_lower: &str, tag: &str) -> Option<&'a str> {
+    let open_tag = format!("<{}>", tag);
+    let close_tag = format!("</{}>", tag);
+    let start = html_lower.find(&open_tag)?;
+    let content_start = start + open_tag.len();
+    let end_offset = html_lower[content_start..].find(&close_tag)?;
+    Some(html[content_start..content_start + end_offset].trim())
+}
+
 /// Probe an HP printer's web interface to get its model name (blocking version)
 /// HP printers typically expose their model in the HTML title or body
 fn probe_hp_printer_model_blocking(ip: &str) -> Option<String> {
-    let client = match reqwest::blocking::Client::builder()
+    let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
         .build()
-    {
-        Ok(c) => c,
-        Err(_) => return None,
-    };
+        .ok()?;
 
-    // Try to fetch the printer's main page
     let url = format!("http://{}/", ip);
-    let response = match client.get(&url).send() {
-        Ok(r) => r,
-        Err(_) => return None,
-    };
-
-    let html = match response.text() {
-        Ok(t) => t,
-        Err(_) => return None,
-    };
-
-    // Convert to lowercase for case-insensitive tag matching
+    let html = client.get(&url).send().ok()?.text().ok()?;
     let html_lower = html.to_lowercase();
 
-    // Try to extract model from HTML title tag
-    // HP printers typically have titles like "HP Color LaserJet MFP M283fdw"
-    if let Some(start) = html_lower.find("<title>") {
-        let title_start = start + 7;
-        if let Some(end_offset) = html_lower[title_start..].find("</title>") {
-            // Use original case HTML for the actual content
-            let title = html[title_start..title_start + end_offset].trim();
-            // Clean up the title - remove IP address and extra whitespace
-            let model = title
-                .split("&nbsp;")
-                .next()
-                .unwrap_or(title)
-                .split("  ")
-                .next()
-                .unwrap_or(title)
-                .trim();
+    // Try title tag first - HP printers typically have titles like "HP Color LaserJet MFP M283fdw"
+    if let Some(title) = extract_tag_content(&html, &html_lower, "title") {
+        // Clean up the title - remove IP address and extra whitespace
+        let model = title
+            .split("&nbsp;")
+            .next()
+            .unwrap_or(title)
+            .split("  ")
+            .next()
+            .unwrap_or(title)
+            .trim();
 
-            // Only return if it looks like an HP model
-            let model_lower = model.to_lowercase();
-            if model_lower.contains("hp ")
-                || model_lower.starts_with("hp")
-                || model_lower.contains("laserjet")
-                || model_lower.contains("officejet")
-                || model_lower.contains("deskjet")
-                || model_lower.contains("envy")
-            {
-                return Some(model.to_string());
-            }
+        if is_hp_printer_model(model) {
+            return Some(model.to_string());
         }
     }
 
-    // Try to extract from <h1> tag (common in HP printer pages)
-    if let Some(start) = html_lower.find("<h1>") {
-        let h1_start = start + 4;
-        if let Some(end_offset) = html_lower[h1_start..].find("</h1>") {
-            let h1_content = html[h1_start..h1_start + end_offset].trim();
-            let h1_lower = h1_content.to_lowercase();
-            if h1_lower.contains("hp ") || h1_lower.starts_with("hp") {
-                return Some(h1_content.to_string());
-            }
-        }
+    // Try h1 tag (common in HP printer pages)
+    if let Some(h1_content) = extract_tag_content(&html, &html_lower, "h1")
+        && is_hp_printer_model(h1_content)
+    {
+        return Some(h1_content.to_string());
     }
 
     None

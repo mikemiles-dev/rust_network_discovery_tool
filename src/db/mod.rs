@@ -10,6 +10,13 @@ use crate::network::endpoint_attribute::EndPointAttribute;
 
 const MAX_CHANNEL_BUFFER_SIZE: usize = 50_000; // ~25MB at 500 bytes per Communication
 
+/// Result of attempting to process a batch of communications
+enum BatchResult {
+    Success,
+    Retry,
+    Failed,
+}
+
 pub fn new_connection() -> Connection {
     new_connection_result().expect("Failed to open database")
 }
@@ -273,118 +280,131 @@ impl SQLWriter {
         SQLWriter { sender: tx }
     }
 
+    /// Compute exponential backoff delay with jitter to reduce thundering herd.
+    /// Uses saturating arithmetic to prevent overflow.
+    fn backoff_delay(attempt: u64) -> std::time::Duration {
+        const BASE_DELAY_MS: u64 = 50;
+        const MAX_DELAY_MS: u64 = 5000;
+
+        // Cap shift amount to prevent overflow: 1 << 6 = 64, so max base = 50 * 64 = 3200
+        let shift = attempt.saturating_sub(1).min(6) as u32;
+        let base_delay = BASE_DELAY_MS.saturating_mul(1u64 << shift);
+        let delay = base_delay.min(MAX_DELAY_MS);
+
+        // Add 0-50% jitter using subsec nanos as pseudo-random source
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos() as u64)
+            .unwrap_or(0);
+        let half_delay = delay / 2;
+        let jitter = nanos % (half_delay.saturating_add(1));
+
+        std::time::Duration::from_millis(delay.saturating_add(jitter.min(half_delay)))
+    }
+
     fn process_batch(conn: &mut Connection, batch: &mut Vec<Communication>) {
         if batch.is_empty() {
             return;
         }
 
-        const MAX_BATCH_RETRIES: u64 = 10;
-        const BASE_DELAY_MS: u64 = 50;
-        const MAX_DELAY_MS: u64 = 5000;
+        const MAX_RETRIES: u64 = 10;
 
-        for attempt in 1..=MAX_BATCH_RETRIES {
-            // Try to process the entire batch in a transaction
-            // Use IMMEDIATE to acquire write lock upfront and fail fast if busy
-            let tx = match conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
-            {
-                Ok(tx) => tx,
-                Err(e) => {
-                    if attempt < MAX_BATCH_RETRIES {
-                        // Exponential backoff with jitter and cap
-                        let base_delay = BASE_DELAY_MS * (1 << (attempt - 1).min(6));
-                        let delay = base_delay.min(MAX_DELAY_MS);
-                        // Add 0-50% jitter to reduce thundering herd (using nanos as pseudo-random source)
-                        let nanos = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map(|d| d.subsec_nanos())
-                            .unwrap_or(0) as u64;
-                        let jitter = (nanos % (delay / 2 + 1)).min(delay / 2);
-                        std::thread::sleep(std::time::Duration::from_millis(delay + jitter));
-                        continue;
-                    }
-                    eprintln!(
-                        "Failed to start transaction after {} attempts: {}",
-                        attempt, e
-                    );
+        for attempt in 1..=MAX_RETRIES {
+            match Self::try_process_batch(conn, batch, attempt, MAX_RETRIES) {
+                BatchResult::Success => {
                     batch.clear();
                     return;
                 }
-            };
-
-            let mut had_lock_error = false;
-
-            for communication in batch.iter() {
-                if let Err(e) = communication.insert_communication(&tx) {
-                    match &e {
-                        rusqlite::Error::SqliteFailure(err, _)
-                            if err.code == rusqlite::ErrorCode::ConstraintViolation =>
-                        {
-                            // Silently ignore constraint violations (duplicates)
-                        }
-                        rusqlite::Error::SqliteFailure(err, _)
-                            if err.code == rusqlite::ErrorCode::DatabaseBusy =>
-                        {
-                            // Database locked - will retry the whole batch
-                            had_lock_error = true;
-                            break;
-                        }
-                        _ => {
-                            // Check if error message contains "database is locked"
-                            if e.to_string().contains("database is locked") {
-                                had_lock_error = true;
-                                break;
-                            }
-                            eprintln!("Failed to insert communication: {}", e);
-                        }
-                    }
-                }
-            }
-
-            if had_lock_error {
-                // Rollback happens automatically when tx is dropped
-                drop(tx);
-                if attempt < MAX_BATCH_RETRIES {
-                    // Exponential backoff with jitter and cap
-                    let base_delay = BASE_DELAY_MS * (1 << (attempt - 1).min(6));
-                    let delay = base_delay.min(MAX_DELAY_MS);
-                    let nanos = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.subsec_nanos())
-                        .unwrap_or(0) as u64;
-                    let jitter = (nanos % (delay / 2 + 1)).min(delay / 2);
-                    std::thread::sleep(std::time::Duration::from_millis(delay + jitter));
+                BatchResult::Retry => {
+                    std::thread::sleep(Self::backoff_delay(attempt));
                     continue;
                 }
-                eprintln!(
-                    "Database locked after {} retry attempts, dropping batch of {} items",
-                    attempt,
-                    batch.len()
-                );
-                batch.clear();
-                return;
-            }
-
-            // Success - commit and clear batch
-            if let Err(e) = tx.commit() {
-                if e.to_string().contains("database is locked") && attempt < MAX_BATCH_RETRIES {
-                    let base_delay = BASE_DELAY_MS * (1 << (attempt - 1).min(6));
-                    let delay = base_delay.min(MAX_DELAY_MS);
-                    let nanos = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.subsec_nanos())
-                        .unwrap_or(0) as u64;
-                    let jitter = (nanos % (delay / 2 + 1)).min(delay / 2);
-                    std::thread::sleep(std::time::Duration::from_millis(delay + jitter));
-                    continue;
+                BatchResult::Failed => {
+                    batch.clear();
+                    return;
                 }
-                eprintln!("Failed to commit transaction: {}", e);
             }
-
-            batch.clear();
-            return;
         }
 
         batch.clear();
+    }
+
+    fn try_process_batch(
+        conn: &mut Connection,
+        batch: &[Communication],
+        attempt: u64,
+        max_retries: u64,
+    ) -> BatchResult {
+        // Use IMMEDIATE to acquire write lock upfront and fail fast if busy
+        let tx = match conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) {
+            Ok(tx) => tx,
+            Err(_) if attempt < max_retries => return BatchResult::Retry,
+            Err(e) => {
+                eprintln!(
+                    "Failed to start transaction after {} attempts: {}",
+                    attempt, e
+                );
+                return BatchResult::Failed;
+            }
+        };
+
+        // Insert all communications, checking for lock errors
+        if Self::insert_batch_items(&tx, batch) {
+            // Had lock error - drop transaction (auto-rollback) and retry
+            drop(tx);
+            if attempt < max_retries {
+                return BatchResult::Retry;
+            }
+            eprintln!(
+                "Database locked after {} retry attempts, dropping batch of {} items",
+                attempt,
+                batch.len()
+            );
+            return BatchResult::Failed;
+        }
+
+        // Try to commit
+        match tx.commit() {
+            Ok(()) => BatchResult::Success,
+            Err(e) if e.to_string().contains("database is locked") && attempt < max_retries => {
+                BatchResult::Retry
+            }
+            Err(e) => {
+                eprintln!("Failed to commit transaction: {}", e);
+                BatchResult::Success // Items were inserted, just commit failed
+            }
+        }
+    }
+
+    /// Insert batch items into transaction. Returns true if a lock error occurred.
+    fn insert_batch_items(tx: &rusqlite::Transaction, batch: &[Communication]) -> bool {
+        for communication in batch {
+            if let Err(e) = communication.insert_communication(tx) {
+                if Self::is_lock_error(&e) {
+                    return true;
+                }
+                if !Self::is_constraint_violation(&e) {
+                    eprintln!("Failed to insert communication: {}", e);
+                }
+            }
+        }
+        false
+    }
+
+    fn is_lock_error(e: &rusqlite::Error) -> bool {
+        matches!(
+            e,
+            rusqlite::Error::SqliteFailure(err, _)
+                if err.code == rusqlite::ErrorCode::DatabaseBusy
+        ) || e.to_string().contains("database is locked")
+    }
+
+    fn is_constraint_violation(e: &rusqlite::Error) -> bool {
+        matches!(
+            e,
+            rusqlite::Error::SqliteFailure(err, _)
+                if err.code == rusqlite::ErrorCode::ConstraintViolation
+        )
     }
 
     fn cleanup_old_data(conn: &Connection) -> rusqlite::Result<()> {
