@@ -3425,13 +3425,18 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
                 insert_scan_result(&conn, endpoint_id, "ssdp", None, Some(&details.to_string()))?;
 
                 // If we got a model name from SSDP, save it to the endpoint
-                if let Some(ref model) = ssdp.model_name {
+                // But first verify it's consistent with the endpoint's MAC vendor
+                // to prevent mismatched data from IP address reassignments
+                if let Some(ref model) = ssdp.model_name
+                    && is_ssdp_model_consistent_with_endpoint(&conn, endpoint_id, model)
+                {
                     let _ = conn.execute(
                         "UPDATE endpoints SET ssdp_model = ?1 WHERE id = ?2 AND (ssdp_model IS NULL OR ssdp_model = '')",
                         params![model, endpoint_id],
                     );
                 }
                 // If we got a friendly name from SSDP, save it
+                // Friendly names are less likely to cause confusion, so we allow them
                 if let Some(ref friendly) = ssdp.friendly_name {
                     let _ = conn.execute(
                         "UPDATE endpoints SET ssdp_friendly_name = ?1 WHERE id = ?2 AND (ssdp_friendly_name IS NULL OR ssdp_friendly_name = '')",
@@ -3503,6 +3508,130 @@ fn find_existing_endpoint_by_ip(conn: &Connection, ip: &str) -> Option<i64> {
     .optional()
     .ok()
     .flatten()
+}
+
+/// Check if SSDP model is consistent with endpoint's MAC vendor.
+/// Prevents saving mismatched SSDP data when IP addresses get reassigned.
+fn is_ssdp_model_consistent_with_endpoint(
+    conn: &Connection,
+    endpoint_id: i64,
+    ssdp_model: &str,
+) -> bool {
+    // Get MAC addresses for this endpoint
+    let macs: Vec<String> = conn
+        .prepare("SELECT DISTINCT mac FROM endpoint_attributes WHERE endpoint_id = ?1 AND mac IS NOT NULL AND mac != ''")
+        .and_then(|mut stmt| {
+            stmt.query_map(params![endpoint_id], |row| row.get(0))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+
+    if macs.is_empty() {
+        return true; // No MAC to validate against, allow it
+    }
+
+    let model_lower = ssdp_model.to_lowercase();
+
+    // Extract brand names from the SSDP model
+    // Common streaming device brands that we want to match
+    let ssdp_brands: Vec<&str> = [
+        "roku",
+        "onn",
+        "tcl",
+        "hisense",
+        "samsung",
+        "lg",
+        "sony",
+        "vizio",
+        "apple",
+        "amazon",
+        "fire",
+        "chromecast",
+        "google",
+        "nvidia",
+        "xbox",
+        "playstation",
+        "hp",
+        "epson",
+        "canon",
+        "brother",
+    ]
+    .iter()
+    .filter(|brand| model_lower.contains(*brand))
+    .copied()
+    .collect();
+
+    // If no recognizable brand in SSDP model, allow it
+    if ssdp_brands.is_empty() {
+        return true;
+    }
+
+    // Check each MAC's vendor against the SSDP brands
+    for mac in &macs {
+        if let Some(mac_vendor) = get_mac_vendor(mac) {
+            let vendor_lower = mac_vendor.to_lowercase();
+
+            // If MAC vendor matches any SSDP brand, it's consistent
+            for brand in &ssdp_brands {
+                if vendor_lower.contains(brand) || brand.contains(&vendor_lower.as_str()) {
+                    return true;
+                }
+            }
+
+            // Special case: TCL/Hisense/Philips can run Roku OS
+            // If MAC is TCL/Hisense/Philips and SSDP says Roku, that's OK
+            if (vendor_lower.contains("tcl")
+                || vendor_lower.contains("hisense")
+                || vendor_lower.contains("philips"))
+                && ssdp_brands.contains(&"roku")
+            {
+                return true;
+            }
+
+            // Special case: Earda is OEM for TCL Roku TVs
+            if vendor_lower.contains("earda")
+                && (ssdp_brands.contains(&"tcl") || ssdp_brands.contains(&"roku"))
+            {
+                return true;
+            }
+
+            // If we have a known vendor and SSDP brand doesn't match, reject
+            // This prevents "onn." SSDP data from being saved to a TCL device
+            if !vendor_lower.is_empty() && !ssdp_brands.is_empty() {
+                // Check for conflicting brands (onn vs tcl, samsung vs lg, etc.)
+                let conflicting_pairs = [
+                    ("onn", "tcl"),
+                    ("onn", "hisense"),
+                    ("onn", "samsung"),
+                    ("onn", "lg"),
+                    ("onn", "sony"),
+                    ("samsung", "lg"),
+                    ("samsung", "sony"),
+                    ("samsung", "tcl"),
+                    ("lg", "sony"),
+                    ("lg", "tcl"),
+                    ("lg", "samsung"),
+                    ("hp", "epson"),
+                    ("hp", "canon"),
+                    ("hp", "brother"),
+                    ("epson", "canon"),
+                    ("epson", "brother"),
+                    ("canon", "brother"),
+                ];
+
+                for (brand_a, brand_b) in conflicting_pairs {
+                    // If vendor is brand_a and ssdp is brand_b (or vice versa), it's a conflict
+                    if (vendor_lower.contains(brand_a) && ssdp_brands.contains(&brand_b))
+                        || (vendor_lower.contains(brand_b) && ssdp_brands.contains(&brand_a))
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+
+    true // Default to allowing if no clear conflict
 }
 
 /// Insert a scan result into the database
