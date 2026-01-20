@@ -21,7 +21,7 @@ use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::device_control::DeviceController;
 use crate::network::endpoint::{
     EndPoint, get_hostname_vendor, get_mac_vendor, get_model_from_hostname, get_model_from_mac,
-    get_model_from_vendor_and_type, get_vendor_from_model, infer_model_with_context,
+    get_model_from_vendor_and_type, get_vendor_from_model, infer_model_with_context, is_uuid_like,
     normalize_model_name, strip_local_suffix,
 };
 use crate::network::mdns_lookup::MDnsLookup;
@@ -50,14 +50,16 @@ use serde::{Deserialize, Serialize};
 /// to ensure consistent lookups across HashMaps with lowercase keys.
 ///
 /// Priority: custom_name > valid name > MIN(hostname) > MIN(ip) > name
+/// UUID pattern excluded: 36 chars with format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 const DISPLAY_NAME_SQL: &str = "COALESCE(e.custom_name,
-    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
+    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' AND NOT (LENGTH(e.name) = 36 AND e.name GLOB '[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*') THEN e.name END,
     (SELECT MIN(hostname) FROM endpoint_attributes WHERE endpoint_id = e.id
      AND hostname IS NOT NULL AND hostname != ''
-     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'),
+     AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'
+     AND NOT (LENGTH(hostname) = 36 AND hostname GLOB '[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*')),
     (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
      AND ip IS NOT NULL AND ip != ''),
-    e.name)";
+    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' AND NOT (LENGTH(e.name) = 36 AND e.name GLOB '[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*') THEN e.name END)";
 
 /// Build a SQL IN clause placeholder string for a given number of parameters
 fn build_in_placeholders(count: usize) -> String {
@@ -133,7 +135,9 @@ fn looks_like_ip(s: &str) -> bool {
 fn resolve_from_mdns_cache(name: &str) -> Option<String> {
     if looks_like_ip(name) {
         // probe_hostname checks cache first, then tries reverse DNS lookup
-        MDnsLookup::probe_hostname(name).map(|h| strip_local_suffix(&h))
+        MDnsLookup::probe_hostname(name)
+            .map(|h| strip_local_suffix(&h))
+            .filter(|h| !is_uuid_like(h)) // Filter out UUID-like hostnames
     } else {
         None
     }
@@ -233,10 +237,10 @@ fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
         .prepare(
             "
             SELECT DISTINCT COALESCE(e.custom_name,
-                CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
+                CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' AND NOT (LENGTH(e.name) = 36 AND e.name GLOB '[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*') THEN e.name END,
                 ea_best.hostname,
                 ea_ip.ip,
-                e.name) AS display_name
+                CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' AND NOT (LENGTH(e.name) = 36 AND e.name GLOB '[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*') THEN e.name END) AS display_name
             FROM endpoints e
             INNER JOIN communications c
                 ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
@@ -246,6 +250,7 @@ fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
                 WHERE hostname IS NOT NULL AND hostname != ''
                   AND hostname NOT LIKE '%:%'
                   AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'
+                  AND NOT (LENGTH(hostname) = 36 AND hostname GLOB '[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*')
                 GROUP BY endpoint_id
             ) ea_best ON ea_best.endpoint_id = e.id
             LEFT JOIN (
@@ -785,8 +790,8 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
             SELECT
                 e.id,
                 COALESCE(e.custom_name,
-                    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
-                    MIN(CASE WHEN ea.hostname IS NOT NULL AND ea.hostname != '' THEN ea.hostname END)) AS display_name,
+                    CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' AND NOT (LENGTH(e.name) = 36 AND e.name GLOB '[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*') THEN e.name END,
+                    MIN(CASE WHEN ea.hostname IS NOT NULL AND ea.hostname != '' AND NOT (LENGTH(ea.hostname) = 36 AND ea.hostname GLOB '[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*') THEN ea.hostname END)) AS display_name,
                 MIN(ea.ip) AS ip
             FROM endpoints e
             LEFT JOIN endpoint_attributes ea ON ea.endpoint_id = e.id

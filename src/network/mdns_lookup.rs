@@ -7,6 +7,8 @@ use std::sync::{OnceLock, RwLock};
 use std::time::SystemTime;
 use tokio::task;
 
+use super::endpoint::is_uuid_like;
+
 static MDNS_LOOKUPS: OnceLock<std::sync::RwLock<HashMap<String, String>>> = OnceLock::new();
 static MDNS_SERVICES: OnceLock<std::sync::RwLock<HashMap<String, HashSet<String>>>> =
     OnceLock::new();
@@ -203,10 +205,11 @@ impl MDnsLookup {
                                     };
 
                                     // Persist hostname to database if it's a new discovery
-                                    // Only update if hostname doesn't look like an IP address
+                                    // Only update if hostname doesn't look like an IP address or UUID
                                     if is_new_hostname
                                         && !host.contains(':')
                                         && !host.chars().all(|c| c.is_ascii_digit() || c == '.')
+                                        && !is_uuid_like(&host)
                                     {
                                         let addr_clone = addr.clone();
                                         let host_clone = host.clone();

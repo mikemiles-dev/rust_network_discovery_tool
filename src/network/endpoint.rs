@@ -43,7 +43,7 @@ pub fn strip_local_suffix(hostname: &str) -> String {
 
 /// Check if a string looks like a UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
 /// UUIDs are not good display names for devices, so we skip them
-fn is_uuid_like(s: &str) -> bool {
+pub fn is_uuid_like(s: &str) -> bool {
     // UUID format: 8-4-4-4-12 hex chars with dashes (36 chars total)
     if s.len() != 36 {
         return false;
@@ -3022,7 +3022,7 @@ pub fn get_model_from_mac(mac: &str) -> Option<String> {
         "TP-Link" => Some("TP-Link Device".to_string()),
         "Ubiquiti" => Some("Ubiquiti Device".to_string()),
         "Vizio" => Some("Vizio TV".to_string()),
-        "TCL" => Some("TCL TV".to_string()),
+        "TCL" => Some("Roku TV".to_string()),
         "Hisense" => Some("Hisense TV".to_string()),
         "Texas Instruments" => Some("TI IoT Device".to_string()),
         "Samjin" => Some("SmartThings Sensor".to_string()),
@@ -3109,7 +3109,7 @@ pub fn get_model_from_vendor_and_type(vendor: &str, device_type: &str) -> Option
         ("USI", "appliance") => Some("USI IoT Device".to_string()),
         ("USI", _) => Some("USI Device".to_string()),
 
-        // TCL - mostly Roku TVs
+        // TCL TVs (often running Roku OS)
         ("TCL", "tv") => Some("Roku TV".to_string()),
         ("TCL", _) => Some("TCL Device".to_string()),
 
@@ -3123,6 +3123,7 @@ pub fn get_model_from_vendor_and_type(vendor: &str, device_type: &str) -> Option
         ("Vizio", _) => Some("Vizio Device".to_string()),
 
         // Other vendors
+        ("Roku", "tv") => Some("Roku TV".to_string()),
         ("Roku", _) => Some("Roku".to_string()),
         ("Sonos", _) => Some("Sonos Speaker".to_string()),
         ("iRobot", _) => Some("Roomba".to_string()),
@@ -3133,9 +3134,6 @@ pub fn get_model_from_vendor_and_type(vendor: &str, device_type: &str) -> Option
         ("eero", "gateway") => Some("eero Router".to_string()),
         ("eero", _) => Some("eero".to_string()),
         ("Nest", _) => Some("Nest Device".to_string()),
-        ("Vizio", _) => Some("Vizio TV".to_string()),
-        ("TCL", _) => Some("TCL TV".to_string()),
-        ("Hisense", _) => Some("Hisense TV".to_string()),
         ("TP-Link", "appliance") => Some("Kasa Smart Plug".to_string()),
         ("TP-Link", "gateway") => Some("TP-Link Router".to_string()),
         ("TP-Link", _) => Some("TP-Link Device".to_string()),
@@ -4274,9 +4272,7 @@ impl EndPoint {
         // 2. Current name is UUID → replace with anything (even IP is better than UUID)
         // 3. Current name is IP and new hostname is real hostname → upgrade to hostname
         // 4. Otherwise → keep current name
-        let should_update = current_is_empty
-            || current_is_uuid
-            || (current_is_ip && !new_is_ip);
+        let should_update = current_is_empty || current_is_uuid || (current_is_ip && !new_is_ip);
 
         if should_update {
             conn.execute(

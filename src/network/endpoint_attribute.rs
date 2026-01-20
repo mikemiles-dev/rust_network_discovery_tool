@@ -2,7 +2,7 @@ use std::net::Ipv4Addr;
 
 use rusqlite::{Connection, OptionalExtension, Result, params};
 
-use super::endpoint::{get_mac_vendor, strip_local_suffix};
+use super::endpoint::{get_mac_vendor, is_uuid_like, strip_local_suffix};
 
 /// Check if MAC is from a gateway/router vendor (for similar-MAC merging)
 /// These vendors often have multiple NICs with sequential MACs on the same device
@@ -412,6 +412,12 @@ impl EndPointAttribute {
     ) -> Result<()> {
         // Strip local suffixes like .local, .lan, .home and normalize to lowercase
         let hostname = strip_local_suffix(&hostname).to_lowercase();
+        // Filter out UUID-like hostnames - they're not useful display names
+        let hostname = if is_uuid_like(&hostname) {
+            String::new()
+        } else {
+            hostname
+        };
         // Use INSERT OR IGNORE to skip duplicates (UNIQUE constraint may not catch NULLs)
         conn.execute(
             "INSERT OR IGNORE INTO endpoint_attributes (created_at, endpoint_id, mac, ip, hostname, dhcp_client_id, dhcp_vendor_class) VALUES (strftime('%s', 'now'), ?1, ?2, ?3, ?4, ?5, ?6)",
