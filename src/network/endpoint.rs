@@ -66,6 +66,29 @@ pub fn is_uuid_like(s: &str) -> bool {
     true
 }
 
+/// Check if a string is a valid display name for an endpoint.
+/// Rejects: empty strings, UUIDs, IPv4 addresses, IPv6 addresses.
+/// This is the SINGLE SOURCE OF TRUTH for display name validation.
+pub fn is_valid_display_name(name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    // Reject UUIDs (e.g., "34887b21-9413-022c-352a-67966809b46c")
+    if is_uuid_like(name) {
+        return false;
+    }
+    // Reject IPv6 addresses (contain colons)
+    if name.contains(':') {
+        return false;
+    }
+    // Reject IPv4 addresses (all digits and dots, 4 octets)
+    let parts: Vec<&str> = name.split('.').collect();
+    if parts.len() == 4 && parts.iter().all(|p| p.parse::<u8>().is_ok()) {
+        return false;
+    }
+    true
+}
+
 fn get_local_networks() -> &'static Vec<IpNetwork> {
     LOCAL_NETWORKS.get_or_init(|| {
         interfaces()
@@ -4243,15 +4266,11 @@ impl EndPoint {
         endpoint_id: i64,
         hostname: String,
     ) -> Result<(), InsertEndpointError> {
-        if hostname.is_empty() {
-            return Ok(());
-        }
         // Strip local suffixes like .local, .lan, .home and normalize to lowercase
         let hostname = strip_local_suffix(&hostname).to_lowercase();
 
-        // Skip UUID-like hostnames - they're not user-friendly display names
-        // Devices like Roku/smart TVs sometimes advertise their UUID as hostname
-        if is_uuid_like(&hostname) {
+        // Only accept valid display names (not empty, not UUID, not IP)
+        if !is_valid_display_name(&hostname) {
             return Ok(());
         }
 
@@ -4262,27 +4281,17 @@ impl EndPoint {
             |row| row.get(0),
         )?;
 
-        let current_is_empty = current_name.is_empty();
-        let current_is_ip = current_name.parse::<std::net::IpAddr>().is_ok();
-        let current_is_uuid = is_uuid_like(&current_name);
-        let new_is_ip = hostname.parse::<std::net::IpAddr>().is_ok();
-
-        // Decide whether to update the name:
-        // 1. Current name is empty → always set
-        // 2. Current name is UUID → replace with anything (even IP is better than UUID)
-        // 3. Current name is IP and new hostname is real hostname → upgrade to hostname
-        // 4. Otherwise → keep current name
-        let should_update = current_is_empty || current_is_uuid || (current_is_ip && !new_is_ip);
+        // Update if current name is invalid (empty, UUID, IP) and new name is valid
+        let current_is_valid = is_valid_display_name(&current_name);
+        let should_update = !current_is_valid;
 
         if should_update {
             conn.execute(
                 "UPDATE endpoints SET name = ? WHERE id = ?",
                 params![hostname, endpoint_id],
             )?;
-            // When updating from IP/UUID to hostname, try to merge other IPv6 endpoints on same prefix
-            if !new_is_ip {
-                Self::merge_ipv6_siblings_into_endpoint(conn, endpoint_id);
-            }
+            // When updating to a valid hostname, try to merge other IPv6 endpoints on same prefix
+            Self::merge_ipv6_siblings_into_endpoint(conn, endpoint_id);
         }
 
         Ok(())

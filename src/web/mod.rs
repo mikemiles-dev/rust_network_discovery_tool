@@ -21,8 +21,8 @@ use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::device_control::DeviceController;
 use crate::network::endpoint::{
     EndPoint, get_hostname_vendor, get_mac_vendor, get_model_from_hostname, get_model_from_mac,
-    get_model_from_vendor_and_type, get_vendor_from_model, infer_model_with_context, is_uuid_like,
-    normalize_model_name, strip_local_suffix,
+    get_model_from_vendor_and_type, get_vendor_from_model, infer_model_with_context,
+    is_valid_display_name, normalize_model_name, strip_local_suffix,
 };
 use crate::network::mdns_lookup::MDnsLookup;
 use crate::network::protocol::ProtocolPort;
@@ -137,7 +137,7 @@ fn resolve_from_mdns_cache(name: &str) -> Option<String> {
         // probe_hostname checks cache first, then tries reverse DNS lookup
         MDnsLookup::probe_hostname(name)
             .map(|h| strip_local_suffix(&h))
-            .filter(|h| !is_uuid_like(h)) // Filter out UUID-like hostnames
+            .filter(|h| is_valid_display_name(h))
     } else {
         None
     }
