@@ -20,9 +20,10 @@ use crate::db::{
 use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::device_control::DeviceController;
 use crate::network::endpoint::{
-    EndPoint, get_hostname_vendor, get_mac_vendor, get_model_from_hostname, get_model_from_mac,
-    get_model_from_vendor_and_type, get_vendor_from_model, infer_model_with_context,
-    is_valid_display_name, normalize_model_name, strip_local_suffix,
+    EndPoint, characterize_model, characterize_vendor, get_hostname_vendor, get_mac_vendor,
+    get_model_from_hostname, get_model_from_mac, get_model_from_vendor_and_type,
+    get_vendor_from_model, infer_model_with_context, is_valid_display_name, normalize_model_name,
+    strip_local_suffix,
 };
 use crate::network::mdns_lookup::MDnsLookup;
 use crate::network::protocol::ProtocolPort;
@@ -2396,39 +2397,42 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         "Murata",
         "AzureWave",
     ];
+    // Build vendor lookup using characterize_vendor for clean priority handling
     let endpoint_vendors: HashMap<String, String> = dropdown_endpoints
         .iter()
         .filter_map(|endpoint| {
             let endpoint_lower = endpoint.to_lowercase();
 
-            // Check custom_vendor first (user-set vendor takes priority)
-            if let Some((_, _, _, Some(custom_vendor))) = endpoint_ssdp_models.get(&endpoint_lower)
-            {
-                return Some((endpoint_lower, custom_vendor.clone()));
-            }
-
-            // Try hostname-based detection (catches PS4, Xbox, etc.)
-            if let Some(vendor) = get_hostname_vendor(endpoint) {
-                return Some((endpoint_lower, vendor.to_string()));
-            }
-
-            // Try model-based detection (e.g., "7105X" -> TCL for Roku TVs)
-            if let Some((_, Some(ssdp_model), _, _)) = endpoint_ssdp_models.get(&endpoint_lower)
-                && let Some(vendor) = get_vendor_from_model(ssdp_model)
-            {
-                return Some((endpoint_lower, vendor.to_string()));
-            }
-
-            // Fall back to MAC-based detection, but filter out component manufacturers
-            // Use lowercase for case-insensitive lookup
-            let mac_vendor = endpoint_ips_macs
+            // Get data from various sources
+            let (_custom_model, ssdp_model, ssdp_friendly, custom_vendor) = endpoint_ssdp_models
                 .get(&endpoint_lower)
-                .and_then(|(_, macs)| {
-                    macs.iter().find_map(|mac| {
-                        get_mac_vendor(mac).filter(|v| !component_vendors.contains(v))
-                    })
-                });
-            mac_vendor.map(|v| (endpoint_lower, v.to_string()))
+                .map(|(cm, sm, sf, cv)| {
+                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
+                })
+                .unwrap_or((None, None, None, None));
+
+            let macs: Vec<String> = endpoint_ips_macs
+                .get(&endpoint_lower)
+                .map(|(_, m)| m.clone())
+                .unwrap_or_default()
+                // Filter out component manufacturers
+                .into_iter()
+                .filter(|mac| {
+                    get_mac_vendor(mac)
+                        .map(|v| !component_vendors.contains(&v))
+                        .unwrap_or(true)
+                })
+                .collect();
+
+            // Use characterize_vendor for clean priority-based selection
+            characterize_vendor(
+                custom_vendor,
+                ssdp_friendly,
+                Some(endpoint.as_str()),
+                &macs,
+                ssdp_model,
+            )
+            .map(|c| (endpoint_lower, c.value))
         })
         .collect();
 
@@ -2441,59 +2445,38 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         .collect();
     unique_vendors.sort();
 
-    // Build model lookup for all endpoints (custom_model first, then SSDP, hostname, MAC, DHCP vendor class)
+    // Build model lookup using characterize_model for clean priority handling
     let endpoint_models: HashMap<String, String> = dropdown_endpoints
         .iter()
         .filter_map(|endpoint| {
             let endpoint_lower = endpoint.to_lowercase();
-            // Get vendor for this endpoint (used for model normalization)
+
+            // Get data from various sources
+            let (custom_model, ssdp_model, _, _) = endpoint_ssdp_models
+                .get(&endpoint_lower)
+                .map(|(cm, sm, sf, cv)| {
+                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
+                })
+                .unwrap_or((None, None, None, None));
+
+            let macs: Vec<String> = endpoint_ips_macs
+                .get(&endpoint_lower)
+                .map(|(_, m)| m.clone())
+                .unwrap_or_default();
+
             let vendor = endpoint_vendors.get(&endpoint_lower).map(|v| v.as_str());
 
-            // Check custom_model first (user-set model takes priority)
-            if let Some((Some(custom_model), _, _, _)) = endpoint_ssdp_models.get(&endpoint_lower) {
-                return Some((endpoint_lower.clone(), custom_model.clone()));
-            }
-
-            // Try SSDP/UPnP model (most accurate for TVs and media devices)
-            if let Some((_, Some(ssdp_model), _, _)) = endpoint_ssdp_models.get(&endpoint_lower) {
-                // Try to normalize the model name (e.g., QN43LS03TAFXZA -> Samsung The Frame)
-                if let Some(normalized) = normalize_model_name(ssdp_model, vendor) {
-                    return Some((endpoint_lower.clone(), normalized));
-                }
-                return Some((endpoint_lower.clone(), ssdp_model.clone()));
-            }
-
-            // Try hostname-based detection
-            if let Some(model) = get_model_from_hostname(endpoint) {
-                return Some((endpoint_lower.clone(), model));
-            }
-
-            // Fall back to context-aware MAC-based detection (for Amazon devices etc.)
-            if let Some((_, macs)) = endpoint_ips_macs.get(&endpoint_lower) {
-                // Check if device has SSDP info (indicates it's not a "silent" device like Echo)
-                let has_ssdp = endpoint_ssdp_models
-                    .get(&endpoint_lower)
-                    .is_some_and(|(_, ssdp, friendly, _)| ssdp.is_some() || friendly.is_some());
-                // Note: We don't have open ports data here, so pass empty slice
-                // Full context-aware detection happens in get_endpoint_details
-                for mac in macs {
-                    if let Some(model) = infer_model_with_context(mac, has_ssdp, false, false, &[])
-                    {
-                        return Some((endpoint_lower.clone(), model));
-                    }
-                    if let Some(model) = get_model_from_mac(mac) {
-                        return Some((endpoint_lower.clone(), model));
-                    }
-                }
-            }
-
-            // Fall back to DHCP vendor class (e.g., "samsung:SM-G998B" -> "SM-G998B")
-            if let Some(vendor_class) = endpoint_dhcp_vendor_classes.get(&endpoint_lower)
-                && let Some(model) = extract_model_from_vendor_class(vendor_class)
-            {
-                return Some((endpoint_lower, model));
-            }
-            None
+            // Use characterize_model for clean priority-based selection
+            // Note: device_type is None here; vendor+type inference happens in second pass below
+            characterize_model(
+                custom_model,
+                ssdp_model,
+                Some(endpoint.as_str()),
+                &macs,
+                vendor,
+                None, // device_type added in second pass
+            )
+            .map(|c| (endpoint_lower, c.value))
         })
         .collect();
 

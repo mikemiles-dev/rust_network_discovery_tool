@@ -11,6 +11,76 @@ use std::time::{Duration, Instant};
 use crate::network::endpoint_attribute::EndPointAttribute;
 use crate::network::mdns_lookup::MDnsLookup;
 
+/// Data source for characterized values (vendor, model, hostname).
+/// Priority order: UserSet > DeviceReported > NetworkInferred > PatternMatched
+/// This provides a single source of truth for how we decide which value to use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum DataSource {
+    /// User explicitly set this value (highest priority)
+    UserSet = 4,
+    /// Device self-reported via SSDP, mDNS, or similar
+    DeviceReported = 3,
+    /// Inferred from network data (MAC OUI, DHCP options)
+    NetworkInferred = 2,
+    /// Matched via hostname/model patterns (heuristic)
+    PatternMatched = 1,
+}
+
+impl DataSource {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DataSource::UserSet => "user",
+            DataSource::DeviceReported => "device",
+            DataSource::NetworkInferred => "network",
+            DataSource::PatternMatched => "pattern",
+        }
+    }
+}
+
+impl std::fmt::Display for DataSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// A value with its source for debugging and priority resolution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Characterized<T> {
+    pub value: T,
+    pub source: DataSource,
+}
+
+impl<T> Characterized<T> {
+    pub fn new(value: T, source: DataSource) -> Self {
+        Self { value, source }
+    }
+
+    pub fn user_set(value: T) -> Self {
+        Self::new(value, DataSource::UserSet)
+    }
+
+    pub fn device_reported(value: T) -> Self {
+        Self::new(value, DataSource::DeviceReported)
+    }
+
+    pub fn network_inferred(value: T) -> Self {
+        Self::new(value, DataSource::NetworkInferred)
+    }
+
+    pub fn pattern_matched(value: T) -> Self {
+        Self::new(value, DataSource::PatternMatched)
+    }
+}
+
+/// Pick the highest priority value from a list of characterized options.
+pub fn pick_best<T: Clone>(options: &[Option<Characterized<T>>]) -> Option<Characterized<T>> {
+    options
+        .iter()
+        .filter_map(|o| o.as_ref())
+        .max_by_key(|c| c.source)
+        .cloned()
+}
+
 // Simple DNS cache to avoid repeated slow lookups
 lazy_static::lazy_static! {
     static ref DNS_CACHE: Arc<Mutex<HashMap<String, (String, Instant)>>> = Arc::new(Mutex::new(HashMap::new()));
@@ -2121,6 +2191,111 @@ pub fn get_hostname_vendor(hostname: &str) -> Option<&'static str> {
     }
 
     None
+}
+
+/// Characterize vendor from all available sources, returning the best match with source info.
+/// Priority: custom_vendor (UserSet) > SSDP (DeviceReported) > hostname (PatternMatched) > MAC (NetworkInferred)
+pub fn characterize_vendor(
+    custom_vendor: Option<&str>,
+    ssdp_friendly_name: Option<&str>,
+    hostname: Option<&str>,
+    macs: &[String],
+    model: Option<&str>,
+) -> Option<Characterized<String>> {
+    // Gather all sources
+    let user = custom_vendor
+        .filter(|v| !v.is_empty())
+        .map(|v| Characterized::user_set(v.to_string()));
+
+    // SSDP friendly name often contains vendor (e.g., "[TV] Samsung The Frame")
+    let ssdp = ssdp_friendly_name
+        .filter(|v| !v.is_empty())
+        .and_then(|name| {
+            // Extract vendor from SSDP friendly name patterns
+            let lower = name.to_lowercase();
+            if lower.contains("samsung") {
+                Some("Samsung")
+            } else if lower.contains("lg") {
+                Some("LG")
+            } else if lower.contains("sony") {
+                Some("Sony")
+            } else if lower.contains("roku") {
+                Some("Roku")
+            } else if lower.contains("eero") {
+                Some("eero")
+            } else {
+                None
+            }
+        })
+        .map(|v| Characterized::device_reported(v.to_string()));
+
+    // Hostname pattern matching
+    let from_hostname = hostname
+        .filter(|h| !h.is_empty())
+        .and_then(|h| get_hostname_vendor(h))
+        .map(|v| Characterized::pattern_matched(v.to_string()));
+
+    // Model-based vendor detection
+    let from_model = model
+        .filter(|m| !m.is_empty())
+        .and_then(|m| get_vendor_from_model(m))
+        .map(|v| Characterized::pattern_matched(v.to_string()));
+
+    // MAC OUI lookup (try each MAC until we find a vendor)
+    let from_mac = macs
+        .iter()
+        .find_map(|mac| get_mac_vendor(mac))
+        .map(|v| Characterized::network_inferred(v.to_string()));
+
+    // Pick the best one (highest priority source)
+    pick_best(&[user, ssdp, from_hostname, from_model, from_mac])
+}
+
+/// Characterize model from all available sources, returning the best match with source info.
+/// Priority: custom_model (UserSet) > SSDP model (DeviceReported) > hostname (PatternMatched) > MAC/vendor inference (NetworkInferred)
+pub fn characterize_model(
+    custom_model: Option<&str>,
+    ssdp_model: Option<&str>,
+    hostname: Option<&str>,
+    macs: &[String],
+    vendor: Option<&str>,
+    device_type: Option<&str>,
+) -> Option<Characterized<String>> {
+    // User-set model has highest priority
+    let user = custom_model
+        .filter(|m| !m.is_empty())
+        .map(|m| Characterized::user_set(m.to_string()));
+
+    // SSDP model - normalize it for better display
+    let ssdp = ssdp_model
+        .filter(|m| !m.is_empty())
+        .and_then(|m| normalize_model_name(m, vendor).or_else(|| Some(m.to_string())))
+        .map(Characterized::device_reported);
+
+    // Hostname-based model detection
+    let from_hostname = hostname
+        .filter(|h| !h.is_empty())
+        .and_then(get_model_from_hostname)
+        .map(Characterized::pattern_matched);
+
+    // MAC-based model detection
+    let from_mac = macs
+        .iter()
+        .find_map(|mac| get_model_from_mac(mac))
+        .map(Characterized::network_inferred);
+
+    // Vendor + device type inference (lowest priority pattern match)
+    let from_vendor_type = vendor
+        .filter(|v| !v.is_empty())
+        .and_then(|v| {
+            device_type
+                .filter(|t| !t.is_empty())
+                .and_then(|t| get_model_from_vendor_and_type(v, t))
+        })
+        .map(Characterized::pattern_matched);
+
+    // Pick the best one (highest priority source)
+    pick_best(&[user, ssdp, from_hostname, from_mac, from_vendor_type])
 }
 
 /// Get vendor name from model number patterns
