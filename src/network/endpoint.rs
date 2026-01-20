@@ -3409,6 +3409,8 @@ pub struct EndPoint;
 impl EndPoint {
     /// Classify an endpoint as Gateway, Internet, or LocalNetwork based on IP address and hostname
     pub fn classify_endpoint(ip: Option<String>, hostname: Option<String>) -> Option<&'static str> {
+        let ip_is_local = ip.as_ref().is_some_and(|ip_str| Self::is_on_local_network(ip_str));
+
         // Check if it's the default gateway
         if let Some(ref ip_str) = ip {
             if let Some(gateway_ip) = Self::get_default_gateway()
@@ -3422,8 +3424,8 @@ impl EndPoint {
                 return Some(CLASSIFICATION_GATEWAY);
             }
 
-            // Check if it's on the local network
-            if !Self::is_on_local_network(ip_str) {
+            // Check if it's on the local network - if not, it's internet
+            if !ip_is_local {
                 return Some(CLASSIFICATION_INTERNET);
             }
         }
@@ -3434,8 +3436,10 @@ impl EndPoint {
                 return Some(CLASSIFICATION_GATEWAY);
             }
 
-            // Check if hostname looks like an internet domain (has TLD, not local)
-            if Self::is_internet_hostname(hostname_str) {
+            // Only check hostname for internet classification if we don't have a local IP
+            // If the IP is local, trust the IP - hostname suffix doesn't matter
+            // This prevents ISP-specific suffixes (like .attlocal.net) from being misclassified
+            if !ip_is_local && Self::is_internet_hostname(hostname_str) {
                 return Some(CLASSIFICATION_INTERNET);
             }
         }
