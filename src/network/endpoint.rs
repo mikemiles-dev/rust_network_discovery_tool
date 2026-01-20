@@ -41,6 +41,31 @@ pub fn strip_local_suffix(hostname: &str) -> String {
     hostname.to_string()
 }
 
+/// Check if a string looks like a UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+/// UUIDs are not good display names for devices, so we skip them
+fn is_uuid_like(s: &str) -> bool {
+    // UUID format: 8-4-4-4-12 hex chars with dashes (36 chars total)
+    if s.len() != 36 {
+        return false;
+    }
+    let parts: Vec<&str> = s.split('-').collect();
+    if parts.len() != 5 {
+        return false;
+    }
+    // Check expected lengths: 8-4-4-4-12
+    let expected_lengths = [8, 4, 4, 4, 12];
+    for (part, expected_len) in parts.iter().zip(expected_lengths.iter()) {
+        if part.len() != *expected_len {
+            return false;
+        }
+        // Check all chars are hex digits
+        if !part.chars().all(|c| c.is_ascii_hexdigit()) {
+            return false;
+        }
+    }
+    true
+}
+
 fn get_local_networks() -> &'static Vec<IpNetwork> {
     LOCAL_NETWORKS.get_or_init(|| {
         interfaces()
@@ -1466,6 +1491,8 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("d4:e2:2f", "Roku"),
     ("d8:31:34", "Roku"),
     ("dc:3a:5e", "Roku"),
+    // Earda Technologies - OEM for TCL/Hisense Roku TVs
+    ("14:85:54", "TCL"),
     // Sony (PlayStation, TVs)
     ("00:01:4a", "Sony"),
     ("00:04:1f", "Sony"),
@@ -1933,7 +1960,7 @@ const APPLIANCE_VENDORS: &[&str] = &[
 const GAMING_VENDORS: &[&str] = &["Nintendo", "Sony"];
 
 // TV/streaming vendors that should be classified as TV
-const TV_VENDORS: &[&str] = &["Roku"];
+const TV_VENDORS: &[&str] = &["Roku", "TCL", "Hisense", "Vizio"];
 
 // Gateway/router vendors - cable modems, routers, networking equipment
 const GATEWAY_VENDORS: &[&str] = &[
@@ -3082,6 +3109,19 @@ pub fn get_model_from_vendor_and_type(vendor: &str, device_type: &str) -> Option
         ("USI", "appliance") => Some("USI IoT Device".to_string()),
         ("USI", _) => Some("USI Device".to_string()),
 
+        // TCL - mostly Roku TVs
+        ("TCL", "tv") => Some("Roku TV".to_string()),
+        ("TCL", _) => Some("TCL Device".to_string()),
+
+        // Hisense - Roku TVs and Android TVs
+        ("Hisense", "tv") => Some("Hisense Smart TV".to_string()),
+        ("Hisense", _) => Some("Hisense Device".to_string()),
+
+        // Vizio
+        ("Vizio", "tv") => Some("Vizio Smart TV".to_string()),
+        ("Vizio", "soundbar") => Some("Vizio Soundbar".to_string()),
+        ("Vizio", _) => Some("Vizio Device".to_string()),
+
         // Other vendors
         ("Roku", _) => Some("Roku".to_string()),
         ("Sonos", _) => Some("Sonos Speaker".to_string()),
@@ -4211,32 +4251,40 @@ impl EndPoint {
         // Strip local suffixes like .local, .lan, .home and normalize to lowercase
         let hostname = strip_local_suffix(&hostname).to_lowercase();
 
-        // Check if endpoint exists with null hostname
-        if conn.query_row(
-            "SELECT COUNT(*) FROM endpoints WHERE id = ? AND (name IS NULL OR name = '')",
+        // Skip UUID-like hostnames - they're not user-friendly display names
+        // Devices like Roku/smart TVs sometimes advertise their UUID as hostname
+        if is_uuid_like(&hostname) {
+            return Ok(());
+        }
+
+        // Get current name
+        let current_name: String = conn.query_row(
+            "SELECT COALESCE(name, '') FROM endpoints WHERE id = ?",
             params![endpoint_id],
-            |row| row.get::<_, i64>(0),
-        )? > 0
-        {
+            |row| row.get(0),
+        )?;
+
+        let current_is_empty = current_name.is_empty();
+        let current_is_ip = current_name.parse::<std::net::IpAddr>().is_ok();
+        let current_is_uuid = is_uuid_like(&current_name);
+        let new_is_ip = hostname.parse::<std::net::IpAddr>().is_ok();
+
+        // Decide whether to update the name:
+        // 1. Current name is empty → always set
+        // 2. Current name is UUID → replace with anything (even IP is better than UUID)
+        // 3. Current name is IP and new hostname is real hostname → upgrade to hostname
+        // 4. Otherwise → keep current name
+        let should_update = current_is_empty
+            || current_is_uuid
+            || (current_is_ip && !new_is_ip);
+
+        if should_update {
             conn.execute(
-                "UPDATE endpoints SET name = ? where id = ?",
+                "UPDATE endpoints SET name = ? WHERE id = ?",
                 params![hostname, endpoint_id],
             )?;
-        } else if hostname.parse::<std::net::IpAddr>().is_err() {
-            // Only update if hostname is not an IPv4 or IPv6 address
-            // First check if current name is an IP address
-            let current_name: String = conn.query_row(
-                "SELECT COALESCE(name, '') FROM endpoints WHERE id = ?",
-                params![endpoint_id],
-                |row| row.get(0),
-            )?;
-
-            if current_name.is_empty() || current_name.parse::<std::net::IpAddr>().is_ok() {
-                conn.execute(
-                    "UPDATE endpoints SET name = ? WHERE id = ?",
-                    params![hostname, endpoint_id],
-                )?;
-                // When updating from IP to hostname, try to merge other IPv6 endpoints on same prefix
+            // When updating from IP/UUID to hostname, try to merge other IPv6 endpoints on same prefix
+            if !new_is_ip {
                 Self::merge_ipv6_siblings_into_endpoint(conn, endpoint_id);
             }
         }
