@@ -108,8 +108,8 @@
                         // Don't reload page when on scanner tab - scanner has its own polling
                         if (App.Scanner) App.Scanner.pollStatus();
                     } else if (App.state.activeTab === 'network') {
-                        // Reload page for network tab, preserving sort and selection
-                        App.Refresh.reloadWithState();
+                        // Refresh only the endpoint table, not the details panel
+                        App.Refresh.refreshEndpointTable();
                     }
                     // No auto-refresh for internet and settings tabs
                 }, seconds * 1000);
@@ -145,9 +145,85 @@
             } else if (App.state.activeTab === 'scanner') {
                 if (App.Scanner) App.Scanner.pollStatus();
             } else if (App.state.activeTab === 'network') {
-                App.Refresh.reloadWithState();
+                App.Refresh.refreshEndpointTable();
             }
             // No action for internet and settings tabs
+        },
+
+        /**
+         * Refresh endpoint table without reloading page or affecting endpoint details
+         */
+        refreshEndpointTable: function() {
+            fetch('/api/endpoints/table')
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    if (!data.endpoints) return;
+
+                    // Build a lookup map by lowercase name for quick access
+                    var endpointMap = {};
+                    data.endpoints.forEach(function(ep) {
+                        endpointMap[ep.name.toLowerCase()] = ep;
+                    });
+
+                    // Update existing rows in the table
+                    var rows = document.querySelectorAll('.endpoint-row');
+                    rows.forEach(function(row) {
+                        var endpointName = row.dataset.endpoint;
+                        if (!endpointName) return;
+
+                        var ep = endpointMap[endpointName.toLowerCase()];
+                        if (!ep) return;
+
+                        // Update vendor cell
+                        var vendorCell = row.querySelector('td:nth-child(2)');
+                        if (vendorCell) {
+                            if (ep.vendor) {
+                                vendorCell.innerHTML = '<span class="vendor-badge">' + ep.vendor + '</span>';
+                            } else {
+                                vendorCell.innerHTML = '';
+                            }
+                        }
+
+                        // Update model cell
+                        var modelCell = row.querySelector('td:nth-child(3)');
+                        if (modelCell) {
+                            modelCell.textContent = ep.model || '';
+                            modelCell.className = 'model-cell';
+                        }
+
+                        // Update bytes cell
+                        var bytesCell = row.querySelector('td:nth-child(4)');
+                        if (bytesCell && App.Formatting) {
+                            bytesCell.textContent = App.Formatting.formatBytes(ep.bytes);
+                        }
+
+                        // Update last seen cell
+                        var lastSeenCell = row.querySelector('td:nth-child(5)');
+                        if (lastSeenCell) {
+                            lastSeenCell.textContent = ep.last_seen;
+                        }
+
+                        // Update online status indicator
+                        var statusIndicator = row.querySelector('.status-indicator');
+                        if (statusIndicator) {
+                            statusIndicator.className = 'status-indicator ' + (ep.online ? 'online' : 'offline');
+                            statusIndicator.title = ep.online ? 'Online' : 'Offline';
+                        }
+
+                        // Update device type data attribute (for CSS styling)
+                        if (ep.device_type) {
+                            row.dataset.endpointType = ep.device_type;
+                        }
+                    });
+
+                    // Re-apply filters after update
+                    if (typeof applyFilters === 'function') {
+                        applyFilters();
+                    }
+                })
+                .catch(function(error) {
+                    console.error('Failed to refresh endpoint table:', error);
+                });
         },
 
         /**

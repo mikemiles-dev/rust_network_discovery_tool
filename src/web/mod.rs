@@ -2195,6 +2195,7 @@ pub fn start(preferred_port: u16) {
                         .service(get_scan_capabilities)
                         .service(get_scan_config)
                         .service(set_scan_config)
+                        .service(get_endpoints_table)
                         .service(get_settings)
                         .service(update_setting)
                         .service(get_capture_status)
@@ -3609,6 +3610,194 @@ async fn set_scan_config(body: Json<ScanConfig>) -> impl Responder {
         success: true,
         message: "Config updated".to_string(),
     })
+}
+
+// ============================================================================
+// Endpoints Table API (for AJAX refresh without full page reload)
+// ============================================================================
+
+#[derive(Serialize)]
+struct EndpointTableRow {
+    name: String,
+    vendor: Option<String>,
+    model: Option<String>,
+    device_type: Option<String>,
+    bytes: i64,
+    last_seen: String,
+    online: bool,
+}
+
+#[derive(Serialize)]
+struct EndpointsTableResponse {
+    endpoints: Vec<EndpointTableRow>,
+}
+
+/// Get endpoint table data for AJAX refresh (doesn't reload full page)
+#[get("/api/endpoints/table")]
+async fn get_endpoints_table() -> impl Responder {
+    let scan_interval: u64 = 525600; // Same default as index route
+
+    // Get endpoint list
+    let dropdown_future = tokio::task::spawn_blocking(move || dropdown_endpoints(scan_interval));
+    let dropdown_endpoints_list = dropdown_future.await.unwrap_or_default();
+
+    if dropdown_endpoints_list.is_empty() {
+        return HttpResponse::Ok().json(EndpointsTableResponse {
+            endpoints: Vec::new(),
+        });
+    }
+
+    // Run queries in parallel (same as index route but simplified)
+    let dropdown_for_ips = dropdown_endpoints_list.clone();
+    let dropdown_for_bytes = dropdown_endpoints_list.clone();
+    let dropdown_for_seen = dropdown_endpoints_list.clone();
+    let dropdown_for_online = dropdown_endpoints_list.clone();
+    let dropdown_for_types = dropdown_endpoints_list.clone();
+    let dropdown_for_ssdp = dropdown_endpoints_list.clone();
+
+    let ips_macs_future =
+        tokio::task::spawn_blocking(move || get_endpoint_ips_and_macs(&dropdown_for_ips));
+    let bytes_future = tokio::task::spawn_blocking(move || {
+        get_all_endpoints_bytes(&dropdown_for_bytes, scan_interval)
+    });
+    let last_seen_future = tokio::task::spawn_blocking(move || {
+        get_all_endpoints_last_seen(&dropdown_for_seen, scan_interval)
+    });
+    let online_status_future = tokio::task::spawn_blocking(move || {
+        let active_threshold = get_setting_i64("active_threshold_seconds", 120) as u64;
+        get_all_endpoints_online_status(&dropdown_for_online, active_threshold)
+    });
+    let all_types_future =
+        tokio::task::spawn_blocking(move || get_all_endpoint_types(&dropdown_for_types));
+    let ssdp_models_future =
+        tokio::task::spawn_blocking(move || get_endpoint_ssdp_models(&dropdown_for_ssdp));
+
+    let (
+        ips_macs_result,
+        bytes_result,
+        last_seen_result,
+        online_status_result,
+        all_types_result,
+        ssdp_models_result,
+    ) = tokio::join!(
+        ips_macs_future,
+        bytes_future,
+        last_seen_future,
+        online_status_future,
+        all_types_future,
+        ssdp_models_future
+    );
+
+    let endpoint_ips_macs = ips_macs_result.unwrap_or_default();
+    let endpoint_bytes = bytes_result.unwrap_or_default();
+    let endpoint_last_seen = last_seen_result.unwrap_or_default();
+    let endpoint_online_status = online_status_result.unwrap_or_default();
+    let (dropdown_types, _manual_overrides) = all_types_result.unwrap_or_default();
+    let endpoint_ssdp_models = ssdp_models_result.unwrap_or_default();
+
+    // Build vendor lookup (simplified from index route)
+    let component_vendors = [
+        "Espressif",
+        "Tuya",
+        "Realtek",
+        "MediaTek",
+        "Qualcomm",
+        "Broadcom",
+        "Marvell",
+        "USI",
+        "Wisol",
+        "Murata",
+        "AzureWave",
+    ];
+
+    let endpoint_vendors: HashMap<String, String> = dropdown_endpoints_list
+        .iter()
+        .filter_map(|endpoint| {
+            let endpoint_lower = endpoint.to_lowercase();
+            let (_custom_model, ssdp_model, ssdp_friendly, custom_vendor) = endpoint_ssdp_models
+                .get(&endpoint_lower)
+                .map(|(cm, sm, sf, cv)| {
+                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
+                })
+                .unwrap_or((None, None, None, None));
+
+            let macs: Vec<String> = endpoint_ips_macs
+                .get(&endpoint_lower)
+                .map(|(_, m)| m.clone())
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|mac| {
+                    get_mac_vendor(mac)
+                        .map(|v| !component_vendors.contains(&v))
+                        .unwrap_or(true)
+                })
+                .collect();
+
+            characterize_vendor(
+                custom_vendor,
+                ssdp_friendly,
+                Some(endpoint.as_str()),
+                &macs,
+                ssdp_model,
+            )
+            .map(|c| (endpoint_lower, c.value))
+        })
+        .collect();
+
+    // Build model lookup
+    let endpoint_models: HashMap<String, String> = dropdown_endpoints_list
+        .iter()
+        .filter_map(|endpoint| {
+            let endpoint_lower = endpoint.to_lowercase();
+            let (custom_model, ssdp_model, _, _) = endpoint_ssdp_models
+                .get(&endpoint_lower)
+                .map(|(cm, sm, sf, cv)| {
+                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
+                })
+                .unwrap_or((None, None, None, None));
+
+            let macs: Vec<String> = endpoint_ips_macs
+                .get(&endpoint_lower)
+                .map(|(_, m)| m.clone())
+                .unwrap_or_default();
+
+            let vendor = endpoint_vendors.get(&endpoint_lower).map(|v| v.as_str());
+
+            characterize_model(
+                custom_model,
+                ssdp_model,
+                Some(endpoint.as_str()),
+                &macs,
+                vendor,
+                None,
+            )
+            .map(|c| (endpoint_lower, c.value))
+        })
+        .collect();
+
+    // Build response
+    let endpoints: Vec<EndpointTableRow> = dropdown_endpoints_list
+        .iter()
+        .map(|endpoint| {
+            let endpoint_lower = endpoint.to_lowercase();
+            EndpointTableRow {
+                name: endpoint.clone(),
+                vendor: endpoint_vendors.get(&endpoint_lower).cloned(),
+                model: endpoint_models.get(&endpoint_lower).cloned(),
+                device_type: dropdown_types.get(&endpoint_lower).map(|s| s.to_string()),
+                bytes: *endpoint_bytes.get(&endpoint_lower).unwrap_or(&0),
+                last_seen: endpoint_last_seen
+                    .get(&endpoint_lower)
+                    .cloned()
+                    .unwrap_or_else(|| "-".to_string()),
+                online: *endpoint_online_status
+                    .get(&endpoint_lower)
+                    .unwrap_or(&false),
+            }
+        })
+        .collect();
+
+    HttpResponse::Ok().json(EndpointsTableResponse { endpoints })
 }
 
 // ============================================================================
