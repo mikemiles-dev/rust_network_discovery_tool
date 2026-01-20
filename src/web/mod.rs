@@ -3573,7 +3573,7 @@ fn is_ssdp_model_consistent_with_endpoint(
 
             // If MAC vendor matches any SSDP brand, it's consistent
             for brand in &ssdp_brands {
-                if vendor_lower.contains(brand) || brand.contains(&vendor_lower.as_str()) {
+                if vendor_lower.contains(brand) || brand.contains(vendor_lower.as_str()) {
                     return true;
                 }
             }
