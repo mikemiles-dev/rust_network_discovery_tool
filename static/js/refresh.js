@@ -174,31 +174,29 @@
                         var ep = endpointMap[endpointName.toLowerCase()];
                         if (!ep) return;
 
-                        // Update vendor cell
-                        var vendorCell = row.querySelector('td:nth-child(2)');
+                        // Update vendor cell (use class selector)
+                        var vendorCell = row.querySelector('.vendor-cell');
                         if (vendorCell) {
-                            if (ep.vendor) {
-                                vendorCell.innerHTML = '<span class="vendor-badge">' + ep.vendor + '</span>';
-                            } else {
-                                vendorCell.innerHTML = '';
-                            }
+                            vendorCell.textContent = ep.vendor || '-';
+                            vendorCell.title = ep.vendor || 'Unknown';
                         }
 
-                        // Update model cell
-                        var modelCell = row.querySelector('td:nth-child(3)');
+                        // Update model cell (use class selector)
+                        var modelCell = row.querySelector('.model-cell');
                         if (modelCell) {
-                            modelCell.textContent = ep.model || '';
-                            modelCell.className = 'model-cell';
+                            modelCell.textContent = ep.model || '-';
+                            modelCell.title = ep.model || '';
                         }
 
-                        // Update bytes cell
-                        var bytesCell = row.querySelector('td:nth-child(4)');
-                        if (bytesCell && App.Formatting) {
-                            bytesCell.textContent = App.Formatting.formatBytes(ep.bytes);
+                        // Update bandwidth cell (use class selector)
+                        var bandwidthCell = row.querySelector('.bandwidth-cell');
+                        if (bandwidthCell && App.Formatting) {
+                            bandwidthCell.dataset.bytes = ep.bytes;
+                            bandwidthCell.textContent = App.Formatting.formatBytes(ep.bytes);
                         }
 
-                        // Update last seen cell
-                        var lastSeenCell = row.querySelector('td:nth-child(5)');
+                        // Update last seen cell (use class selector)
+                        var lastSeenCell = row.querySelector('.last-seen-cell');
                         if (lastSeenCell) {
                             lastSeenCell.textContent = ep.last_seen;
                         }
