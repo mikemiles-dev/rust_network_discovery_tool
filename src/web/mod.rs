@@ -3432,18 +3432,53 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
                 if let Some(ref model) = ssdp.model_name
                     && is_ssdp_model_consistent_with_endpoint(&conn, endpoint_id, model)
                 {
-                    let _ = conn.execute(
-                        "UPDATE endpoints SET ssdp_model = ?1 WHERE id = ?2 AND (ssdp_model IS NULL OR ssdp_model = '')",
-                        params![model, endpoint_id],
-                    );
+                    // Update if empty OR if new model is more specific than current
+                    let current_model: Option<String> = conn
+                        .query_row(
+                            "SELECT ssdp_model FROM endpoints WHERE id = ?1",
+                            params![endpoint_id],
+                            |row| row.get(0),
+                        )
+                        .ok()
+                        .flatten();
+
+                    let should_update = match &current_model {
+                        None => true,
+                        Some(current) if current.is_empty() => true,
+                        Some(current) => is_more_specific_model(model, current),
+                    };
+
+                    if should_update {
+                        let _ = conn.execute(
+                            "UPDATE endpoints SET ssdp_model = ?1 WHERE id = ?2",
+                            params![model, endpoint_id],
+                        );
+                    }
                 }
                 // If we got a friendly name from SSDP, save it
-                // Friendly names are less likely to cause confusion, so we allow them
+                // Update if empty OR if new name is more specific
                 if let Some(ref friendly) = ssdp.friendly_name {
-                    let _ = conn.execute(
-                        "UPDATE endpoints SET ssdp_friendly_name = ?1 WHERE id = ?2 AND (ssdp_friendly_name IS NULL OR ssdp_friendly_name = '')",
-                        params![friendly, endpoint_id],
-                    );
+                    let current_friendly: Option<String> = conn
+                        .query_row(
+                            "SELECT ssdp_friendly_name FROM endpoints WHERE id = ?1",
+                            params![endpoint_id],
+                            |row| row.get(0),
+                        )
+                        .ok()
+                        .flatten();
+
+                    let should_update = match &current_friendly {
+                        None => true,
+                        Some(current) if current.is_empty() => true,
+                        Some(current) => is_more_specific_model(friendly, current),
+                    };
+
+                    if should_update {
+                        let _ = conn.execute(
+                            "UPDATE endpoints SET ssdp_friendly_name = ?1 WHERE id = ?2",
+                            params![friendly, endpoint_id],
+                        );
+                    }
                 }
             }
         }
@@ -3791,6 +3826,67 @@ fn is_ssdp_model_consistent_with_endpoint(
     }
 
     true // Default to allowing if no clear conflict
+}
+
+/// Check if new_model is more specific than current_model.
+/// Used to allow updating stored SSDP data when better info is discovered.
+fn is_more_specific_model(new_model: &str, current_model: &str) -> bool {
+    let new_lower = new_model.to_lowercase();
+    let current_lower = current_model.to_lowercase();
+
+    // If they're the same, no need to update
+    if new_lower == current_lower {
+        return false;
+    }
+
+    // New model is longer and contains the current model - likely more specific
+    // e.g., "Samsung The Frame 65" is more specific than "Samsung"
+    if new_model.len() > current_model.len() && new_lower.contains(&current_lower) {
+        return true;
+    }
+
+    // Current model is very generic (just a brand name)
+    let generic_names = [
+        "samsung",
+        "lg",
+        "sony",
+        "tcl",
+        "hisense",
+        "vizio",
+        "roku",
+        "apple",
+        "google",
+        "amazon",
+    ];
+    let current_is_generic = generic_names.iter().any(|g| current_lower == *g);
+    if current_is_generic && new_model.len() > current_model.len() {
+        return true;
+    }
+
+    // New model contains specific product identifiers that current lacks
+    let specific_indicators = [
+        "the frame",
+        "the serif",
+        "the sero",
+        "qled",
+        "oled",
+        "neo qled",
+        "nanocell",
+        "bravia",
+        "roku ultra",
+        "roku express",
+        "chromecast",
+        "fire tv",
+        "echo",
+        "homepod",
+    ];
+    let new_has_specific = specific_indicators.iter().any(|s| new_lower.contains(s));
+    let current_has_specific = specific_indicators.iter().any(|s| current_lower.contains(s));
+    if new_has_specific && !current_has_specific {
+        return true;
+    }
+
+    false
 }
 
 /// Insert a scan result into the database

@@ -2108,8 +2108,8 @@ pub fn get_hostname_vendor(hostname: &str) -> Option<&'static str> {
     {
         return Some("LG");
     }
-    // Samsung SmartThings
-    if lower.contains("samsung") || lower.contains("smartthings") {
+    // Samsung devices (including Galaxy phones/tablets)
+    if lower.contains("samsung") || lower.contains("smartthings") || lower.contains("galaxy") {
         return Some("Samsung");
     }
     // Amazon Echo/Alexa
@@ -2303,6 +2303,11 @@ pub fn characterize_model(
 pub fn get_vendor_from_model(model: &str) -> Option<&'static str> {
     let model_upper = model.to_uppercase();
     let model_lower = model.to_lowercase();
+
+    // Samsung Galaxy phones/tablets/watches
+    if model_lower.starts_with("galaxy") || model_lower.starts_with("sm-") {
+        return Some("Samsung");
+    }
 
     // Samsung TV models: QN/UN/UA prefix
     if model_upper.starts_with("QN")
