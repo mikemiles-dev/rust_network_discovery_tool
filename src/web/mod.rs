@@ -40,6 +40,7 @@ fn get_probing_endpoints() -> &'static Mutex<HashSet<i64>> {
     PROBING_ENDPOINTS.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
+use rust_xlsxwriter::{Format, Workbook};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
@@ -2196,6 +2197,7 @@ pub fn start(preferred_port: u16) {
                         .service(get_scan_config)
                         .service(set_scan_config)
                         .service(get_endpoints_table)
+                        .service(export_endpoints_xlsx)
                         .service(get_settings)
                         .service(update_setting)
                         .service(get_capture_status)
@@ -3490,6 +3492,51 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
                 );
             }
         }
+        ScanResult::Snmp(snmp) => {
+            let ip_str = snmp.ip.to_string();
+            // For SNMP (no MAC from packet), only record if endpoint already exists
+            if let Some(endpoint_id) = find_existing_endpoint_by_ip(&conn, &ip_str) {
+                let details = serde_json::json!({
+                    "sys_descr": snmp.sys_descr,
+                    "sys_object_id": snmp.sys_object_id,
+                    "sys_name": snmp.sys_name,
+                    "sys_location": snmp.sys_location,
+                    "community": snmp.community,
+                });
+                insert_scan_result(&conn, endpoint_id, "snmp", None, Some(&details.to_string()))?;
+
+                // Extract vendor/model info from sysDescr if available
+                if let Some(ref sys_descr) = snmp.sys_descr {
+                    let (vendor, model) = parse_snmp_sys_descr(sys_descr);
+
+                    // Update vendor if we found one and endpoint doesn't have one
+                    if let Some(v) = vendor {
+                        let _ = conn.execute(
+                            "UPDATE endpoints SET vendor = ?1 WHERE id = ?2 AND (vendor IS NULL OR vendor = '')",
+                            params![v, endpoint_id],
+                        );
+                    }
+
+                    // Update model if we found one and endpoint doesn't have one
+                    if let Some(m) = model {
+                        let _ = conn.execute(
+                            "UPDATE endpoints SET model = ?1 WHERE id = ?2 AND (model IS NULL OR model = '')",
+                            params![m, endpoint_id],
+                        );
+                    }
+                }
+
+                // Update endpoint name from sysName if name is just an IP
+                if let Some(ref sys_name) = snmp.sys_name
+                    && !sys_name.is_empty()
+                {
+                    let _ = conn.execute(
+                        "UPDATE endpoints SET name = ?1 WHERE id = ?2 AND (name = ?3 OR name GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*')",
+                        params![sys_name, endpoint_id, ip_str],
+                    );
+                }
+            }
+        }
     }
 
     Ok(())
@@ -3508,6 +3555,118 @@ fn find_existing_endpoint_by_ip(conn: &Connection, ip: &str) -> Option<i64> {
     .optional()
     .ok()
     .flatten()
+}
+
+/// Parse SNMP sysDescr to extract vendor and model information
+/// Returns (vendor, model) as Option strings
+fn parse_snmp_sys_descr(sys_descr: &str) -> (Option<String>, Option<String>) {
+    let descr_lower = sys_descr.to_lowercase();
+
+    // Common vendor patterns in sysDescr
+    let vendor_patterns: &[(&str, &str)] = &[
+        ("hewlett-packard", "HP"),
+        ("hp ", "HP"),
+        ("cisco", "Cisco"),
+        ("synology", "Synology"),
+        ("qnap", "QNAP"),
+        ("netgear", "NETGEAR"),
+        ("linksys", "Linksys"),
+        ("ubiquiti", "Ubiquiti"),
+        ("unifi", "Ubiquiti"),
+        ("mikrotik", "MikroTik"),
+        ("tp-link", "TP-Link"),
+        ("asus", "ASUS"),
+        ("d-link", "D-Link"),
+        ("buffalo", "Buffalo"),
+        ("brother", "Brother"),
+        ("canon", "Canon"),
+        ("epson", "Epson"),
+        ("xerox", "Xerox"),
+        ("ricoh", "Ricoh"),
+        ("dell", "Dell"),
+        ("lenovo", "Lenovo"),
+        ("apple", "Apple"),
+        ("asustor", "ASUSTOR"),
+        ("drobo", "Drobo"),
+        ("western digital", "Western Digital"),
+        ("seagate", "Seagate"),
+        ("aruba", "Aruba"),
+        ("juniper", "Juniper"),
+        ("fortinet", "Fortinet"),
+        ("paloalto", "Palo Alto"),
+        ("sonicwall", "SonicWall"),
+    ];
+
+    let mut vendor: Option<String> = None;
+    for (pattern, name) in vendor_patterns {
+        if descr_lower.contains(pattern) {
+            vendor = Some(name.to_string());
+            break;
+        }
+    }
+
+    // Try to extract model - look for common patterns
+    let mut model: Option<String> = None;
+
+    // Pattern: "Model: XYZ" or "Model XYZ"
+    if let Some(idx) = descr_lower.find("model") {
+        let after_model = &sys_descr[idx + 5..];
+        let trimmed = after_model.trim_start_matches([':', ' ']);
+        if let Some(end) = trimmed.find([',', ';', '\n', '\r']) {
+            let m = trimmed[..end].trim();
+            if !m.is_empty() {
+                model = Some(m.to_string());
+            }
+        } else if !trimmed.is_empty() {
+            // Take first word/phrase
+            let m = trimmed
+                .split_whitespace()
+                .take(3)
+                .collect::<Vec<_>>()
+                .join(" ");
+            if !m.is_empty() {
+                model = Some(m);
+            }
+        }
+    }
+
+    // For HP printers, look for "HP XXXX" pattern
+    if model.is_none()
+        && vendor.as_deref() == Some("HP")
+        && let Some(idx) = descr_lower.find("hp ")
+    {
+        let after_hp = &sys_descr[idx + 3..];
+        // Take first word(s) that look like a model
+        let parts: Vec<&str> = after_hp.split_whitespace().take(3).collect();
+        if !parts.is_empty() {
+            let m = parts.join(" ");
+            if m.len() > 2 {
+                model = Some(m);
+            }
+        }
+    }
+
+    // For Synology NAS, extract model from pattern like "DS920+"
+    if model.is_none() && vendor.as_deref() == Some("Synology") {
+        // Look for DS/RS followed by numbers
+        for word in sys_descr.split_whitespace() {
+            let w = word.to_uppercase();
+            if (w.starts_with("DS") || w.starts_with("RS")) && w.len() > 2 {
+                let rest = &w[2..];
+                if rest
+                    .chars()
+                    .next()
+                    .map(|c| c.is_ascii_digit())
+                    .unwrap_or(false)
+                {
+                    model = Some(word.to_string());
+                    break;
+                }
+            }
+        }
+    }
+
+    (vendor, model)
 }
 
 /// Check if SSDP model is consistent with endpoint's MAC vendor.
@@ -3927,6 +4086,271 @@ async fn get_endpoints_table() -> impl Responder {
         .collect();
 
     HttpResponse::Ok().json(EndpointsTableResponse { endpoints })
+}
+
+// ============================================================================
+// Export Endpoints
+// ============================================================================
+
+#[get("/api/export/endpoints.xlsx")]
+async fn export_endpoints_xlsx() -> impl Responder {
+    let scan_interval: u64 = 525600;
+
+    // Get endpoint list
+    let dropdown_future = tokio::task::spawn_blocking(move || dropdown_endpoints(scan_interval));
+    let dropdown_endpoints_list = dropdown_future.await.unwrap_or_default();
+
+    if dropdown_endpoints_list.is_empty() {
+        return HttpResponse::Ok()
+            .content_type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            .insert_header((
+                "Content-Disposition",
+                "attachment; filename=\"endpoints.xlsx\"",
+            ))
+            .body(Vec::new());
+    }
+
+    // Run queries in parallel (same as get_endpoints_table)
+    let dropdown_for_ips = dropdown_endpoints_list.clone();
+    let dropdown_for_seen = dropdown_endpoints_list.clone();
+    let dropdown_for_online = dropdown_endpoints_list.clone();
+    let dropdown_for_types = dropdown_endpoints_list.clone();
+    let dropdown_for_ssdp = dropdown_endpoints_list.clone();
+
+    let ips_macs_future =
+        tokio::task::spawn_blocking(move || get_endpoint_ips_and_macs(&dropdown_for_ips));
+    let last_seen_future = tokio::task::spawn_blocking(move || {
+        get_all_endpoints_last_seen(&dropdown_for_seen, scan_interval)
+    });
+    let online_status_future = tokio::task::spawn_blocking(move || {
+        let active_threshold = get_setting_i64("active_threshold_seconds", 120) as u64;
+        get_all_endpoints_online_status(&dropdown_for_online, active_threshold)
+    });
+    let all_types_future =
+        tokio::task::spawn_blocking(move || get_all_endpoint_types(&dropdown_for_types));
+    let ssdp_models_future =
+        tokio::task::spawn_blocking(move || get_endpoint_ssdp_models(&dropdown_for_ssdp));
+
+    let (
+        ips_macs_result,
+        last_seen_result,
+        online_status_result,
+        all_types_result,
+        ssdp_models_result,
+    ) = tokio::join!(
+        ips_macs_future,
+        last_seen_future,
+        online_status_future,
+        all_types_future,
+        ssdp_models_future
+    );
+
+    let endpoint_ips_macs = ips_macs_result.unwrap_or_default();
+    let endpoint_last_seen = last_seen_result.unwrap_or_default();
+    let endpoint_online_status = online_status_result.unwrap_or_default();
+    let (dropdown_types, _manual_overrides) = all_types_result.unwrap_or_default();
+    let endpoint_ssdp_models = ssdp_models_result.unwrap_or_default();
+
+    // Build vendor lookup
+    let component_vendors = [
+        "Espressif",
+        "Tuya",
+        "Realtek",
+        "MediaTek",
+        "Qualcomm",
+        "Broadcom",
+        "Marvell",
+        "USI",
+        "Wisol",
+        "Murata",
+        "AzureWave",
+    ];
+
+    let endpoint_vendors: HashMap<String, String> = dropdown_endpoints_list
+        .iter()
+        .filter_map(|endpoint| {
+            let endpoint_lower = endpoint.to_lowercase();
+            let (_custom_model, ssdp_model, ssdp_friendly, custom_vendor) = endpoint_ssdp_models
+                .get(&endpoint_lower)
+                .map(|(cm, sm, sf, cv)| {
+                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
+                })
+                .unwrap_or((None, None, None, None));
+
+            let macs: Vec<String> = endpoint_ips_macs
+                .get(&endpoint_lower)
+                .map(|(_, m)| m.clone())
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|mac| {
+                    get_mac_vendor(mac)
+                        .map(|v| !component_vendors.contains(&v))
+                        .unwrap_or(true)
+                })
+                .collect();
+
+            characterize_vendor(
+                custom_vendor,
+                ssdp_friendly,
+                Some(endpoint.as_str()),
+                &macs,
+                ssdp_model,
+            )
+            .map(|c| (endpoint_lower, c.value))
+        })
+        .collect();
+
+    // Build model lookup
+    let endpoint_models: HashMap<String, String> = dropdown_endpoints_list
+        .iter()
+        .filter_map(|endpoint| {
+            let endpoint_lower = endpoint.to_lowercase();
+            let (custom_model, ssdp_model, _, _) = endpoint_ssdp_models
+                .get(&endpoint_lower)
+                .map(|(cm, sm, sf, cv)| {
+                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
+                })
+                .unwrap_or((None, None, None, None));
+
+            let macs: Vec<String> = endpoint_ips_macs
+                .get(&endpoint_lower)
+                .map(|(_, m)| m.clone())
+                .unwrap_or_default();
+
+            let vendor = endpoint_vendors.get(&endpoint_lower).map(|v| v.as_str());
+
+            characterize_model(
+                custom_model,
+                ssdp_model,
+                Some(endpoint.as_str()),
+                &macs,
+                vendor,
+                None,
+            )
+            .map(|c| (endpoint_lower, c.value))
+        })
+        .collect();
+
+    // Create Excel workbook
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    worksheet.set_name("Endpoints").ok();
+
+    // Header format
+    let header_format = Format::new().set_bold();
+
+    // Write headers
+    let headers = [
+        "Name",
+        "IP",
+        "MAC",
+        "Vendor",
+        "Model",
+        "Device Type",
+        "Last Seen",
+        "Online",
+    ];
+    for (col, header) in headers.iter().enumerate() {
+        worksheet
+            .write_string_with_format(0, col as u16, *header, &header_format)
+            .ok();
+    }
+
+    // Write data rows
+    for (row_idx, endpoint) in dropdown_endpoints_list.iter().enumerate() {
+        let row = (row_idx + 1) as u32;
+        let endpoint_lower = endpoint.to_lowercase();
+
+        let (ips, macs) = endpoint_ips_macs
+            .get(&endpoint_lower)
+            .cloned()
+            .unwrap_or_default();
+
+        worksheet.write_string(row, 0, endpoint).ok();
+        worksheet.write_string(row, 1, ips.join(", ")).ok();
+        worksheet.write_string(row, 2, macs.join(", ")).ok();
+        worksheet
+            .write_string(
+                row,
+                3,
+                endpoint_vendors
+                    .get(&endpoint_lower)
+                    .map(|s| &**s)
+                    .unwrap_or(""),
+            )
+            .ok();
+        worksheet
+            .write_string(
+                row,
+                4,
+                endpoint_models
+                    .get(&endpoint_lower)
+                    .map(|s| &**s)
+                    .unwrap_or(""),
+            )
+            .ok();
+        worksheet
+            .write_string(
+                row,
+                5,
+                dropdown_types
+                    .get(&endpoint_lower)
+                    .map(|s| &**s)
+                    .unwrap_or(""),
+            )
+            .ok();
+        worksheet
+            .write_string(
+                row,
+                6,
+                endpoint_last_seen
+                    .get(&endpoint_lower)
+                    .map(|s| &**s)
+                    .unwrap_or("-"),
+            )
+            .ok();
+        worksheet
+            .write_string(
+                row,
+                7,
+                if *endpoint_online_status
+                    .get(&endpoint_lower)
+                    .unwrap_or(&false)
+                {
+                    "Yes"
+                } else {
+                    "No"
+                },
+            )
+            .ok();
+    }
+
+    // Set column widths for readability
+    worksheet.set_column_width(0, 30).ok(); // Name
+    worksheet.set_column_width(1, 15).ok(); // IP
+    worksheet.set_column_width(2, 20).ok(); // MAC
+    worksheet.set_column_width(3, 15).ok(); // Vendor
+    worksheet.set_column_width(4, 20).ok(); // Model
+    worksheet.set_column_width(5, 15).ok(); // Device Type
+    worksheet.set_column_width(6, 20).ok(); // Last Seen
+    worksheet.set_column_width(7, 8).ok(); // Online
+
+    // Save to buffer
+    let buffer = match workbook.save_to_buffer() {
+        Ok(buf) => buf,
+        Err(e) => {
+            eprintln!("Failed to create Excel file: {}", e);
+            return HttpResponse::InternalServerError().body("Failed to create Excel file");
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        .insert_header((
+            "Content-Disposition",
+            "attachment; filename=\"endpoints.xlsx\"",
+        ))
+        .body(buffer)
 }
 
 // ============================================================================

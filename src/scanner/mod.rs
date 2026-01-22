@@ -4,6 +4,7 @@ pub mod manager;
 pub mod ndp;
 pub mod netbios;
 pub mod port;
+pub mod snmp;
 pub mod ssdp;
 
 use std::net::IpAddr;
@@ -20,6 +21,7 @@ pub enum ScanType {
     Ndp,
     NetBios,
     Port,
+    Snmp,
     Ssdp,
 }
 
@@ -31,6 +33,7 @@ impl std::fmt::Display for ScanType {
             ScanType::Ndp => write!(f, "ndp"),
             ScanType::NetBios => write!(f, "netbios"),
             ScanType::Port => write!(f, "port"),
+            ScanType::Snmp => write!(f, "snmp"),
             ScanType::Ssdp => write!(f, "ssdp"),
         }
     }
@@ -44,6 +47,7 @@ pub enum ScanResult {
     Ndp(NdpResult),
     NetBios(NetBiosResult),
     Port(PortResult),
+    Snmp(SnmpResult),
     Ssdp(SsdpResult),
 }
 
@@ -101,6 +105,17 @@ pub struct NetBiosResult {
     pub mac: Option<String>,
 }
 
+/// SNMP scan result
+#[derive(Debug, Clone)]
+pub struct SnmpResult {
+    pub ip: IpAddr,
+    pub sys_descr: Option<String>,
+    pub sys_object_id: Option<String>,
+    pub sys_name: Option<String>,
+    pub sys_location: Option<String>,
+    pub community: String,
+}
+
 /// Scan capabilities based on privileges
 #[derive(Debug, Clone, Serialize)]
 pub struct ScanCapabilities {
@@ -109,6 +124,7 @@ pub struct ScanCapabilities {
     pub can_ndp: bool,
     pub can_netbios: bool,
     pub can_port: bool,
+    pub can_snmp: bool,
     pub can_ssdp: bool,
 }
 
@@ -122,6 +138,7 @@ pub fn check_scan_privileges() -> ScanCapabilities {
         can_ndp: can_raw_socket, // NDP also requires raw sockets
         can_netbios: true,       // UDP always works
         can_port: true,          // TCP connect always works
+        can_snmp: true,          // UDP always works
         can_ssdp: true,          // UDP multicast always works
     }
 }

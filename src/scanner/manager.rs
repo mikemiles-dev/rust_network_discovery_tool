@@ -14,6 +14,7 @@ use super::icmp::IcmpScanner;
 use super::ndp::NdpScanner;
 use super::netbios::NetBiosScanner;
 use super::port::{DEFAULT_PORTS, PortScanner};
+use super::snmp::SnmpScanner;
 use super::ssdp::SsdpScanner;
 use super::{ScanCapabilities, ScanResult, ScanType, check_scan_privileges};
 
@@ -241,6 +242,19 @@ impl ScanManager {
                             .map(ScanResult::NetBios)
                             .collect()
                     }
+                    ScanType::Snmp if capabilities.can_snmp => {
+                        let mut all_ips = Vec::new();
+                        for subnet in &subnets {
+                            all_ips.extend(subnet.iter().map(IpAddr::V4));
+                        }
+                        let scanner = SnmpScanner::new().with_timeout(cfg.timeout_ms);
+                        scanner
+                            .scan_ips(&all_ips)
+                            .await
+                            .into_iter()
+                            .map(ScanResult::Snmp)
+                            .collect()
+                    }
                     _ => Vec::new(), // Skip if no privilege
                 };
 
@@ -254,6 +268,7 @@ impl ScanManager {
                         ScanResult::Ndp(r) => r.ip,
                         ScanResult::NetBios(r) => r.ip,
                         ScanResult::Port(r) => r.ip,
+                        ScanResult::Snmp(r) => r.ip,
                         ScanResult::Ssdp(r) => r.ip,
                     };
                     discovered_ips.insert(ip);
@@ -360,6 +375,7 @@ mod tests {
         assert_eq!(format!("{}", ScanType::Arp), "arp");
         assert_eq!(format!("{}", ScanType::Icmp), "icmp");
         assert_eq!(format!("{}", ScanType::Port), "port");
+        assert_eq!(format!("{}", ScanType::Snmp), "snmp");
         assert_eq!(format!("{}", ScanType::Ssdp), "ssdp");
     }
 

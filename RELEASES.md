@@ -3,6 +3,10 @@
 ## [0.5.5]
 
 ### Added
+- **Excel Export** - Export endpoints data to Excel (.xlsx) file
+  - New "Export" button in the filter bar downloads all endpoints as Excel
+  - Columns: Name, IP, MAC, Vendor, Model, Device Type, Last Seen, Online status
+  - API endpoint: `GET /api/export/endpoints.xlsx`
 - **Pause Traffic Capture** - Pause live packet capture for clean PCAP playback
   - New control card on PCAP tab with status indicator and toggle button
   - Green indicator when active (receiving packets), yellow when paused
