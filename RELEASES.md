@@ -7,6 +7,27 @@
   - New "Export" button in the filter bar downloads all endpoints as Excel
   - Columns: Name, IP, MAC, Vendor, Model, Device Type, Last Seen, Online status
   - API endpoint: `GET /api/export/endpoints.xlsx`
+- **SNMP Discovery** - Query devices for system information via SNMP
+  - Queries sysDescr, sysName, sysObjectID, and sysLocation
+  - Extracts vendor and model from system description
+  - Updates endpoint name from sysName if current name is just an IP
+  - Enabled by default in network scans
+  - New checkbox in Scanner UI
+- **On-Demand Endpoint Probing** - Click an endpoint to probe it for more info
+  - Automatically runs SNMP and NetBIOS queries when viewing endpoint details
+  - Updates vendor, model, and name from probe results
+  - API endpoint: `POST /api/endpoint/probe`
+
+### Fixed
+- **Samsung Galaxy Detection** - Fixed vendor/model swap for Galaxy and SM-* devices
+  - Galaxy and SM- prefixes now correctly identified as Samsung
+- **Device Reclassification** - Devices classified as "local" or "other" now get reclassified when better SSDP data becomes available
+- **TV Classification** - Removed overly generic patterns that misclassified soundbars as TVs
+  - "samsung" and "lg-" no longer match as TV patterns
+  - Added specific patterns for Samsung lifestyle TVs: The Frame, The Serif, The Sero
+- **PlayStation Classification** - PlayStation 4/5 now correctly classified as gaming devices
+- **Appliance Classification** - LG dishwashers and appliances now correctly classified
+- **Custom Vendor Display** - Endpoint details now properly display custom vendor values
 - **Pause Traffic Capture** - Pause live packet capture for clean PCAP playback
   - New control card on PCAP tab with status indicator and toggle button
   - Green indicator when active (receiving packets), yellow when paused

@@ -122,6 +122,11 @@
                     if (selectedOpt) {
                         selectedOpt.classList.add('selected');
                     }
+
+                    // Refresh the endpoint table to show updated type
+                    if (App.Refresh && App.Refresh.refreshEndpointTable) {
+                        App.Refresh.refreshEndpointTable();
+                    }
                 } else {
                     alert('Failed to update device type: ' + result.message);
                 }

@@ -1163,22 +1163,29 @@ fn get_all_endpoint_types(
         }
 
         // Check for stored auto-detected type (persists across renames)
+        // BUT: re-classify "local" and "other" devices if we now have better data (SSDP model)
         if let Some(auto_type) = auto_types_lower.get(&endpoint_lower) {
-            let static_type: &'static str = match auto_type.as_str() {
-                "local" => "local",
-                "gateway" => "gateway",
-                "internet" => "internet",
-                "printer" => "printer",
-                "tv" => "tv",
-                "gaming" => "gaming",
-                "phone" => "phone",
-                "virtualization" => "virtualization",
-                "soundbar" => "soundbar",
-                "appliance" => "appliance",
-                _ => "other",
-            };
-            types.insert(endpoint.clone(), static_type);
-            continue;
+            let should_reclassify = (auto_type == "local" || auto_type == "other")
+                && all_ssdp_models.contains_key(&endpoint_lower);
+
+            if !should_reclassify {
+                let static_type: &'static str = match auto_type.as_str() {
+                    "local" => "local",
+                    "gateway" => "gateway",
+                    "internet" => "internet",
+                    "printer" => "printer",
+                    "tv" => "tv",
+                    "gaming" => "gaming",
+                    "phone" => "phone",
+                    "virtualization" => "virtualization",
+                    "soundbar" => "soundbar",
+                    "appliance" => "appliance",
+                    _ => "other",
+                };
+                types.insert(endpoint.clone(), static_type);
+                continue;
+            }
+            // Fall through to re-classify with new SSDP data
         }
 
         // Get IPs from batch data (case-insensitive), or try to extract from hostname
@@ -2183,6 +2190,7 @@ pub fn start(preferred_port: u16) {
                         .service(rename_endpoint)
                         .service(set_endpoint_model)
                         .service(set_endpoint_vendor)
+                        .service(probe_endpoint)
                         .service(delete_endpoint)
                         .service(probe_endpoint_model)
                         .service(get_dns_entries_api)
@@ -2928,6 +2936,160 @@ async fn set_endpoint_vendor(body: Json<SetVendorRequest>) -> impl Responder {
 }
 
 #[derive(Deserialize)]
+struct ProbeEndpointRequest {
+    endpoint_name: String,
+}
+
+#[derive(Serialize)]
+struct ProbeEndpointResponse {
+    success: bool,
+    message: String,
+    snmp_info: Option<SnmpProbeInfo>,
+    netbios_name: Option<String>,
+}
+
+#[derive(Serialize)]
+struct SnmpProbeInfo {
+    sys_descr: Option<String>,
+    sys_name: Option<String>,
+    sys_location: Option<String>,
+}
+
+/// Probe an endpoint for device information (SNMP, NetBIOS)
+#[post("/api/endpoint/probe")]
+async fn probe_endpoint(body: Json<ProbeEndpointRequest>) -> impl Responder {
+    use crate::scanner::netbios::NetBiosScanner;
+    use crate::scanner::snmp::SnmpScanner;
+
+    let conn = new_connection();
+
+    // Get IPs for this endpoint
+    let ips: Vec<String> = conn
+        .prepare(&format!(
+            "SELECT DISTINCT ea.ip FROM endpoints e
+             JOIN endpoint_attributes ea ON e.id = ea.endpoint_id
+             WHERE {} = ?1 COLLATE NOCASE
+             AND ea.ip IS NOT NULL AND ea.ip != ''",
+            DISPLAY_NAME_SQL
+        ))
+        .and_then(|mut stmt| {
+            stmt.query_map([&body.endpoint_name], |row| row.get(0))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+
+    if ips.is_empty() {
+        return HttpResponse::NotFound().json(ProbeEndpointResponse {
+            success: false,
+            message: format!("No IPs found for endpoint '{}'", body.endpoint_name),
+            snmp_info: None,
+            netbios_name: None,
+        });
+    }
+
+    // Get endpoint ID for saving results
+    let endpoint_id: Option<i64> = conn
+        .query_row(
+            &format!(
+                "SELECT e.id FROM endpoints e WHERE {} = ?1 COLLATE NOCASE LIMIT 1",
+                DISPLAY_NAME_SQL
+            ),
+            [&body.endpoint_name],
+            |row| row.get(0),
+        )
+        .ok();
+
+    let mut snmp_info = None;
+    let mut netbios_name = None;
+
+    // Probe each IP
+    for ip_str in &ips {
+        if let Ok(ip) = ip_str.parse::<std::net::Ipv4Addr>() {
+            // SNMP probe
+            if snmp_info.is_none() {
+                let snmp_scanner = SnmpScanner::new().with_timeout(3000);
+                if let Some(result) = snmp_scanner.query_ip(ip) {
+                    // Save to database
+                    if let Some(eid) = endpoint_id {
+                        let details = serde_json::json!({
+                            "sys_descr": result.sys_descr,
+                            "sys_object_id": result.sys_object_id,
+                            "sys_name": result.sys_name,
+                            "sys_location": result.sys_location,
+                            "community": result.community,
+                        });
+                        let _ = insert_scan_result(&conn, eid, "snmp", None, Some(&details.to_string()));
+
+                        // Extract and save vendor/model from sysDescr
+                        if let Some(ref sys_descr) = result.sys_descr {
+                            let (vendor, model) = parse_snmp_sys_descr(sys_descr);
+                            if let Some(v) = vendor {
+                                let _ = conn.execute(
+                                    "UPDATE endpoints SET vendor = ?1 WHERE id = ?2 AND (vendor IS NULL OR vendor = '')",
+                                    params![v, eid],
+                                );
+                            }
+                            if let Some(m) = model {
+                                let _ = conn.execute(
+                                    "UPDATE endpoints SET ssdp_model = ?1 WHERE id = ?2 AND (ssdp_model IS NULL OR ssdp_model = '')",
+                                    params![m, eid],
+                                );
+                            }
+                        }
+
+                        // Update endpoint name from sysName if current name is just an IP
+                        if let Some(ref sys_name) = result.sys_name
+                            && !sys_name.is_empty()
+                        {
+                            let _ = conn.execute(
+                                "UPDATE endpoints SET name = ?1 WHERE id = ?2 AND (name = ?3 OR name GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*')",
+                                params![sys_name, eid, ip_str],
+                            );
+                        }
+                    }
+
+                    snmp_info = Some(SnmpProbeInfo {
+                        sys_descr: result.sys_descr,
+                        sys_name: result.sys_name,
+                        sys_location: result.sys_location,
+                    });
+                }
+            }
+
+            // NetBIOS probe
+            if netbios_name.is_none() {
+                let netbios_scanner = NetBiosScanner::new().with_timeout(2000);
+                if let Some(result) = netbios_scanner.query_ip(ip) {
+                    if let Some(eid) = endpoint_id {
+                        // Save hostname
+                        let _ = conn.execute(
+                            "INSERT OR IGNORE INTO endpoint_attributes (endpoint_id, ip, hostname)
+                             VALUES (?1, ?2, ?3)
+                             ON CONFLICT(endpoint_id, ip, mac) DO UPDATE SET hostname = ?3
+                             WHERE hostname IS NULL OR hostname = ''",
+                            params![eid, ip_str, result.netbios_name],
+                        );
+                    }
+                    netbios_name = Some(result.netbios_name);
+                }
+            }
+        }
+    }
+
+    let found_something = snmp_info.is_some() || netbios_name.is_some();
+    HttpResponse::Ok().json(ProbeEndpointResponse {
+        success: found_something,
+        message: if found_something {
+            "Probe completed".to_string()
+        } else {
+            "No device info discovered".to_string()
+        },
+        snmp_info,
+        netbios_name,
+    })
+}
+
+#[derive(Deserialize)]
 struct DeleteEndpointRequest {
     endpoint_name: String,
 }
@@ -3058,7 +3220,7 @@ struct ProbeModelResponse {
 }
 
 /// Probe a device's web interface to detect its model
-#[post("/api/endpoint/probe")]
+#[post("/api/endpoint/probe/model")]
 async fn probe_endpoint_model(body: Json<ProbeModelRequest>) -> impl Responder {
     let ip = body.ip.clone();
 

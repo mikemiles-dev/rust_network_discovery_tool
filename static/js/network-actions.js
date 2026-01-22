@@ -124,7 +124,7 @@
                 resultEl.innerHTML = '<span style="color: var(--text-secondary);">Probing model for ' + ip + '...</span>';
             }
 
-            fetch('/api/endpoint/probe', {
+            fetch('/api/endpoint/probe/model', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ip: ip })

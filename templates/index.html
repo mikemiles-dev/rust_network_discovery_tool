@@ -1275,30 +1275,61 @@
     .detail-tabs {
       display: flex;
       gap: 0.25rem;
+      margin-bottom: 0.5rem;
     }
 
     .detail-tab {
       padding: 0.25rem 0.5rem;
-      background: rgba(51, 65, 85, 0.4);
-      border: 1px solid var(--border-color);
+      background: transparent;
+      border: 1px solid rgba(100, 116, 139, 0.3);
       border-radius: 0.25rem;
       color: var(--text-secondary);
       font-size: 0.65rem;
       font-weight: 500;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: all 0.15s ease;
     }
 
     .detail-tab:hover {
-      background: rgba(59, 130, 246, 0.2);
-      border-color: rgba(59, 130, 246, 0.4);
       color: var(--text-primary);
     }
 
     .detail-tab.active {
-      background: var(--accent-primary);
-      border-color: var(--accent-primary);
       color: white;
+    }
+
+    /* Color-coded tabs */
+    .detail-tab[data-tab="details-tab-content"] {
+      border-left: 2px solid #3b82f6;
+    }
+    .detail-tab[data-tab="details-tab-content"]:hover {
+      border-color: #3b82f6;
+    }
+    .detail-tab[data-tab="details-tab-content"].active {
+      background: rgba(59, 130, 246, 0.25);
+      border-color: #3b82f6;
+    }
+
+    .detail-tab[data-tab="network-tab-content"] {
+      border-left: 2px solid #22c55e;
+    }
+    .detail-tab[data-tab="network-tab-content"]:hover {
+      border-color: #22c55e;
+    }
+    .detail-tab[data-tab="network-tab-content"].active {
+      background: rgba(34, 197, 94, 0.25);
+      border-color: #22c55e;
+    }
+
+    .detail-tab[data-tab="control-tab-content"] {
+      border-left: 2px solid #f59e0b;
+    }
+    .detail-tab[data-tab="control-tab-content"]:hover {
+      border-color: #f59e0b;
+    }
+    .detail-tab[data-tab="control-tab-content"].active {
+      background: rgba(245, 158, 11, 0.25);
+      border-color: #f59e0b;
     }
 
     .detail-tab-content {

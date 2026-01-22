@@ -78,6 +78,12 @@ sudo rust_network_discovery_tool
   - Auto-detected types (TV, printer, phone, etc.) stored in database
   - Renaming a device won't change its classification
   - Manual overrides always take priority
+- **Excel Export**: Download all endpoints as an Excel (.xlsx) file
+  - Export button in the filter bar
+  - Includes name, IP, MAC, vendor, model, device type, last seen, online status
+- **On-Demand Probing**: Click an endpoint to probe it for more information
+  - Automatically runs SNMP and NetBIOS queries when viewing endpoint details
+  - Discovers device vendor, model, and hostname
 - **DNS Caching**: Prevents slow lookups with DNS cache
 - **High Performance**: Optimized with database indexes, transaction batching, and connection pooling
 
@@ -95,6 +101,8 @@ The active scanner discovers devices on your network even if they're not current
 | **ICMP (Ping)** | Root/Admin | Sends ICMP echo requests to find responsive hosts. Shows response times. |
 | **Port** | None | Probes TCP ports (22, 80, 443, 8080, etc.) to identify running services. |
 | **SSDP/UPnP** | None | Discovers smart devices, media servers, and IoT devices via multicast. |
+| **NetBIOS** | None | Queries UDP port 137 to discover Windows/SMB device names. |
+| **SNMP** | None | Queries devices for system information (sysDescr, sysName, vendor, model). |
 
 ### Using the Scanner
 
@@ -109,8 +117,8 @@ The active scanner discovers devices on your network even if they're not current
 ### Scan Capabilities
 
 The UI automatically detects which scans are available:
-- **Root/Admin mode**: All scan types available (ARP, ICMP, Port, SSDP)
-- **User mode**: Only Port and SSDP scans available (ARP/ICMP disabled)
+- **Root/Admin mode**: All scan types available (ARP, ICMP, Port, SSDP, NetBIOS, SNMP)
+- **User mode**: Port, SSDP, NetBIOS, and SNMP scans available (ARP/ICMP disabled)
 
 Disabled checkboxes indicate scans that require elevated privileges.
 
@@ -122,7 +130,7 @@ For automation or integration:
 # Start a scan
 curl -X POST http://localhost:8080/api/scan/start \
   -H "Content-Type: application/json" \
-  -d '{"scan_types": ["arp", "port", "ssdp"]}'
+  -d '{"scan_types": ["arp", "port", "ssdp", "netbios", "snmp"]}'
 
 # Check scan status
 curl http://localhost:8080/api/scan/status
@@ -132,6 +140,14 @@ curl -X POST http://localhost:8080/api/scan/stop
 
 # Get scan capabilities
 curl http://localhost:8080/api/scan/capabilities
+
+# Export endpoints to Excel
+curl -O http://localhost:8080/api/export/endpoints.xlsx
+
+# Probe a specific endpoint
+curl -X POST http://localhost:8080/api/endpoint/probe \
+  -H "Content-Type: application/json" \
+  -d '{"ip": "192.168.1.100"}'
 ```
 
 ## Installation

@@ -218,8 +218,6 @@ const PRINTER_PREFIXES: &[&str] = &["hp", "npi", "np", "brn", "brw", "epson"];
 
 const TV_PATTERNS: &[&str] = &[
     "tv",
-    "samsung",
-    "lg-",
     "bravia", // Sony TVs (not "sony" - that would match PlayStation too)
     "vizio",
     "roku",
@@ -230,8 +228,13 @@ const TV_PATTERNS: &[&str] = &[
     "fire-tv",
     "shield",
     "androidtv",
+    "the-frame",
+    "theframe",
+    "the-serif",
+    "the-sero",
 ];
-const TV_PREFIXES: &[&str] = &["lg"];
+// Note: "samsung" and "lg-" removed from TV_PATTERNS - too generic, matches soundbars/appliances
+const TV_PREFIXES: &[&str] = &[];
 
 const GAMING_PATTERNS: &[&str] = &[
     "xbox",
@@ -5147,15 +5150,16 @@ mod tests {
         assert_eq!(is_tv_hostname("roku-ultra"), true);
         assert_eq!(is_tv_hostname("chromecast-living-room"), true);
         assert_eq!(is_tv_hostname("appletv"), true);
-        assert_eq!(is_tv_hostname("lg-oled55"), true);
         assert_eq!(is_tv_hostname("firetv-stick"), true);
+        assert_eq!(is_tv_hostname("the-frame"), true);
 
         // Roku serial number hostnames (e.g., YN00NJ468680)
         assert_eq!(is_tv_hostname("YN00NJ468680"), true);
         assert_eq!(is_tv_hostname("yn00nj468680"), true); // lowercase
         assert_eq!(is_tv_hostname("YK00KM123456"), true);
 
-        // Non-TVs
+        // Non-TVs (lg-* removed - too generic, matches soundbars)
+        assert_eq!(is_tv_hostname("lg-oled55"), false); // Use SSDP model instead
         assert_eq!(is_tv_hostname("my-laptop"), false);
         assert_eq!(is_tv_hostname("printer"), false);
     }

@@ -354,12 +354,42 @@
                 .then(function(response) { return response.json(); })
                 .then(function(data) {
                     App.Endpoints.updateDetails(data);
+                    // Trigger background probe for more device info (SNMP, NetBIOS)
+                    App.Endpoints.probeEndpoint(nodeId);
                 })
                 .catch(function(error) {
                     console.error('Error fetching endpoint details:', error);
                     // Fall back to page reload on error
                     window.location.href = url.toString();
                 });
+        },
+
+        /**
+         * Probe endpoint for additional device info (SNMP, NetBIOS)
+         * Runs in background and updates UI if new info found
+         */
+        probeEndpoint: function(endpointName) {
+            fetch('/api/endpoint/probe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ endpoint_name: endpointName })
+            })
+            .then(function(response) { return response.json(); })
+            .then(function(result) {
+                if (result.success) {
+                    // Refresh details if we found new info
+                    console.log('Probe found info:', result);
+                    // Re-fetch details to show updated info
+                    fetch('/api/endpoint/' + encodeURIComponent(endpointName) + '/details')
+                        .then(function(response) { return response.json(); })
+                        .then(function(data) {
+                            App.Endpoints.updateDetails(data);
+                        });
+                }
+            })
+            .catch(function(error) {
+                console.log('Probe failed (device may not support SNMP/NetBIOS):', error);
+            });
         },
 
         /**
