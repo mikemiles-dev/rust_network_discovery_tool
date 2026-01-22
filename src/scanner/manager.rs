@@ -45,6 +45,7 @@ impl Default for ScanConfig {
         enabled.insert(ScanType::Ndp); // IPv6 neighbor discovery
         enabled.insert(ScanType::NetBios); // NetBIOS name discovery
         enabled.insert(ScanType::Ssdp);
+        enabled.insert(ScanType::Snmp); // SNMP device discovery
 
         Self {
             scan_interval_secs: None,

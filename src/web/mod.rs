@@ -1787,7 +1787,11 @@ fn get_endpoint_details_blocking(
         .ok();
 
     // Get custom_model, SSDP model, and custom_vendor for this endpoint
-    let (custom_model, ssdp_model, custom_vendor): (Option<String>, Option<String>, Option<String>) = conn
+    let (custom_model, ssdp_model, custom_vendor): (
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) = conn
         .query_row(
             "SELECT e.custom_model, e.ssdp_model, e.custom_vendor
          FROM endpoints e
@@ -3864,16 +3868,7 @@ fn is_more_specific_model(new_model: &str, current_model: &str) -> bool {
 
     // Current model is very generic (just a brand name)
     let generic_names = [
-        "samsung",
-        "lg",
-        "sony",
-        "tcl",
-        "hisense",
-        "vizio",
-        "roku",
-        "apple",
-        "google",
-        "amazon",
+        "samsung", "lg", "sony", "tcl", "hisense", "vizio", "roku", "apple", "google", "amazon",
     ];
     let current_is_generic = generic_names.iter().any(|g| current_lower == *g);
     if current_is_generic && new_model.len() > current_model.len() {
@@ -3898,7 +3893,9 @@ fn is_more_specific_model(new_model: &str, current_model: &str) -> bool {
         "homepod",
     ];
     let new_has_specific = specific_indicators.iter().any(|s| new_lower.contains(s));
-    let current_has_specific = specific_indicators.iter().any(|s| current_lower.contains(s));
+    let current_has_specific = specific_indicators
+        .iter()
+        .any(|s| current_lower.contains(s));
     if new_has_specific && !current_has_specific {
         return true;
     }
