@@ -1772,20 +1772,6 @@ fn get_endpoint_details_blocking(
         .as_ref()
         .and_then(|m| get_vendor_from_model(m));
 
-    let device_vendor: String = match (hostname_vendor, mac_vendor, model_vendor) {
-        // Hostname vendor identified (e.g., LG from "ldf7774st") - prefer it
-        (Some(hv), _, _) => hv,
-        // Model vendor identified (e.g., TCL from "7105X") - use it before MAC
-        (None, _, Some(mv)) => mv,
-        // MAC vendor is a component manufacturer - don't show it
-        (None, Some(mv), None) if COMPONENT_VENDORS.contains(&mv) => "",
-        // MAC vendor is a product manufacturer - show it
-        (None, Some(mv), None) => mv,
-        // No vendor identified
-        (None, None, None) => "",
-    }
-    .to_string();
-
     // Get DHCP vendor class for this endpoint (if available)
     let dhcp_vendor_class: Option<String> = conn
         .query_row(
@@ -1800,17 +1786,39 @@ fn get_endpoint_details_blocking(
         )
         .ok();
 
-    // Get custom_model and SSDP model for this endpoint
-    let (custom_model, ssdp_model): (Option<String>, Option<String>) = conn
+    // Get custom_model, SSDP model, and custom_vendor for this endpoint
+    let (custom_model, ssdp_model, custom_vendor): (Option<String>, Option<String>, Option<String>) = conn
         .query_row(
-            "SELECT e.custom_model, e.ssdp_model
+            "SELECT e.custom_model, e.ssdp_model, e.custom_vendor
          FROM endpoints e
          WHERE (LOWER(e.name) = LOWER(?1) OR LOWER(e.custom_name) = LOWER(?1))
          LIMIT 1",
             rusqlite::params![&endpoint_name],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
-        .unwrap_or((None, None));
+        .unwrap_or((None, None, None));
+
+    // Custom vendor takes priority if set
+    let device_vendor: String = if let Some(ref cv) = custom_vendor {
+        if !cv.is_empty() {
+            cv.clone()
+        } else {
+            String::new()
+        }
+    } else {
+        match (hostname_vendor, mac_vendor, model_vendor) {
+            // Hostname vendor identified (e.g., LG from "ldf7774st") - prefer it
+            (Some(hv), _, _) => hv.to_string(),
+            // Model vendor identified (e.g., TCL from "7105X") - use it before MAC
+            (None, _, Some(mv)) => mv.to_string(),
+            // MAC vendor is a component manufacturer - don't show it
+            (None, Some(mv), None) if COMPONENT_VENDORS.contains(&mv) => String::new(),
+            // MAC vendor is a product manufacturer - show it
+            (None, Some(mv), None) => mv.to_string(),
+            // No vendor identified
+            (None, None, None) => String::new(),
+        }
+    };
 
     // Check if device has SSDP info (for context-aware model detection)
     // Check for non-empty string, not just Some()
@@ -2578,17 +2586,27 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         "Murata",
     ];
 
-    let device_vendor: String = match (hostname_vendor, mac_vendor) {
-        (Some(hv), _) => hv,
-        (None, Some(mv)) if COMPONENT_VENDORS.contains(&mv) => "",
-        (None, Some(mv)) => mv,
-        (None, None) => "",
-    }
-    .to_string();
-
-    // Get model: custom_model first, then SSDP (with normalization), hostname, MAC, DHCP vendor class, vendor+type fallback
+    // Get model/vendor data including custom_vendor
     let selected_lower = selected_endpoint.to_lowercase();
     let models_data = endpoint_ssdp_models.get(&selected_lower);
+
+    // Get custom_vendor if set (takes priority)
+    let custom_vendor = models_data
+        .and_then(|(_, _, _, cv)| cv.as_ref())
+        .filter(|cv| !cv.is_empty());
+
+    let device_vendor: String = if let Some(cv) = custom_vendor {
+        cv.clone()
+    } else {
+        match (hostname_vendor, mac_vendor) {
+            (Some(hv), _) => hv.to_string(),
+            (None, Some(mv)) if COMPONENT_VENDORS.contains(&mv) => String::new(),
+            (None, Some(mv)) => mv.to_string(),
+            (None, None) => String::new(),
+        }
+    };
+
+    // Get model: custom_model first, then SSDP (with normalization), hostname, MAC, DHCP vendor class, vendor+type fallback
 
     // Check custom_model first (user-set model takes priority)
     let device_model: String = models_data
@@ -2639,7 +2657,6 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     // Ensure the selected endpoint's vendor/model are in the lookup maps
     // This handles cases where the endpoint was added via URL but its data
     // wasn't found in batch queries (e.g., mDNS-resolved names)
-    let selected_lower = selected_endpoint.to_lowercase();
     let mut endpoint_vendors = endpoint_vendors;
     if !device_vendor.is_empty() {
         endpoint_vendors
