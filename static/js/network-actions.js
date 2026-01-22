@@ -299,7 +299,75 @@
                     resultEl.innerHTML = '<span style="color: #ef4444;">Error: ' + error.message + '</span>';
                 }
             });
+        },
+
+        /**
+         * Ping from the table view (quick ping with inline result)
+         */
+        pingFromTable: function(btn, ip) {
+            if (!ip) return;
+
+            var statusEl = btn.querySelector('.ping-status');
+            var row = btn.closest('tr');
+            var statusIndicator = row ? row.querySelector('.status-indicator') : null;
+
+            btn.classList.remove('success', 'failed');
+            btn.classList.add('pinging');
+            statusEl.textContent = '...';
+
+            fetch('/api/ping', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip: ip })
+            })
+            .then(function(response) { return response.json(); })
+            .then(function(result) {
+                btn.classList.remove('pinging');
+                if (result.success) {
+                    btn.classList.add('success');
+                    var latency = result.latency_ms ? Math.round(result.latency_ms) + 'ms' : '✓';
+                    statusEl.textContent = latency;
+                    // Update status indicator to online (green)
+                    if (statusIndicator) {
+                        statusIndicator.classList.remove('offline', 'unreachable');
+                        statusIndicator.classList.add('online');
+                        statusIndicator.title = 'Online (ping: ' + latency + ')';
+                    }
+                } else {
+                    btn.classList.add('failed');
+                    statusEl.textContent = '✗';
+                    // Update status indicator to unreachable (red)
+                    if (statusIndicator) {
+                        statusIndicator.classList.remove('online', 'offline');
+                        statusIndicator.classList.add('unreachable');
+                        statusIndicator.title = 'Unreachable';
+                    }
+                }
+                // Clear button status after 5 seconds (but keep indicator)
+                setTimeout(function() {
+                    btn.classList.remove('success', 'failed');
+                    statusEl.textContent = '';
+                }, 5000);
+            })
+            .catch(function() {
+                btn.classList.remove('pinging');
+                btn.classList.add('failed');
+                statusEl.textContent = '✗';
+                // Update status indicator to unreachable (red)
+                if (statusIndicator) {
+                    statusIndicator.classList.remove('online', 'offline');
+                    statusIndicator.classList.add('unreachable');
+                    statusIndicator.title = 'Unreachable';
+                }
+                setTimeout(function() {
+                    btn.classList.remove('failed');
+                    statusEl.textContent = '';
+                }, 5000);
+            });
         }
     };
+
+    // Expose pingFromTable globally for onclick handlers
+    window.pingFromTable = App.NetworkActions.pingFromTable;
 
 })(window.App);

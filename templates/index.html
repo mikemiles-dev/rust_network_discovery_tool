@@ -482,6 +482,73 @@
       background: rgba(59, 130, 246, 0.2);
     }
 
+    /* Actions column */
+    .actions-header {
+      width: 60px;
+      text-align: center;
+    }
+
+    .actions-cell {
+      text-align: center;
+      padding: 0.25rem !important;
+    }
+
+    .ping-btn {
+      background: transparent;
+      border: 1px solid rgba(100, 116, 139, 0.3);
+      border-radius: 0.25rem;
+      padding: 0.25rem 0.5rem;
+      cursor: pointer;
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .ping-btn:hover:not(:disabled) {
+      background: rgba(59, 130, 246, 0.1);
+      border-color: #3b82f6;
+      color: var(--text-primary);
+    }
+
+    .ping-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .ping-btn.pinging {
+      opacity: 0.6;
+    }
+
+    .ping-btn .ping-icon {
+      font-size: 0.75rem;
+    }
+
+    .ping-btn .ping-status {
+      font-size: 0.65rem;
+      min-width: 1.5rem;
+    }
+
+    .ping-btn.success {
+      border-color: #22c55e;
+      background: rgba(34, 197, 94, 0.15);
+    }
+
+    .ping-btn.success .ping-status {
+      color: #22c55e;
+    }
+
+    .ping-btn.failed {
+      border-color: #ef4444;
+      background: rgba(239, 68, 68, 0.15);
+    }
+
+    .ping-btn.failed .ping-status {
+      color: #ef4444;
+    }
+
     /* Endpoint type color coding */
     .endpoint-row[data-endpoint-type="gaming"] {
       border-left: 3px solid #ef4444;
@@ -570,6 +637,11 @@
     .status-indicator.offline {
       background-color: #6b7280;
       opacity: 0.5;
+    }
+
+    .status-indicator.unreachable {
+      background-color: #ef4444;
+      box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
     }
 
     .endpoint-name-cell {
@@ -1623,6 +1695,7 @@
               <th data-sort="model" class="sortable">Model<span class="sort-icon"></span></th>
               <th data-sort="bandwidth" class="sortable">Bandwidth<span class="sort-icon"></span></th>
               <th data-sort="last_seen" class="sortable">Last Seen<span class="sort-icon"></span></th>
+              <th class="actions-header">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -1634,6 +1707,8 @@
             {% set node_bytes = endpoint_bytes | get(key=node_lower, default=0) %}
             {% set node_last_seen = endpoint_last_seen | get(key=node_lower, default="-") %}
             {% set node_online = endpoint_online_status | get(key=node_lower, default=false) %}
+            {% set node_ips_macs = endpoint_ips_macs | get(key=node_lower, default=[]) %}
+            {% set node_ip = node_ips_macs.0 | first | default(value="") %}
             <tr class="endpoint-row {% if node == selected_node %}selected{% endif %}"
                 onclick="selectNode(this.dataset.endpoint)"
                 data-endpoint="{{ node | safe }}"
@@ -1642,7 +1717,8 @@
                 data-endpoint-model="{{ node_model }}"
                 data-endpoint-type="{% if node == hostname %}local{% elif node_type == "gateway" %}gateway{% elif node_type == "internet" %}internet{% elif node_type == "printer" %}printer{% elif node_type == "tv" %}tv{% elif node_type == "gaming" %}gaming{% elif node_type == "phone" %}phone{% elif node_type == "virtualization" %}virtualization{% elif node_type == "soundbar" %}soundbar{% elif node_type == "appliance" %}appliance{% elif node_type %}local{% else %}other{% endif %}"
                 data-endpoint-bytes="{{ node_bytes }}"
-                data-endpoint-online="{% if node_online %}true{% else %}false{% endif %}">
+                data-endpoint-online="{% if node_online %}true{% else %}false{% endif %}"
+                data-endpoint-ip="{{ node_ip }}">
               <td class="status-cell"><span class="status-indicator {% if node_online %}online{% else %}offline{% endif %}" title="{% if node_online %}Online{% else %}Offline{% endif %}"></span></td>
               <td class="endpoint-type-cell">{% if node == hostname %}🖥️{% elif node_type == "gateway" %}🌐{% elif node_type == "internet" %}🌍{% elif node_type == "printer" %}🖨️{% elif node_type == "tv" %}📺{% elif node_type == "gaming" %}🎮{% elif node_type == "phone" %}📱{% elif node_type == "virtualization" %}🖥{% elif node_type == "soundbar" %}🔊{% elif node_type == "appliance" %}🏠{% elif node_type %}💻{% else %}❓{% endif %}</td>
               <td class="endpoint-name-cell">{{ node | safe }}</td>
@@ -1656,6 +1732,12 @@
                 {% endif %}
               </td>
               <td class="last-seen-cell">{{ node_last_seen }}</td>
+              <td class="actions-cell">
+                <button class="ping-btn" onclick="event.stopPropagation(); pingFromTable(this, '{{ node_ip }}')" title="Ping device" {% if not node_ip %}disabled{% endif %}>
+                  <span class="ping-icon">📶</span>
+                  <span class="ping-status"></span>
+                </button>
+              </td>
             </tr>
             {% endfor %}
           </tbody>

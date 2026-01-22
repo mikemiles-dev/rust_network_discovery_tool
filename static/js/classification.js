@@ -308,6 +308,10 @@
                         }
                         App.state.savedRefreshInterval = null;
                     }
+                    // Refresh table to show updated vendor
+                    if (App.Refresh && App.Refresh.refreshEndpointTable) {
+                        App.Refresh.refreshEndpointTable();
+                    }
                 } else {
                     alert('Failed to set vendor: ' + result.message);
                 }
@@ -339,6 +343,10 @@
                     badge.style.display = 'none';
                     if (addBtn) addBtn.style.display = 'inline';
                     document.getElementById('vendor-edit-input').style.display = 'none';
+                    // Refresh table
+                    if (App.Refresh && App.Refresh.refreshEndpointTable) {
+                        App.Refresh.refreshEndpointTable();
+                    }
                 } else {
                     alert('Failed to reset vendor: ' + result.message);
                 }
@@ -418,6 +426,10 @@
                         }
                         App.state.savedRefreshInterval = null;
                     }
+                    // Refresh table to show updated model
+                    if (App.Refresh && App.Refresh.refreshEndpointTable) {
+                        App.Refresh.refreshEndpointTable();
+                    }
                 } else {
                     alert('Failed to set model: ' + result.message);
                 }
@@ -451,6 +463,10 @@
                     if (addBtn) addBtn.style.display = 'inline';
                     if (deviceModel) deviceModel.textContent = '';
                     document.getElementById('model-edit-input').style.display = 'none';
+                    // Refresh table
+                    if (App.Refresh && App.Refresh.refreshEndpointTable) {
+                        App.Refresh.refreshEndpointTable();
+                    }
                 } else {
                     alert('Failed to reset model: ' + result.message);
                 }
