@@ -136,25 +136,31 @@
                 manualOverrideIndicator.style.display = data.is_manual_override ? '' : 'none';
             }
 
-            // Update vendor badge
+            // Update vendor badge and add button
             var vendorBadge = document.getElementById('device-vendor-badge');
+            var addVendorBtn = document.getElementById('add-vendor-btn');
             if (vendorBadge) {
                 if (data.device_vendor) {
                     vendorBadge.textContent = data.device_vendor;
                     vendorBadge.style.display = '';
+                    if (addVendorBtn) addVendorBtn.style.display = 'none';
                 } else {
                     vendorBadge.style.display = 'none';
+                    if (addVendorBtn) addVendorBtn.style.display = '';
                 }
             }
 
-            // Update model badge
+            // Update model badge and add button
             var modelBadge = document.getElementById('device-model-badge');
+            var addModelBtn = document.getElementById('add-model-btn');
             if (modelBadge) {
                 if (data.device_model) {
                     modelBadge.textContent = data.device_model;
                     modelBadge.style.display = '';
+                    if (addModelBtn) addModelBtn.style.display = 'none';
                 } else {
                     modelBadge.style.display = 'none';
+                    if (addModelBtn) addModelBtn.style.display = '';
                 }
             }
 
@@ -440,11 +446,15 @@
             var manualOverride = document.getElementById('manual-override-indicator');
             if (manualOverride) manualOverride.style.display = 'none';
 
-            // Hide vendor and model badges
+            // Hide vendor and model badges and add buttons
             var vendorBadge = document.getElementById('device-vendor-badge');
             if (vendorBadge) vendorBadge.style.display = 'none';
             var modelBadge = document.getElementById('device-model-badge');
             if (modelBadge) modelBadge.style.display = 'none';
+            var addVendorBtn = document.getElementById('add-vendor-btn');
+            if (addVendorBtn) addVendorBtn.style.display = 'none';
+            var addModelBtn = document.getElementById('add-model-btn');
+            if (addModelBtn) addModelBtn.style.display = 'none';
 
             // Clear stats
             document.querySelectorAll('.stats .stat-number').forEach(function(el) {

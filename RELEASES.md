@@ -31,9 +31,10 @@
   - Consumer routers: Linksys, Netgear, Asus RT-series
 
 ### Fixed
-- **Endpoint Rename Button** - Edit button (✏️) now appears when clicking on endpoints
-  - Previously only showed when page loaded with `?node=` URL parameter
+- **Endpoint Edit Buttons** - Edit controls now appear when clicking on endpoints
+  - Rename button (✏️), +Vendor, and +Model buttons previously only showed when page loaded with `?node=` URL parameter
   - Now dynamically shown/hidden when selecting/deselecting endpoints via click
+  - Can now set vendor and model on unknown devices without reloading page
 
 ## [0.5.5]
 
