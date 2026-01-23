@@ -32,7 +32,7 @@
             var resultEl = document.getElementById('ping-result');
             if (resultEl) {
                 resultEl.style.display = 'block';
-                resultEl.innerHTML = '<span style="color: var(--text-secondary);">Pinging ' + ip + '...</span>';
+                resultEl.innerHTML = '<span style="color: rgba(255,255,255,0.7);">Pinging ' + ip + '...</span>';
             }
 
             fetch('/api/ping', {
@@ -46,10 +46,10 @@
                     if (result.success) {
                         var latency = result.latency_ms ? result.latency_ms.toFixed(2) + ' ms' : 'N/A';
                         resultEl.innerHTML = '<span style="color: #22c55e;">&#10003; Host is reachable</span><br>' +
-                            '<span style="color: var(--text-secondary);">Latency: ' + latency + '</span>';
+                            '<span style="color: rgba(255,255,255,0.7);">Latency: ' + latency + '</span>';
                     } else {
                         resultEl.innerHTML = '<span style="color: #ef4444;">&#10007; Host unreachable</span><br>' +
-                            '<span style="color: var(--text-secondary);">' + (result.message || 'No response') + '</span>';
+                            '<span style="color: rgba(255,255,255,0.7);">' + (result.message || 'No response') + '</span>';
                     }
                 }
             })
@@ -73,7 +73,7 @@
             var resultEl = document.getElementById('probe-hostname-result');
             if (resultEl) {
                 resultEl.style.display = 'block';
-                resultEl.innerHTML = '<span style="color: var(--text-secondary);">Probing hostname for ' + ip + '...</span>';
+                resultEl.innerHTML = '<span style="color: rgba(255,255,255,0.7);">Probing hostname for ' + ip + '...</span>';
             }
 
             fetch('/api/probe-hostname', {
@@ -94,10 +94,10 @@
                         }
 
                         resultEl.innerHTML = '<span style="color: #22c55e;">&#10003; Hostname found: </span>' +
-                            '<span style="color: var(--text-primary); font-weight: 500;">' + App.Utils.escapeHtml(result.hostname) + '</span>' + applyButton;
+                            '<span style="color: white; font-weight: 500;">' + App.Utils.escapeHtml(result.hostname) + '</span>' + applyButton;
                     } else {
                         resultEl.innerHTML = '<span style="color: #f59e0b;">No hostname found</span><br>' +
-                            '<span style="color: var(--text-secondary);">Could not resolve via DNS or mDNS</span>';
+                            '<span style="color: rgba(255,255,255,0.7);">Could not resolve via DNS or mDNS</span>';
                     }
                 }
             })
@@ -121,7 +121,7 @@
             var resultEl = document.getElementById('probe-model-result');
             if (resultEl) {
                 resultEl.style.display = 'block';
-                resultEl.innerHTML = '<span style="color: var(--text-secondary);">Probing model for ' + ip + '...</span>';
+                resultEl.innerHTML = '<span style="color: rgba(255,255,255,0.7);">Probing model for ' + ip + '...</span>';
             }
 
             fetch('/api/endpoint/probe/model', {
@@ -134,10 +134,10 @@
                 if (resultEl) {
                     if (result.model) {
                         resultEl.innerHTML = '<span style="color: #22c55e;">&#10003; Model detected</span><br>' +
-                            '<span style="color: var(--text-primary); font-weight: 500;">' + result.model + '</span>';
+                            '<span style="color: white; font-weight: 500;">' + result.model + '</span>';
                     } else {
                         resultEl.innerHTML = '<span style="color: #f59e0b;">No model detected</span><br>' +
-                            '<span style="color: var(--text-secondary);">' + (result.message || 'Could not detect device model') + '</span>';
+                            '<span style="color: rgba(255,255,255,0.7);">' + (result.message || 'Could not detect device model') + '</span>';
                     }
                 }
             })
@@ -161,7 +161,7 @@
             var resultEl = document.getElementById('port-scan-result');
             if (resultEl) {
                 resultEl.style.display = 'block';
-                resultEl.innerHTML = '<span style="color: var(--text-secondary);">Scanning ports on ' + ip + '...</span>';
+                resultEl.innerHTML = '<span style="color: rgba(255,255,255,0.7);">Scanning ports on ' + ip + '...</span>';
             }
 
             fetch('/api/port-scan', {
@@ -174,13 +174,13 @@
                 if (resultEl) {
                     if (result.open_ports && result.open_ports.length > 0) {
                         var portsHtml = result.open_ports.map(function(p) {
-                            var service = p.service ? ' <span style="color: var(--text-secondary);">(' + p.service + ')</span>' : '';
+                            var service = p.service ? ' <span style="color: rgba(255,255,255,0.7);">(' + p.service + ')</span>' : '';
                             return '<span style="color: #22c55e;">' + p.port + '</span>' + service;
                         }).join(', ');
                         resultEl.innerHTML = '<span style="color: #22c55e;">&#10003; ' + result.open_ports.length + ' open port(s) found</span><br>' + portsHtml;
                     } else {
                         resultEl.innerHTML = '<span style="color: #f59e0b;">No open ports found</span><br>' +
-                            '<span style="color: var(--text-secondary);">Common ports appear to be closed or filtered</span>';
+                            '<span style="color: rgba(255,255,255,0.7);">Common ports appear to be closed or filtered</span>';
                     }
                 }
             })
@@ -220,7 +220,7 @@
             var resultEl = document.getElementById('probe-netbios-result');
             if (resultEl) {
                 resultEl.style.display = 'block';
-                resultEl.innerHTML = '<span style="color: var(--text-secondary);">Querying NetBIOS for ' + ip + '...</span>';
+                resultEl.innerHTML = '<span style="color: rgba(255,255,255,0.7);">Querying NetBIOS for ' + ip + '...</span>';
             }
 
             fetch('/api/probe-netbios', {
@@ -233,17 +233,17 @@
                 if (resultEl) {
                     if (result.netbios_name) {
                         var html = '<span style="color: #22c55e;">&#10003; NetBIOS name: </span>' +
-                            '<span style="color: var(--text-primary); font-weight: 500;">' + App.Utils.escapeHtml(result.netbios_name) + '</span>';
+                            '<span style="color: white; font-weight: 500;">' + App.Utils.escapeHtml(result.netbios_name) + '</span>';
                         if (result.group_name) {
-                            html += '<br><span style="color: var(--text-secondary);">Workgroup: ' + App.Utils.escapeHtml(result.group_name) + '</span>';
+                            html += '<br><span style="color: rgba(255,255,255,0.7);">Workgroup: ' + App.Utils.escapeHtml(result.group_name) + '</span>';
                         }
                         if (result.mac) {
-                            html += '<br><span style="color: var(--text-secondary);">MAC: ' + App.Utils.escapeHtml(result.mac) + '</span>';
+                            html += '<br><span style="color: rgba(255,255,255,0.7);">MAC: ' + App.Utils.escapeHtml(result.mac) + '</span>';
                         }
                         resultEl.innerHTML = html;
                     } else {
                         resultEl.innerHTML = '<span style="color: #f59e0b;">No NetBIOS response</span><br>' +
-                            '<span style="color: var(--text-secondary);">Device may not support NetBIOS (non-Windows)</span>';
+                            '<span style="color: rgba(255,255,255,0.7);">Device may not support NetBIOS (non-Windows)</span>';
                     }
                 }
             })
@@ -266,7 +266,7 @@
 
             var resultEl = document.getElementById('probe-hostname-result');
             if (resultEl) {
-                resultEl.innerHTML = '<span style="color: var(--text-secondary);">Applying hostname...</span>';
+                resultEl.innerHTML = '<span style="color: rgba(255,255,255,0.7);">Applying hostname...</span>';
             }
 
             fetch('/api/endpoint/rename', {
@@ -282,7 +282,7 @@
                 if (result.success) {
                     if (resultEl) {
                         resultEl.innerHTML = '<span style="color: #22c55e;">&#10003; Endpoint renamed to: ' + App.Utils.escapeHtml(hostname) + '</span><br>' +
-                            '<span style="color: var(--text-secondary);">Refreshing page...</span>';
+                            '<span style="color: rgba(255,255,255,0.7);">Refreshing page...</span>';
                     }
                     // Reload to show updated name
                     setTimeout(function() {
