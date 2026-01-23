@@ -72,7 +72,7 @@
         }
 
         // Format endpoint bytes in the list
-        document.querySelectorAll('.endpoint-bytes').forEach(function(elem) {
+        document.querySelectorAll('.bandwidth-value').forEach(function(elem) {
             var bytes = parseInt(elem.textContent);
             if (!isNaN(bytes) && bytes > 0 && App.Formatting) {
                 elem.textContent = App.Formatting.formatBytes(bytes);
