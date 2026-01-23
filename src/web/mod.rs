@@ -80,49 +80,6 @@ fn get_endpoint_table_cache() -> &'static Mutex<EndpointTableCache> {
     ENDPOINT_TABLE_CACHE.get_or_init(|| Mutex::new(EndpointTableCache::new()))
 }
 
-// Cache for vendor/model data (changes infrequently, cache longer)
-static VENDOR_MODEL_CACHE: OnceLock<Mutex<VendorModelCache>> = OnceLock::new();
-
-struct VendorModelCache {
-    vendors: HashMap<String, String>,
-    models: HashMap<String, String>,
-    last_updated: std::time::Instant,
-    ttl_seconds: u64,
-}
-
-impl VendorModelCache {
-    fn new() -> Self {
-        Self {
-            vendors: HashMap::new(),
-            models: HashMap::new(),
-            last_updated: std::time::Instant::now(),
-            ttl_seconds: 30, // Cache for 30 seconds (vendor/model rarely changes)
-        }
-    }
-
-    fn is_valid(&self) -> bool {
-        !self.vendors.is_empty() && self.last_updated.elapsed().as_secs() < self.ttl_seconds
-    }
-
-    fn get(&self) -> Option<(HashMap<String, String>, HashMap<String, String>)> {
-        if self.is_valid() {
-            Some((self.vendors.clone(), self.models.clone()))
-        } else {
-            None
-        }
-    }
-
-    fn set(&mut self, vendors: HashMap<String, String>, models: HashMap<String, String>) {
-        self.vendors = vendors;
-        self.models = models;
-        self.last_updated = std::time::Instant::now();
-    }
-}
-
-fn get_vendor_model_cache() -> &'static Mutex<VendorModelCache> {
-    VENDOR_MODEL_CACHE.get_or_init(|| Mutex::new(VendorModelCache::new()))
-}
-
 // Combined endpoint stats (bytes, last_seen, online) from single query
 #[derive(Clone)]
 struct EndpointStats {
@@ -4411,19 +4368,11 @@ async fn get_endpoints_table() -> impl Responder {
         });
     }
 
-    // Check vendor/model cache (30-second TTL)
-    let cached_vendor_model = {
-        let cache = get_vendor_model_cache();
-        if let Ok(cache_guard) = cache.lock() {
-            cache_guard.get()
-        } else {
-            None
-        }
-    };
-
     // Prepare for parallel queries
     let dropdown_for_stats = dropdown_endpoints_list.clone();
     let dropdown_for_types = dropdown_endpoints_list.clone();
+    let dropdown_for_ips = dropdown_endpoints_list.clone();
+    let dropdown_for_ssdp = dropdown_endpoints_list.clone();
 
     // OPTIMIZATION: Combined stats query (replaces 3 separate queries for bytes, last_seen, online)
     let stats_future = tokio::task::spawn_blocking(move || {
@@ -4433,121 +4382,97 @@ async fn get_endpoints_table() -> impl Responder {
     let all_types_future =
         tokio::task::spawn_blocking(move || get_all_endpoint_types(&dropdown_for_types));
 
-    // Only fetch vendor/model data if not cached
-    let (endpoint_vendors, endpoint_models) = if let Some((vendors, models)) = cached_vendor_model {
-        (vendors, models)
-    } else {
-        let dropdown_for_ips = dropdown_endpoints_list.clone();
-        let dropdown_for_ssdp = dropdown_endpoints_list.clone();
+    // Fetch vendor/model data (always fresh - removed cache that caused stale data issues)
+    let ips_macs_future =
+        tokio::task::spawn_blocking(move || get_endpoint_ips_and_macs(&dropdown_for_ips));
+    let ssdp_models_future =
+        tokio::task::spawn_blocking(move || get_endpoint_ssdp_models(&dropdown_for_ssdp));
 
-        let ips_macs_future =
-            tokio::task::spawn_blocking(move || get_endpoint_ips_and_macs(&dropdown_for_ips));
-        let ssdp_models_future =
-            tokio::task::spawn_blocking(move || get_endpoint_ssdp_models(&dropdown_for_ssdp));
+    // Run all queries in parallel
+    let (stats_result, all_types_result, ips_macs_result, ssdp_models_result) = tokio::join!(
+        stats_future,
+        all_types_future,
+        ips_macs_future,
+        ssdp_models_future
+    );
 
-        let (ips_macs_result, ssdp_models_result) =
-            tokio::join!(ips_macs_future, ssdp_models_future);
+    let endpoint_stats = stats_result.unwrap_or_default();
+    let (dropdown_types, _manual_overrides) = all_types_result.unwrap_or_default();
+    let endpoint_ips_macs = ips_macs_result.unwrap_or_default();
+    let endpoint_ssdp_models = ssdp_models_result.unwrap_or_default();
 
-        let endpoint_ips_macs = ips_macs_result.unwrap_or_default();
-        let endpoint_ssdp_models = ssdp_models_result.unwrap_or_default();
+    // Build vendor lookup
+    // Build vendor lookup
+    let component_vendors = [
+        "Espressif", "Tuya", "Realtek", "MediaTek", "Qualcomm",
+        "Broadcom", "Marvell", "USI", "Wisol", "Murata", "AzureWave",
+    ];
 
-        // Build vendor lookup
-        let component_vendors = [
-            "Espressif",
-            "Tuya",
-            "Realtek",
-            "MediaTek",
-            "Qualcomm",
-            "Broadcom",
-            "Marvell",
-            "USI",
-            "Wisol",
-            "Murata",
-            "AzureWave",
-        ];
-
-        let endpoint_vendors: HashMap<String, String> = dropdown_endpoints_list
-            .iter()
-            .filter_map(|endpoint| {
-                let endpoint_lower = endpoint.to_lowercase();
-                let (_custom_model, ssdp_model, ssdp_friendly, custom_vendor) =
-                    endpoint_ssdp_models
-                        .get(&endpoint_lower)
-                        .map(|(cm, sm, sf, cv)| {
-                            (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
-                        })
-                        .unwrap_or((None, None, None, None));
-
-                let macs: Vec<String> = endpoint_ips_macs
-                    .get(&endpoint_lower)
-                    .map(|(_, m)| m.clone())
-                    .unwrap_or_default()
-                    .into_iter()
-                    .filter(|mac| {
-                        get_mac_vendor(mac)
-                            .map(|v| !component_vendors.contains(&v))
-                            .unwrap_or(true)
-                    })
-                    .collect();
-
-                characterize_vendor(
-                    custom_vendor,
-                    ssdp_friendly,
-                    Some(endpoint.as_str()),
-                    &macs,
-                    ssdp_model,
-                )
-                .map(|c| (endpoint_lower, c.value))
-            })
-            .collect();
-
-        // Build model lookup
-        let endpoint_models: HashMap<String, String> = dropdown_endpoints_list
-            .iter()
-            .filter_map(|endpoint| {
-                let endpoint_lower = endpoint.to_lowercase();
-                let (custom_model, ssdp_model, _, _) = endpoint_ssdp_models
+    let endpoint_vendors: HashMap<String, String> = dropdown_endpoints_list
+        .iter()
+        .filter_map(|endpoint| {
+            let endpoint_lower = endpoint.to_lowercase();
+            let (_custom_model, ssdp_model, ssdp_friendly, custom_vendor) =
+                endpoint_ssdp_models
                     .get(&endpoint_lower)
                     .map(|(cm, sm, sf, cv)| {
                         (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
                     })
                     .unwrap_or((None, None, None, None));
 
-                let macs: Vec<String> = endpoint_ips_macs
-                    .get(&endpoint_lower)
-                    .map(|(_, m)| m.clone())
-                    .unwrap_or_default();
+            let macs: Vec<String> = endpoint_ips_macs
+                .get(&endpoint_lower)
+                .map(|(_, m)| m.clone())
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|mac| {
+                    get_mac_vendor(mac)
+                        .map(|v| !component_vendors.contains(&v))
+                        .unwrap_or(true)
+                })
+                .collect();
 
-                let vendor = endpoint_vendors.get(&endpoint_lower).map(|v| v.as_str());
+            characterize_vendor(
+                custom_vendor,
+                ssdp_friendly,
+                Some(endpoint.as_str()),
+                &macs,
+                ssdp_model,
+            )
+            .map(|c| (endpoint_lower, c.value))
+        })
+        .collect();
 
-                characterize_model(
-                    custom_model,
-                    ssdp_model,
-                    Some(endpoint.as_str()),
-                    &macs,
-                    vendor,
-                    None,
-                )
-                .map(|c| (endpoint_lower, c.value))
-            })
-            .collect();
+    // Build model lookup
+    let endpoint_models: HashMap<String, String> = dropdown_endpoints_list
+        .iter()
+        .filter_map(|endpoint| {
+            let endpoint_lower = endpoint.to_lowercase();
+            let (custom_model, ssdp_model, _, _) = endpoint_ssdp_models
+                .get(&endpoint_lower)
+                .map(|(cm, sm, sf, cv)| {
+                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
+                })
+                .unwrap_or((None, None, None, None));
 
-        // Update vendor/model cache
-        {
-            let cache = get_vendor_model_cache();
-            if let Ok(mut cache_guard) = cache.lock() {
-                cache_guard.set(endpoint_vendors.clone(), endpoint_models.clone());
-            }
-        }
+            let macs: Vec<String> = endpoint_ips_macs
+                .get(&endpoint_lower)
+                .map(|(_, m)| m.clone())
+                .unwrap_or_default();
 
-        (endpoint_vendors, endpoint_models)
-    };
+            let vendor = endpoint_vendors.get(&endpoint_lower).map(|v| v.as_str());
 
-    // Wait for the parallel queries
-    let (stats_result, all_types_result) = tokio::join!(stats_future, all_types_future);
-
-    let endpoint_stats = stats_result.unwrap_or_default();
-    let (dropdown_types, _manual_overrides) = all_types_result.unwrap_or_default();
+            characterize_model(
+                custom_model,
+                ssdp_model,
+                Some(endpoint.as_str()),
+                &macs,
+                vendor,
+                None,
+            )
+            .map(|c| (endpoint_lower, c.value))
+        })
+        .collect();
 
     // Build response
     let endpoints: Vec<EndpointTableRow> = dropdown_endpoints_list
