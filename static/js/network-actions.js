@@ -335,6 +335,10 @@
                         // Mark as ping-verified so refresh doesn't overwrite
                         statusIndicator.dataset.pingVerified = Date.now();
                     }
+                    // Update data attribute for filters
+                    if (row) {
+                        row.dataset.endpointOnline = 'true';
+                    }
                 } else {
                     btn.classList.add('failed');
                     statusEl.textContent = '✗';
@@ -345,6 +349,10 @@
                         statusIndicator.title = 'Unreachable';
                         // Mark as ping-verified so refresh doesn't overwrite
                         statusIndicator.dataset.pingVerified = Date.now();
+                    }
+                    // Update data attribute for filters
+                    if (row) {
+                        row.dataset.endpointOnline = 'false';
                     }
                 }
                 // Clear button status after 5 seconds (but keep indicator)

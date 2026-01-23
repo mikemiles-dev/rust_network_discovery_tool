@@ -222,15 +222,17 @@
 
                         // Update online status indicator (but respect recent ping results)
                         var statusIndicator = row.querySelector('.status-indicator');
-                        if (statusIndicator) {
-                            // Skip update if status was recently verified by ping (within 60 seconds)
-                            var pingVerified = statusIndicator.dataset.pingVerified;
-                            var isPingRecent = pingVerified && (Date.now() - parseInt(pingVerified, 10)) < 60000;
+                        var pingVerified = statusIndicator ? statusIndicator.dataset.pingVerified : null;
+                        var isPingRecent = pingVerified && (Date.now() - parseInt(pingVerified, 10)) < 60000;
 
-                            if (!isPingRecent) {
+                        if (!isPingRecent) {
+                            // Update status indicator CSS
+                            if (statusIndicator) {
                                 statusIndicator.className = 'status-indicator ' + (ep.online ? 'online' : 'offline');
                                 statusIndicator.title = ep.online ? 'Online' : 'Offline';
                             }
+                            // Update data attribute for filters
+                            row.dataset.endpointOnline = ep.online ? 'true' : 'false';
                         }
 
                         // Update device type data attribute (for CSS styling)
