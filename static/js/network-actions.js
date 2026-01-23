@@ -332,6 +332,8 @@
                         statusIndicator.classList.remove('offline', 'unreachable');
                         statusIndicator.classList.add('online');
                         statusIndicator.title = 'Online (ping: ' + latency + ')';
+                        // Mark as ping-verified so refresh doesn't overwrite
+                        statusIndicator.dataset.pingVerified = Date.now();
                     }
                 } else {
                     btn.classList.add('failed');
@@ -341,6 +343,8 @@
                         statusIndicator.classList.remove('online', 'offline');
                         statusIndicator.classList.add('unreachable');
                         statusIndicator.title = 'Unreachable';
+                        // Mark as ping-verified so refresh doesn't overwrite
+                        statusIndicator.dataset.pingVerified = Date.now();
                     }
                 }
                 // Clear button status after 5 seconds (but keep indicator)

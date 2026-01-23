@@ -220,11 +220,17 @@
                             lastSeenCell.textContent = ep.last_seen;
                         }
 
-                        // Update online status indicator
+                        // Update online status indicator (but respect recent ping results)
                         var statusIndicator = row.querySelector('.status-indicator');
                         if (statusIndicator) {
-                            statusIndicator.className = 'status-indicator ' + (ep.online ? 'online' : 'offline');
-                            statusIndicator.title = ep.online ? 'Online' : 'Offline';
+                            // Skip update if status was recently verified by ping (within 60 seconds)
+                            var pingVerified = statusIndicator.dataset.pingVerified;
+                            var isPingRecent = pingVerified && (Date.now() - parseInt(pingVerified, 10)) < 60000;
+
+                            if (!isPingRecent) {
+                                statusIndicator.className = 'status-indicator ' + (ep.online ? 'online' : 'offline');
+                                statusIndicator.title = ep.online ? 'Online' : 'Offline';
+                            }
                         }
 
                         // Update device type data attribute (for CSS styling)
