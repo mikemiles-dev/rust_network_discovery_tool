@@ -165,8 +165,27 @@
                         endpointMap[ep.name.toLowerCase()] = ep;
                     });
 
-                    // Update existing rows in the table
+                    // Check if there are new endpoints not in the current table
                     var rows = document.querySelectorAll('.endpoint-row');
+                    var existingEndpoints = new Set();
+                    rows.forEach(function(row) {
+                        if (row.dataset.endpoint) {
+                            existingEndpoints.add(row.dataset.endpoint.toLowerCase());
+                        }
+                    });
+
+                    // If new endpoints found, reload the page to show them
+                    var hasNewEndpoints = data.endpoints.some(function(ep) {
+                        return !existingEndpoints.has(ep.name.toLowerCase());
+                    });
+
+                    if (hasNewEndpoints) {
+                        console.log('New endpoints detected, reloading page...');
+                        App.Refresh.reloadWithState();
+                        return;
+                    }
+
+                    // Update existing rows in the table
                     rows.forEach(function(row) {
                         var endpointName = row.dataset.endpoint;
                         if (!endpointName) return;

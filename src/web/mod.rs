@@ -40,6 +40,169 @@ fn get_probing_endpoints() -> &'static Mutex<HashSet<i64>> {
     PROBING_ENDPOINTS.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
+// Cache for endpoint table data to avoid repeated DB queries
+static ENDPOINT_TABLE_CACHE: OnceLock<Mutex<EndpointTableCache>> = OnceLock::new();
+
+struct EndpointTableCache {
+    data: Option<Vec<EndpointTableRow>>,
+    last_updated: std::time::Instant,
+    ttl_seconds: u64,
+}
+
+impl EndpointTableCache {
+    fn new() -> Self {
+        Self {
+            data: None,
+            last_updated: std::time::Instant::now(),
+            ttl_seconds: 3, // Cache for 3 seconds
+        }
+    }
+
+    fn is_valid(&self) -> bool {
+        self.data.is_some() && self.last_updated.elapsed().as_secs() < self.ttl_seconds
+    }
+
+    fn get(&self) -> Option<Vec<EndpointTableRow>> {
+        if self.is_valid() {
+            self.data.clone()
+        } else {
+            None
+        }
+    }
+
+    fn set(&mut self, data: Vec<EndpointTableRow>) {
+        self.data = Some(data);
+        self.last_updated = std::time::Instant::now();
+    }
+}
+
+fn get_endpoint_table_cache() -> &'static Mutex<EndpointTableCache> {
+    ENDPOINT_TABLE_CACHE.get_or_init(|| Mutex::new(EndpointTableCache::new()))
+}
+
+// Cache for vendor/model data (changes infrequently, cache longer)
+static VENDOR_MODEL_CACHE: OnceLock<Mutex<VendorModelCache>> = OnceLock::new();
+
+struct VendorModelCache {
+    vendors: HashMap<String, String>,
+    models: HashMap<String, String>,
+    last_updated: std::time::Instant,
+    ttl_seconds: u64,
+}
+
+impl VendorModelCache {
+    fn new() -> Self {
+        Self {
+            vendors: HashMap::new(),
+            models: HashMap::new(),
+            last_updated: std::time::Instant::now(),
+            ttl_seconds: 30, // Cache for 30 seconds (vendor/model rarely changes)
+        }
+    }
+
+    fn is_valid(&self) -> bool {
+        !self.vendors.is_empty() && self.last_updated.elapsed().as_secs() < self.ttl_seconds
+    }
+
+    fn get(&self) -> Option<(HashMap<String, String>, HashMap<String, String>)> {
+        if self.is_valid() {
+            Some((self.vendors.clone(), self.models.clone()))
+        } else {
+            None
+        }
+    }
+
+    fn set(&mut self, vendors: HashMap<String, String>, models: HashMap<String, String>) {
+        self.vendors = vendors;
+        self.models = models;
+        self.last_updated = std::time::Instant::now();
+    }
+}
+
+fn get_vendor_model_cache() -> &'static Mutex<VendorModelCache> {
+    VENDOR_MODEL_CACHE.get_or_init(|| Mutex::new(VendorModelCache::new()))
+}
+
+// Combined endpoint stats (bytes, last_seen, online) from single query
+#[derive(Clone)]
+struct EndpointStats {
+    bytes: i64,
+    last_seen: String,
+    online: bool,
+}
+
+/// Get combined endpoint stats (bytes, last_seen, online) in a single query
+fn get_combined_endpoint_stats(
+    endpoints: &[String],
+    scan_interval: u64,
+    active_threshold: u64,
+) -> HashMap<String, EndpointStats> {
+    let conn = new_connection();
+    let mut result: HashMap<String, EndpointStats> = HashMap::new();
+
+    // Initialize all endpoints with defaults
+    for endpoint in endpoints {
+        result.insert(
+            endpoint.to_lowercase(),
+            EndpointStats {
+                bytes: 0,
+                last_seen: "-".to_string(),
+                online: false,
+            },
+        );
+    }
+
+    // Single query to get bytes, last_seen for all endpoints
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT
+                {DISPLAY_NAME_SQL} AS display_name,
+                COALESCE(SUM(c.bytes), 0) as total_bytes,
+                MAX(c.last_seen_at) as last_seen
+             FROM endpoints e
+             INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
+             WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
+             GROUP BY e.id"
+        ))
+        .expect("Failed to prepare combined stats statement");
+
+    let now = chrono::Utc::now().timestamp();
+    let online_threshold = now - active_threshold as i64;
+
+    let rows = stmt
+        .query_map([scan_interval], |row| {
+            let name: String = row.get(0)?;
+            let bytes: i64 = row.get(1)?;
+            let last_seen: i64 = row.get(2)?;
+            Ok((name, bytes, last_seen))
+        })
+        .expect("Failed to execute combined stats query");
+
+    for row in rows.flatten() {
+        let (name, bytes, last_seen_ts) = row;
+        let name_lower = name.to_lowercase();
+
+        if let Some(stats) = result.get_mut(&name_lower) {
+            stats.bytes = bytes;
+            stats.online = last_seen_ts >= online_threshold;
+
+            // Format last_seen as relative time
+            let seconds_ago = now - last_seen_ts;
+            stats.last_seen = if seconds_ago < 60 {
+                "Just now".to_string()
+            } else if seconds_ago < 3600 {
+                format!("{}m ago", seconds_ago / 60)
+            } else if seconds_ago < 86400 {
+                format!("{}h ago", seconds_ago / 3600)
+            } else {
+                format!("{}d ago", seconds_ago / 86400)
+            };
+        }
+    }
+
+    result
+}
+
 use rust_xlsxwriter::{Format, Workbook};
 use serde::{Deserialize, Serialize};
 
@@ -3832,8 +3995,30 @@ fn parse_snmp_sys_descr(sys_descr: &str) -> (Option<String>, Option<String>) {
     // Try to extract model - look for common patterns
     let mut model: Option<String> = None;
 
+    // HP printer pattern: "PID:HP Color LaserJet..." - common in HP printer SNMP
+    if let Some(idx) = descr_lower.find("pid:hp") {
+        let after_pid = &sys_descr[idx + 4..]; // Skip "PID:"
+        // Take the HP model name - everything after "HP " until end or comma
+        let trimmed = after_pid.trim();
+        // HP models typically end at the end of string or before a comma
+        let model_str = if let Some(end) = trimmed.find(',') {
+            trimmed[..end].trim()
+        } else {
+            trimmed
+        };
+        if model_str.len() > 2 {
+            model = Some(model_str.to_string());
+            // Also set vendor to HP if not already set
+            if vendor.is_none() {
+                vendor = Some("HP".to_string());
+            }
+        }
+    }
+
     // Pattern: "Model: XYZ" or "Model XYZ"
-    if let Some(idx) = descr_lower.find("model") {
+    if model.is_none()
+        && let Some(idx) = descr_lower.find("model")
+    {
         let after_model = &sys_descr[idx + 5..];
         let trimmed = after_model.trim_start_matches([':', ' ']);
         if let Some(end) = trimmed.find([',', ';', '\n', '\r']) {
@@ -4182,7 +4367,7 @@ async fn set_scan_config(body: Json<ScanConfig>) -> impl Responder {
 // Endpoints Table API (for AJAX refresh without full page reload)
 // ============================================================================
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct EndpointTableRow {
     name: String,
     vendor: Option<String>,
@@ -4201,7 +4386,20 @@ struct EndpointsTableResponse {
 /// Get endpoint table data for AJAX refresh (doesn't reload full page)
 #[get("/api/endpoints/table")]
 async fn get_endpoints_table() -> impl Responder {
+    // Check cache first (3-second TTL)
+    {
+        let cache = get_endpoint_table_cache();
+        if let Ok(cache_guard) = cache.lock()
+            && let Some(cached_data) = cache_guard.get()
+        {
+            return HttpResponse::Ok().json(EndpointsTableResponse {
+                endpoints: cached_data,
+            });
+        }
+    }
+
     let scan_interval: u64 = 525600; // Same default as index route
+    let active_threshold = get_setting_i64("active_threshold_seconds", 120) as u64;
 
     // Get endpoint list
     let dropdown_future = tokio::task::spawn_blocking(move || dropdown_endpoints(scan_interval));
@@ -4213,155 +4411,171 @@ async fn get_endpoints_table() -> impl Responder {
         });
     }
 
-    // Run queries in parallel (same as index route but simplified)
-    let dropdown_for_ips = dropdown_endpoints_list.clone();
-    let dropdown_for_bytes = dropdown_endpoints_list.clone();
-    let dropdown_for_seen = dropdown_endpoints_list.clone();
-    let dropdown_for_online = dropdown_endpoints_list.clone();
-    let dropdown_for_types = dropdown_endpoints_list.clone();
-    let dropdown_for_ssdp = dropdown_endpoints_list.clone();
+    // Check vendor/model cache (30-second TTL)
+    let cached_vendor_model = {
+        let cache = get_vendor_model_cache();
+        if let Ok(cache_guard) = cache.lock() {
+            cache_guard.get()
+        } else {
+            None
+        }
+    };
 
-    let ips_macs_future =
-        tokio::task::spawn_blocking(move || get_endpoint_ips_and_macs(&dropdown_for_ips));
-    let bytes_future = tokio::task::spawn_blocking(move || {
-        get_all_endpoints_bytes(&dropdown_for_bytes, scan_interval)
+    // Prepare for parallel queries
+    let dropdown_for_stats = dropdown_endpoints_list.clone();
+    let dropdown_for_types = dropdown_endpoints_list.clone();
+
+    // OPTIMIZATION: Combined stats query (replaces 3 separate queries for bytes, last_seen, online)
+    let stats_future = tokio::task::spawn_blocking(move || {
+        get_combined_endpoint_stats(&dropdown_for_stats, scan_interval, active_threshold)
     });
-    let last_seen_future = tokio::task::spawn_blocking(move || {
-        get_all_endpoints_last_seen(&dropdown_for_seen, scan_interval)
-    });
-    let online_status_future = tokio::task::spawn_blocking(move || {
-        let active_threshold = get_setting_i64("active_threshold_seconds", 120) as u64;
-        get_all_endpoints_online_status(&dropdown_for_online, active_threshold)
-    });
+
     let all_types_future =
         tokio::task::spawn_blocking(move || get_all_endpoint_types(&dropdown_for_types));
-    let ssdp_models_future =
-        tokio::task::spawn_blocking(move || get_endpoint_ssdp_models(&dropdown_for_ssdp));
 
-    let (
-        ips_macs_result,
-        bytes_result,
-        last_seen_result,
-        online_status_result,
-        all_types_result,
-        ssdp_models_result,
-    ) = tokio::join!(
-        ips_macs_future,
-        bytes_future,
-        last_seen_future,
-        online_status_future,
-        all_types_future,
-        ssdp_models_future
-    );
+    // Only fetch vendor/model data if not cached
+    let (endpoint_vendors, endpoint_models) = if let Some((vendors, models)) = cached_vendor_model {
+        (vendors, models)
+    } else {
+        let dropdown_for_ips = dropdown_endpoints_list.clone();
+        let dropdown_for_ssdp = dropdown_endpoints_list.clone();
 
-    let endpoint_ips_macs = ips_macs_result.unwrap_or_default();
-    let endpoint_bytes = bytes_result.unwrap_or_default();
-    let endpoint_last_seen = last_seen_result.unwrap_or_default();
-    let endpoint_online_status = online_status_result.unwrap_or_default();
+        let ips_macs_future =
+            tokio::task::spawn_blocking(move || get_endpoint_ips_and_macs(&dropdown_for_ips));
+        let ssdp_models_future =
+            tokio::task::spawn_blocking(move || get_endpoint_ssdp_models(&dropdown_for_ssdp));
+
+        let (ips_macs_result, ssdp_models_result) =
+            tokio::join!(ips_macs_future, ssdp_models_future);
+
+        let endpoint_ips_macs = ips_macs_result.unwrap_or_default();
+        let endpoint_ssdp_models = ssdp_models_result.unwrap_or_default();
+
+        // Build vendor lookup
+        let component_vendors = [
+            "Espressif",
+            "Tuya",
+            "Realtek",
+            "MediaTek",
+            "Qualcomm",
+            "Broadcom",
+            "Marvell",
+            "USI",
+            "Wisol",
+            "Murata",
+            "AzureWave",
+        ];
+
+        let endpoint_vendors: HashMap<String, String> = dropdown_endpoints_list
+            .iter()
+            .filter_map(|endpoint| {
+                let endpoint_lower = endpoint.to_lowercase();
+                let (_custom_model, ssdp_model, ssdp_friendly, custom_vendor) =
+                    endpoint_ssdp_models
+                        .get(&endpoint_lower)
+                        .map(|(cm, sm, sf, cv)| {
+                            (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
+                        })
+                        .unwrap_or((None, None, None, None));
+
+                let macs: Vec<String> = endpoint_ips_macs
+                    .get(&endpoint_lower)
+                    .map(|(_, m)| m.clone())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|mac| {
+                        get_mac_vendor(mac)
+                            .map(|v| !component_vendors.contains(&v))
+                            .unwrap_or(true)
+                    })
+                    .collect();
+
+                characterize_vendor(
+                    custom_vendor,
+                    ssdp_friendly,
+                    Some(endpoint.as_str()),
+                    &macs,
+                    ssdp_model,
+                )
+                .map(|c| (endpoint_lower, c.value))
+            })
+            .collect();
+
+        // Build model lookup
+        let endpoint_models: HashMap<String, String> = dropdown_endpoints_list
+            .iter()
+            .filter_map(|endpoint| {
+                let endpoint_lower = endpoint.to_lowercase();
+                let (custom_model, ssdp_model, _, _) = endpoint_ssdp_models
+                    .get(&endpoint_lower)
+                    .map(|(cm, sm, sf, cv)| {
+                        (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
+                    })
+                    .unwrap_or((None, None, None, None));
+
+                let macs: Vec<String> = endpoint_ips_macs
+                    .get(&endpoint_lower)
+                    .map(|(_, m)| m.clone())
+                    .unwrap_or_default();
+
+                let vendor = endpoint_vendors.get(&endpoint_lower).map(|v| v.as_str());
+
+                characterize_model(
+                    custom_model,
+                    ssdp_model,
+                    Some(endpoint.as_str()),
+                    &macs,
+                    vendor,
+                    None,
+                )
+                .map(|c| (endpoint_lower, c.value))
+            })
+            .collect();
+
+        // Update vendor/model cache
+        {
+            let cache = get_vendor_model_cache();
+            if let Ok(mut cache_guard) = cache.lock() {
+                cache_guard.set(endpoint_vendors.clone(), endpoint_models.clone());
+            }
+        }
+
+        (endpoint_vendors, endpoint_models)
+    };
+
+    // Wait for the parallel queries
+    let (stats_result, all_types_result) = tokio::join!(stats_future, all_types_future);
+
+    let endpoint_stats = stats_result.unwrap_or_default();
     let (dropdown_types, _manual_overrides) = all_types_result.unwrap_or_default();
-    let endpoint_ssdp_models = ssdp_models_result.unwrap_or_default();
-
-    // Build vendor lookup (simplified from index route)
-    let component_vendors = [
-        "Espressif",
-        "Tuya",
-        "Realtek",
-        "MediaTek",
-        "Qualcomm",
-        "Broadcom",
-        "Marvell",
-        "USI",
-        "Wisol",
-        "Murata",
-        "AzureWave",
-    ];
-
-    let endpoint_vendors: HashMap<String, String> = dropdown_endpoints_list
-        .iter()
-        .filter_map(|endpoint| {
-            let endpoint_lower = endpoint.to_lowercase();
-            let (_custom_model, ssdp_model, ssdp_friendly, custom_vendor) = endpoint_ssdp_models
-                .get(&endpoint_lower)
-                .map(|(cm, sm, sf, cv)| {
-                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
-                })
-                .unwrap_or((None, None, None, None));
-
-            let macs: Vec<String> = endpoint_ips_macs
-                .get(&endpoint_lower)
-                .map(|(_, m)| m.clone())
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|mac| {
-                    get_mac_vendor(mac)
-                        .map(|v| !component_vendors.contains(&v))
-                        .unwrap_or(true)
-                })
-                .collect();
-
-            characterize_vendor(
-                custom_vendor,
-                ssdp_friendly,
-                Some(endpoint.as_str()),
-                &macs,
-                ssdp_model,
-            )
-            .map(|c| (endpoint_lower, c.value))
-        })
-        .collect();
-
-    // Build model lookup
-    let endpoint_models: HashMap<String, String> = dropdown_endpoints_list
-        .iter()
-        .filter_map(|endpoint| {
-            let endpoint_lower = endpoint.to_lowercase();
-            let (custom_model, ssdp_model, _, _) = endpoint_ssdp_models
-                .get(&endpoint_lower)
-                .map(|(cm, sm, sf, cv)| {
-                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
-                })
-                .unwrap_or((None, None, None, None));
-
-            let macs: Vec<String> = endpoint_ips_macs
-                .get(&endpoint_lower)
-                .map(|(_, m)| m.clone())
-                .unwrap_or_default();
-
-            let vendor = endpoint_vendors.get(&endpoint_lower).map(|v| v.as_str());
-
-            characterize_model(
-                custom_model,
-                ssdp_model,
-                Some(endpoint.as_str()),
-                &macs,
-                vendor,
-                None,
-            )
-            .map(|c| (endpoint_lower, c.value))
-        })
-        .collect();
 
     // Build response
     let endpoints: Vec<EndpointTableRow> = dropdown_endpoints_list
         .iter()
         .map(|endpoint| {
             let endpoint_lower = endpoint.to_lowercase();
+            let stats = endpoint_stats.get(&endpoint_lower);
             EndpointTableRow {
                 name: endpoint.clone(),
                 vendor: endpoint_vendors.get(&endpoint_lower).cloned(),
                 model: endpoint_models.get(&endpoint_lower).cloned(),
                 device_type: dropdown_types.get(&endpoint_lower).map(|s| s.to_string()),
-                bytes: *endpoint_bytes.get(&endpoint_lower).unwrap_or(&0),
-                last_seen: endpoint_last_seen
-                    .get(&endpoint_lower)
-                    .cloned()
+                bytes: stats.map(|s| s.bytes).unwrap_or(0),
+                last_seen: stats
+                    .map(|s| s.last_seen.clone())
                     .unwrap_or_else(|| "-".to_string()),
-                online: *endpoint_online_status
-                    .get(&endpoint_lower)
-                    .unwrap_or(&false),
+                online: stats.map(|s| s.online).unwrap_or(false),
             }
         })
         .collect();
+
+    // Update cache
+    {
+        let cache = get_endpoint_table_cache();
+        if let Ok(mut cache_guard) = cache.lock() {
+            cache_guard.set(endpoints.clone());
+        }
+    }
 
     HttpResponse::Ok().json(EndpointsTableResponse { endpoints })
 }
