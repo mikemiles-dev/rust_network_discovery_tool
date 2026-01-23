@@ -3018,7 +3018,13 @@ async fn probe_endpoint(body: Json<ProbeEndpointRequest>) -> impl Responder {
                             "sys_location": result.sys_location,
                             "community": result.community,
                         });
-                        let _ = insert_scan_result(&conn, eid, "snmp", None, Some(&details.to_string()));
+                        let _ = insert_scan_result(
+                            &conn,
+                            eid,
+                            "snmp",
+                            None,
+                            Some(&details.to_string()),
+                        );
 
                         // Extract and save vendor/model from sysDescr
                         if let Some(ref sys_descr) = result.sys_descr {

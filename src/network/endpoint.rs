@@ -417,25 +417,25 @@ const APPLIANCE_PATTERNS: &[&str] = &[
     "home-assistant",
     "homeassistant",
     // Garage door openers
-    "ratgdo",    // Ratgdo garage door opener
-    "myq",       // Chamberlain MyQ
+    "ratgdo", // Ratgdo garage door opener
+    "myq",    // Chamberlain MyQ
     "garagedoor",
     "garage-door",
     // Smart lighting
-    "wled",      // WLED smart LED controllers
-    "hue",       // Philips Hue (not bridge)
-    "lifx",      // LIFX smart bulbs
-    "nanoleaf",  // Nanoleaf panels
+    "wled",     // WLED smart LED controllers
+    "hue",      // Philips Hue (not bridge)
+    "lifx",     // LIFX smart bulbs
+    "nanoleaf", // Nanoleaf panels
     // Smart plugs/switches
-    "wemo",      // Belkin Wemo
-    "kasa",      // TP-Link Kasa
-    "tasmota",   // Tasmota firmware devices
-    "shelly",    // Shelly smart devices
-    "meross",    // Meross smart devices
+    "wemo",    // Belkin Wemo
+    "kasa",    // TP-Link Kasa
+    "tasmota", // Tasmota firmware devices
+    "shelly",  // Shelly smart devices
+    "meross",  // Meross smart devices
     // Other IoT
-    "ecobee",    // Ecobee thermostats
-    "roomba",    // iRobot Roomba
-    "dyson",     // Dyson fans/purifiers
+    "ecobee", // Ecobee thermostats
+    "roomba", // iRobot Roomba
+    "dyson",  // Dyson fans/purifiers
     // NAS devices (treated as appliances)
     "truenas",   // TrueNAS
     "synology",  // Synology NAS
@@ -444,13 +444,13 @@ const APPLIANCE_PATTERNS: &[&str] = &[
     "unraid",    // Unraid NAS
     "paperless", // Paperless-ngx document management
     // Security cameras
-    "dahua",     // Dahua cameras/NVRs
-    "hikvision", // Hikvision cameras
-    "simplisafe",// SimpliSafe security
-    "arlo",      // Arlo cameras
-    "blink",     // Blink cameras
+    "dahua",      // Dahua cameras/NVRs
+    "hikvision",  // Hikvision cameras
+    "simplisafe", // SimpliSafe security
+    "arlo",       // Arlo cameras
+    "blink",      // Blink cameras
     // Wyze cameras (often use lcc- hostname prefix)
-    "lcc-",      // Wyze camera cloud prefix
+    "lcc-", // Wyze camera cloud prefix
 ];
 const LG_APPLIANCE_PREFIXES: &[&str] = &["lma", "lmw", "ldf", "ldt", "ldp", "dle", "dlex", "lrmv"];
 
@@ -2080,11 +2080,21 @@ pub fn normalize_model_name(model: &str, vendor: Option<&str>) -> Option<String>
         return Some(format!("Yamaha Aventage RX-A{}", series));
     }
     // Marantz SR series (SR5015, SR6015, etc.)
-    if model_lower.starts_with("sr") && model_lower.chars().nth(2).is_some_and(|c| c.is_ascii_digit()) {
+    if model_lower.starts_with("sr")
+        && model_lower
+            .chars()
+            .nth(2)
+            .is_some_and(|c| c.is_ascii_digit())
+    {
         return Some(format!("Marantz {}", model_upper));
     }
     // Marantz NR series (NR1711, etc.)
-    if model_lower.starts_with("nr") && model_lower.chars().nth(2).is_some_and(|c| c.is_ascii_digit()) {
+    if model_lower.starts_with("nr")
+        && model_lower
+            .chars()
+            .nth(2)
+            .is_some_and(|c| c.is_ascii_digit())
+    {
         return Some(format!("Marantz {}", model_upper));
     }
     // Onkyo TX-NR series
@@ -2194,14 +2204,14 @@ const APPLIANCE_VENDORS: &[&str] = &[
     "iRobot",
     "Tuya",
     "Dyson",
-    "Roborock",      // Robot vacuums
-    "SimpliSafe",    // Home security
-    "Dahua",         // Security cameras
-    "Nest",          // Smart home (Google)
-    "Bosch",         // Home appliances
-    "Seeed",         // IoT devices
+    "Roborock",          // Robot vacuums
+    "SimpliSafe",        // Home security
+    "Dahua",             // Security cameras
+    "Nest",              // Smart home (Google)
+    "Bosch",             // Home appliances
+    "Seeed",             // IoT devices
     "Texas Instruments", // IoT chips (used in Wyze, SmartThings)
-    "Espressif",     // ESP32/ESP8266 IoT modules
+    "Espressif",         // ESP32/ESP8266 IoT modules
 ];
 
 // Gaming vendors that should be classified as gaming devices
@@ -3958,7 +3968,7 @@ impl EndPoint {
             || lower.contains("linksys")
             || lower.contains("netgear")
             || lower.starts_with("asus-rt")
-            || lower.starts_with("rt-")  // Asus RT- series routers
+            || lower.starts_with("rt-") // Asus RT- series routers
     }
 
     /// Classify device type based on hostname, ports, MACs, and mDNS services
