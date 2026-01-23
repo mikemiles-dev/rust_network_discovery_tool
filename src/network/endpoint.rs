@@ -287,9 +287,17 @@ const SOUNDBAR_PATTERNS: &[&str] = &[
     "playbar",
     "playbase",
     "beam",
+    // AV receivers
+    "denon-avr",
+    "denon-",
+    "yamaha-rx",
+    "rx-v", // Yamaha RX-V series receivers
+    "marantz",
+    "onkyo",
+    "pioneer-vsx",
 ];
 
-/// Soundbar model number prefixes (for SSDP model detection)
+/// Soundbar and AV receiver model number prefixes (for SSDP model detection)
 const SOUNDBAR_MODEL_PREFIXES: &[&str] = &[
     "hw-",  // Samsung soundbars (HW-MS750, HW-Q990B, etc.)
     "spk-", // Samsung speakers (SPK-WAM750, etc.)
@@ -299,6 +307,15 @@ const SOUNDBAR_MODEL_PREFIXES: &[&str] = &[
     "sp",   // LG soundbars (SP9YA, etc.)
     "sc9",  // LG soundbars (SC9S, etc.) - sc9 to avoid matching other "sc" models
     "bar-", // JBL soundbars (Bar 5.1, etc.)
+    // AV receivers
+    "avr-",  // Denon AVR series (AVR-S940H, AVR-X3700H, etc.)
+    "rx-v",  // Yamaha RX-V series (RX-V479, RX-V685, etc.)
+    "rx-a",  // Yamaha RX-A Aventage series
+    "sr",    // Marantz SR series (SR5015, SR6015, etc.)
+    "nr",    // Marantz NR series (NR1711, etc.)
+    "tx-nr", // Onkyo TX-NR series
+    "tx-rz", // Onkyo TX-RZ series
+    "vsx-",  // Pioneer VSX series
 ];
 
 /// Samsung TV model series patterns mapped to friendly names
@@ -397,6 +414,33 @@ const APPLIANCE_PATTERNS: &[&str] = &[
     "homebridge",
     "home-assistant",
     "homeassistant",
+    // Garage door openers
+    "ratgdo",    // Ratgdo garage door opener
+    "myq",       // Chamberlain MyQ
+    "garagedoor",
+    "garage-door",
+    // Smart lighting
+    "wled",      // WLED smart LED controllers
+    "hue",       // Philips Hue (not bridge)
+    "lifx",      // LIFX smart bulbs
+    "nanoleaf",  // Nanoleaf panels
+    // Smart plugs/switches
+    "wemo",      // Belkin Wemo
+    "kasa",      // TP-Link Kasa
+    "tasmota",   // Tasmota firmware devices
+    "shelly",    // Shelly smart devices
+    "meross",    // Meross smart devices
+    // Other IoT
+    "ecobee",    // Ecobee thermostats
+    "roomba",    // iRobot Roomba
+    "dyson",     // Dyson fans/purifiers
+    // NAS devices (treated as appliances)
+    "truenas",   // TrueNAS
+    "synology",  // Synology NAS
+    "qnap",      // QNAP NAS
+    "freenas",   // FreeNAS
+    "unraid",    // Unraid NAS
+    "paperless", // Paperless-ngx document management
 ];
 const LG_APPLIANCE_PREFIXES: &[&str] = &["lma", "lmw", "ldf", "ldt", "ldp", "dle", "dlex", "lrmv"];
 
@@ -792,6 +836,7 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("6c:ad:f8", "Google"),
     ("94:94:26", "Google"),
     ("a4:77:33", "Google"),
+    ("ac:67:84", "Google"), // Chromecast/Eureka Dongle
     ("cc:47:40", "Google"),
     ("d4:f5:47", "Google"),
     ("e4:f0:42", "Google"),
@@ -850,7 +895,9 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("24:62:ab", "Espressif"),
     ("30:ae:a4", "Espressif"),
     ("60:01:94", "Espressif"),
+    ("68:c6:3a", "Espressif"), // Used in Ratgdo garage door openers
     ("84:cc:a8", "Espressif"),
+    ("84:f3:eb", "Espressif"), // Used in Ratgdo garage door openers
     ("ac:67:b2", "Espressif"),
     ("cc:50:e3", "Espressif"),
     ("5c:cf:7f", "Espressif"),
@@ -1575,7 +1622,7 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("28:6d:97", "Samsung"),
     // Wisol (SmartThings sensors, IoT modules for Samsung) - display as Samsung
     ("70:2c:1f", "Samsung"),
-    // Roku
+    // Roku (streaming devices, Roku TVs)
     ("08:05:81", "Roku"),
     ("10:59:32", "Roku"),
     ("20:ef:bd", "Roku"),
@@ -1583,13 +1630,14 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("ac:3a:7a", "Roku"),
     ("b0:a7:37", "Roku"),
     ("b8:3e:59", "Roku"),
+    ("c0:d2:f3", "Roku"), // Roku TVs
     ("c8:3a:6b", "Roku"),
     ("d4:e2:2f", "Roku"),
     ("d8:31:34", "Roku"),
     ("dc:3a:5e", "Roku"),
     // Earda Technologies - OEM for TCL/Hisense Roku TVs
     ("14:85:54", "TCL"),
-    // Sony (PlayStation, TVs)
+    // Sony (PlayStation, TVs, Blu-ray players)
     ("00:01:4a", "Sony"),
     ("00:04:1f", "Sony"),
     ("00:13:a9", "Sony"),
@@ -1611,6 +1659,7 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("84:00:d2", "Sony"),
     ("a8:e3:ee", "Sony"),
     ("ac:9b:0a", "Sony"),
+    ("b0:52:16", "Sony"), // Blu-ray players
     ("b4:52:7e", "Sony"),
     ("c8:63:14", "Sony"),
     ("f8:46:1c", "Sony"),
@@ -1637,6 +1686,32 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("b4:0e:de", "Microsoft"),
     ("c8:3f:26", "Microsoft"),
     ("dc:53:7c", "Microsoft"),
+    // Logitech (Harmony Hub, webcams, peripherals)
+    ("00:04:20", "Logitech"), // Harmony Hub (Slim Devices/Logitech)
+    // Denon (AV receivers, soundbars)
+    ("00:05:cd", "Denon"),
+    // Yamaha (AV receivers, soundbars)
+    ("50:72:24", "Yamaha"),
+    ("a4:5e:60", "Yamaha"),
+    // Ubiquiti (UniFi networking equipment, Dream Machine)
+    ("0c:ea:14", "Ubiquiti"),
+    ("18:e8:29", "Ubiquiti"),
+    ("24:5a:4c", "Ubiquiti"),
+    ("44:d9:e7", "Ubiquiti"),
+    ("68:72:51", "Ubiquiti"),
+    ("74:83:c2", "Ubiquiti"),
+    ("74:ac:b9", "Ubiquiti"),
+    ("78:45:58", "Ubiquiti"),
+    ("80:2a:a8", "Ubiquiti"),
+    ("b4:fb:e4", "Ubiquiti"),
+    ("dc:9f:db", "Ubiquiti"),
+    ("f0:9f:c2", "Ubiquiti"),
+    ("fc:ec:da", "Ubiquiti"),
+    // Brother (printers)
+    ("00:1b:a9", "Brother"),
+    ("00:80:77", "Brother"),
+    ("30:05:5c", "Brother"),
+    ("40:23:43", "Brother"),
     // Nintendo (Switch, Wii)
     ("00:09:bf", "Nintendo"),
     ("00:16:56", "Nintendo"),
@@ -1950,6 +2025,39 @@ pub fn normalize_model_name(model: &str, vendor: Option<&str>) -> Option<String>
     // JBL soundbar
     if model_lower.starts_with("bar-") || model_lower.starts_with("bar ") {
         return Some(format!("JBL {}", model_upper));
+    }
+
+    // AV Receivers
+    // Denon AVR series (AVR-S940H, AVR-X3700H, etc.)
+    if model_lower.starts_with("avr-") {
+        let series = &model_upper[4..];
+        return Some(format!("Denon AVR {}", series));
+    }
+    // Yamaha RX-V series (RX-V479, RX-V685, etc.)
+    if model_lower.starts_with("rx-v") {
+        let series = &model_upper[4..];
+        return Some(format!("Yamaha RX-V{}", series));
+    }
+    // Yamaha RX-A Aventage series
+    if model_lower.starts_with("rx-a") {
+        let series = &model_upper[4..];
+        return Some(format!("Yamaha Aventage RX-A{}", series));
+    }
+    // Marantz SR series (SR5015, SR6015, etc.)
+    if model_lower.starts_with("sr") && model_lower.chars().nth(2).is_some_and(|c| c.is_ascii_digit()) {
+        return Some(format!("Marantz {}", model_upper));
+    }
+    // Marantz NR series (NR1711, etc.)
+    if model_lower.starts_with("nr") && model_lower.chars().nth(2).is_some_and(|c| c.is_ascii_digit()) {
+        return Some(format!("Marantz {}", model_upper));
+    }
+    // Onkyo TX-NR series
+    if model_lower.starts_with("tx-nr") || model_lower.starts_with("tx-rz") {
+        return Some(format!("Onkyo {}", model_upper));
+    }
+    // Pioneer VSX series
+    if model_lower.starts_with("vsx-") {
+        return Some(format!("Pioneer {}", model_upper));
     }
 
     // Determine vendor from model prefix or provided vendor
@@ -3362,6 +3470,22 @@ pub fn get_model_from_vendor_and_type(vendor: &str, device_type: &str) -> Option
         ("Cisco", "gateway") => Some("Cisco Router".to_string()),
         ("Cisco", _) => Some("Cisco Device".to_string()),
 
+        // AV equipment vendors
+        ("Denon", "soundbar") => Some("Denon AV Receiver".to_string()),
+        ("Denon", _) => Some("Denon AV Receiver".to_string()),
+        ("Yamaha", "soundbar") => Some("Yamaha AV Receiver".to_string()),
+        ("Yamaha", _) => Some("Yamaha Audio Device".to_string()),
+        ("Logitech", "appliance") => Some("Harmony Hub".to_string()),
+        ("Logitech", _) => Some("Logitech Device".to_string()),
+
+        // Printers
+        ("Brother", "printer") => Some("Brother Printer".to_string()),
+        ("Brother", _) => Some("Brother Device".to_string()),
+
+        // IoT module vendors (used in DIY/custom devices)
+        ("Espressif", "appliance") => Some("ESP Smart Device".to_string()),
+        ("Espressif", _) => Some("ESP Device".to_string()),
+
         _ => None,
     }
 }
@@ -3759,6 +3883,18 @@ impl EndPoint {
             || lower.contains("unifi")
             || lower.contains("edgerouter")
             || lower.contains("mikrotik")
+            // Ubiquiti Dream Machine variants
+            || lower.starts_with("udm-")
+            || lower.starts_with("udm.")
+            || lower == "udm"
+            || lower.starts_with("udmpro")
+            || lower.starts_with("udm-pro")
+            || lower.starts_with("udm-se")
+            // Linksys/Netgear/Asus patterns
+            || lower.contains("linksys")
+            || lower.contains("netgear")
+            || lower.starts_with("asus-rt")
+            || lower.starts_with("rt-")  // Asus RT- series routers
     }
 
     /// Classify device type based on hostname, ports, MACs, and mDNS services

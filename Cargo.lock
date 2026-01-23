@@ -2314,7 +2314,7 @@ dependencies = [
 
 [[package]]
 name = "rust_network_discovery_tool"
-version = "0.5.5"
+version = "0.5.6"
 dependencies = [
  "actix-files",
  "actix-multipart",

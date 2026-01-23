@@ -1792,7 +1792,7 @@
           <!-- Endpoint Name with Rename -->
           <div id="endpoint-name-display" style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
             <span style="font-size: 0.875rem; font-weight: 600; color: var(--text-primary); word-break: break-all;">{% if endpoint %}{{ endpoint }}{% else %}No endpoint selected{% endif %}</span>
-            {% if endpoint %}<button onclick="showRenameInput()" style="background: none; border: none; cursor: pointer; padding: 0.125rem; color: var(--text-secondary); font-size: 0.75rem;" title="Rename endpoint">✏️</button>{% endif %}
+            <button id="rename-btn" onclick="showRenameInput()" style="background: none; border: none; cursor: pointer; padding: 0.125rem; color: var(--text-secondary); font-size: 0.75rem; {% if not endpoint %}display: none;{% endif %}" title="Rename endpoint">✏️</button>
           </div>
           <div id="endpoint-rename-input" style="display: none; margin-bottom: 0.5rem;">
             <div style="display: flex; align-items: center; gap: 0.5rem;">

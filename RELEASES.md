@@ -1,5 +1,40 @@
 # Release Notes
 
+## [0.5.6]
+
+### Added
+- **Expanded MAC Vendor Database** - Added vendor prefixes for better device identification
+  - Sony Blu-ray players (`b0:52:16`)
+  - Logitech/Harmony Hub (`00:04:20`)
+  - Denon AV receivers (`00:05:cd`)
+  - Yamaha audio equipment (`50:72:24`, `a4:5e:60`)
+  - Ubiquiti/UniFi networking (13 prefixes including `0c:ea:14`)
+  - Roku TVs (`c0:d2:f3`)
+  - Brother printers (4 prefixes)
+  - Google Chromecast/Eureka (`ac:67:84`)
+  - Espressif/ESP devices for Ratgdo garage openers (`68:c6:3a`, `84:f3:eb`)
+
+- **AV Receiver Detection** - Identify and classify audio/video receivers
+  - Hostname patterns: Denon, Yamaha RX-V, Marantz, Onkyo, Pioneer VSX
+  - Model normalization: AVR-S940H → "Denon AVR S940H", RX-V479 → "Yamaha RX-V479"
+  - Classified as soundbar/audio device type
+
+- **Expanded Appliance Detection** - New hostname patterns for smart home devices
+  - Garage door openers: Ratgdo, MyQ, generic patterns
+  - Smart lighting: WLED, Hue, LIFX, Nanoleaf
+  - Smart plugs: Wemo, Kasa, Tasmota, Shelly, Meross
+  - NAS devices: TrueNAS, Synology, QNAP, FreeNAS, Unraid
+  - Other: Ecobee, Roomba, Dyson, Paperless
+
+- **Expanded Gateway Detection** - Better router/gateway hostname patterns
+  - Ubiquiti Dream Machine: `udm-`, `udm-se`, `udm-pro`
+  - Consumer routers: Linksys, Netgear, Asus RT-series
+
+### Fixed
+- **Endpoint Rename Button** - Edit button (✏️) now appears when clicking on endpoints
+  - Previously only showed when page loaded with `?node=` URL parameter
+  - Now dynamically shown/hidden when selecting/deselecting endpoints via click
+
 ## [0.5.5]
 
 ### Added

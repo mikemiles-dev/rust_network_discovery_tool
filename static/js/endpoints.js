@@ -107,6 +107,12 @@
                 if (nameSpan) nameSpan.textContent = data.endpoint_name;
             }
 
+            // Show the rename button (hidden when no endpoint selected on page load)
+            var renameBtn = document.getElementById('rename-btn');
+            if (renameBtn) {
+                renameBtn.style.display = '';
+            }
+
             // Update device type button
             var deviceTypeBtn = document.getElementById('device-type-btn');
             if (deviceTypeBtn) {
@@ -417,6 +423,10 @@
             // Clear endpoint details content
             var nameDisplay = document.querySelector('#endpoint-name-display span');
             if (nameDisplay) nameDisplay.textContent = 'No endpoint selected';
+
+            // Hide rename button
+            var renameBtn = document.getElementById('rename-btn');
+            if (renameBtn) renameBtn.style.display = 'none';
 
             // Clear device type
             var deviceType = document.getElementById('current-device-type');
