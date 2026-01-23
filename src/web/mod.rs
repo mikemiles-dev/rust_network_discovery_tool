@@ -722,45 +722,56 @@ type EndpointModelData = (
 
 /// Get SSDP model, friendly name, custom model, and custom vendor for all endpoints
 /// Returns: (custom_model, ssdp_model, ssdp_friendly_name, custom_vendor)
-fn get_endpoint_ssdp_models(endpoints: &[String]) -> HashMap<String, EndpointModelData> {
+fn get_endpoint_ssdp_models(_endpoints: &[String]) -> HashMap<String, EndpointModelData> {
     let conn = new_connection();
     let mut result: HashMap<String, EndpointModelData> = HashMap::new();
 
-    // Build lowercase set for case-insensitive matching
-    let endpoints_lower: HashSet<String> = endpoints.iter().map(|e| e.to_lowercase()).collect();
-
+    // Query all endpoints with model/vendor data, storing under multiple keys for flexible lookup
     let mut stmt = conn
-        .prepare(&format!(
-            "SELECT {DISPLAY_NAME_SQL} AS display_name, e.custom_model, e.ssdp_model, e.ssdp_friendly_name, e.custom_vendor
+        .prepare(
+            "SELECT e.name, e.custom_name, e.custom_model, e.ssdp_model, e.ssdp_friendly_name, e.custom_vendor
              FROM endpoints e
              WHERE e.custom_model IS NOT NULL OR e.ssdp_model IS NOT NULL OR e.ssdp_friendly_name IS NOT NULL OR e.custom_vendor IS NOT NULL"
-        ))
+        )
         .expect("Failed to prepare SSDP models statement");
 
     let rows = stmt
         .query_map([], |row| {
-            let name: String = row.get(0)?;
-            let custom_model: Option<String> = row.get(1)?;
-            let ssdp_model: Option<String> = row.get(2)?;
-            let friendly_name: Option<String> = row.get(3)?;
-            let custom_vendor: Option<String> = row.get(4)?;
-            Ok((name, custom_model, ssdp_model, friendly_name, custom_vendor))
+            let name: Option<String> = row.get(0)?;
+            let custom_name: Option<String> = row.get(1)?;
+            let custom_model: Option<String> = row.get(2)?;
+            let ssdp_model: Option<String> = row.get(3)?;
+            let friendly_name: Option<String> = row.get(4)?;
+            let custom_vendor: Option<String> = row.get(5)?;
+            Ok((name, custom_name, custom_model, ssdp_model, friendly_name, custom_vendor))
         })
         .expect("Failed to execute SSDP models query");
 
     for row in rows.flatten() {
-        let (name, custom_model, ssdp_model, friendly_name, custom_vendor) = row;
-        let name_lower = name.to_lowercase();
-        if endpoints_lower.contains(&name_lower)
-            && (custom_model.is_some()
-                || ssdp_model.is_some()
-                || friendly_name.is_some()
-                || custom_vendor.is_some())
+        let (name, custom_name, custom_model, ssdp_model, friendly_name, custom_vendor) = row;
+        let data = (
+            custom_model.clone(),
+            ssdp_model.clone(),
+            friendly_name.clone(),
+            custom_vendor.clone(),
+        );
+
+        // Store under multiple keys for flexible lookup (handles name mismatches)
+        if let Some(ref n) = name
+            && !n.is_empty()
         {
-            result.insert(
-                name_lower,
-                (custom_model, ssdp_model, friendly_name, custom_vendor),
-            );
+            result.insert(n.to_lowercase(), data.clone());
+        }
+        if let Some(ref cn) = custom_name
+            && !cn.is_empty()
+        {
+            result.insert(cn.to_lowercase(), data.clone());
+        }
+        // Also store under ssdp_friendly_name as it might be the display name
+        if let Some(ref fn_) = friendly_name
+            && !fn_.is_empty()
+        {
+            result.insert(fn_.to_lowercase(), data.clone());
         }
     }
 
