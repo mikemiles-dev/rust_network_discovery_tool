@@ -1,5 +1,7 @@
 Rust Network Discovery Tool
 
+![Screenshot](screenshot_light.png)
+
 ![Screenshot](screenshot.png)
 
 ![Screenshot](screenshot_dns.png)
