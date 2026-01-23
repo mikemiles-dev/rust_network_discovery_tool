@@ -5,6 +5,7 @@
     'use strict';
 
     var scanPollInterval = null;
+    var autoScanIntervalId = null;
 
     App.Scanner = {
         /**
@@ -163,6 +164,97 @@
                 .catch(function(e) {
                     console.error('Error checking scan capabilities:', e);
                 });
+        },
+
+        /**
+         * Start automatic scanning based on settings
+         */
+        startAutoScan: function() {
+            // Clear any existing auto-scan interval
+            if (autoScanIntervalId) {
+                clearInterval(autoScanIntervalId);
+                autoScanIntervalId = null;
+            }
+
+            // Fetch settings to get the auto-scan interval
+            fetch('/api/settings')
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    var settings = data.settings || {};
+                    var intervalMinutes = parseInt(settings.auto_scan_interval_minutes, 10) || 0;
+
+                    if (intervalMinutes > 0) {
+                        var intervalMs = intervalMinutes * 60 * 1000;
+                        console.log('Auto-scan enabled: running every ' + intervalMinutes + ' minutes');
+
+                        autoScanIntervalId = setInterval(function() {
+                            // Only start auto-scan if no scan is currently running
+                            fetch('/api/scan/status')
+                                .then(function(response) { return response.json(); })
+                                .then(function(status) {
+                                    if (!status.running) {
+                                        console.log('Auto-scan triggered');
+                                        App.Scanner.runAutoScan();
+                                    } else {
+                                        console.log('Auto-scan skipped: scan already in progress');
+                                    }
+                                });
+                        }, intervalMs);
+                    }
+                })
+                .catch(function(e) {
+                    console.error('Error loading auto-scan settings:', e);
+                });
+        },
+
+        /**
+         * Run an automatic scan with all available scan types
+         */
+        runAutoScan: function() {
+            // Get all enabled scan types
+            var scanTypes = [];
+            var arpCheck = document.getElementById('scan-arp');
+            var icmpCheck = document.getElementById('scan-icmp');
+            var portCheck = document.getElementById('scan-port');
+            var ssdpCheck = document.getElementById('scan-ssdp');
+            var netbiosCheck = document.getElementById('scan-netbios');
+            var snmpCheck = document.getElementById('scan-snmp');
+
+            // Use checked state, or default to enabled if not disabled
+            if (arpCheck && !arpCheck.disabled) scanTypes.push('arp');
+            if (icmpCheck && !icmpCheck.disabled) scanTypes.push('icmp');
+            if (portCheck && !portCheck.disabled) scanTypes.push('port');
+            if (ssdpCheck && !ssdpCheck.disabled) scanTypes.push('ssdp');
+            if (netbiosCheck && !netbiosCheck.disabled) scanTypes.push('netbios');
+            if (snmpCheck && !snmpCheck.disabled) scanTypes.push('snmp');
+
+            if (scanTypes.length === 0) {
+                console.log('Auto-scan: no scan types available');
+                return;
+            }
+
+            // Update UI to show scan is running
+            var startBtn = document.getElementById('start-scan-btn');
+            var stopBtn = document.getElementById('stop-scan-btn');
+            var progress = document.getElementById('scan-progress');
+            if (startBtn) startBtn.style.display = 'none';
+            if (stopBtn) stopBtn.style.display = 'block';
+            if (progress) progress.style.display = 'block';
+
+            fetch('/api/scan/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scan_types: scanTypes })
+            })
+            .then(function(response) {
+                if (response.ok) {
+                    scanPollInterval = setInterval(App.Scanner.pollStatus, 500);
+                }
+            })
+            .catch(function(e) {
+                console.error('Auto-scan error:', e);
+                App.Scanner.resetButton();
+            });
         }
     };
 
@@ -171,5 +263,11 @@
     window.stopNetworkScan = App.Scanner.stop;
     window.pollScanStatus = App.Scanner.pollStatus;
     window.checkScanCapabilities = App.Scanner.checkCapabilities;
+    window.startAutoScan = App.Scanner.startAutoScan;
+
+    // Start auto-scan timer on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        App.Scanner.startAutoScan();
+    });
 
 })(window.App);

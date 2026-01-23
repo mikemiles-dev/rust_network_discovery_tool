@@ -1826,9 +1826,12 @@
       <!-- Protocols Overlay -->
       <div class="protocols-overlay"{% if not endpoint %} style="display: none;"{% endif %}>
         <!-- Endpoint Details Header with Tabs -->
-        <div class="overlay-header" style="display: flex; justify-content: space-between; align-items: center;">
-          <span>Endpoint Details</span>
-          <div class="detail-tabs">
+        <div class="overlay-header" style="display: flex; flex-direction: column; align-items: flex-start;">
+          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <span>Endpoint Details</span>
+            <button onclick="unselectNode()" style="background: none; border: none; cursor: pointer; padding: 0.25rem 0.5rem; color: var(--text-secondary); font-size: 1.25rem; line-height: 1;" title="Close">&times;</button>
+          </div>
+          <div class="detail-tabs" style="margin-top: 0.5rem; justify-content: flex-start;">
             <button class="detail-tab active" data-tab="details-tab-content" onclick="switchDetailTab(this, 'details-tab-content')">Details</button>
             <button class="detail-tab" data-tab="network-tab-content" onclick="switchDetailTab(this, 'network-tab-content')">Network</button>
             <button class="detail-tab" data-tab="control-tab-content" onclick="switchDetailTab(this, 'control-tab-content')">Control</button>
@@ -2691,6 +2694,20 @@
                    min="10" max="3600" value="120">
             <span style="color: var(--text-secondary); font-size: 0.75rem;">
               Endpoints with activity within this time are shown as "Active" (green indicator)
+            </span>
+          </div>
+        </div>
+
+        <div class="setting-item" style="margin-bottom: 1.5rem;">
+          <label style="display: block; color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.875rem;">
+            Auto Scan Interval (minutes)
+          </label>
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <input type="number" id="setting-auto-scan-interval"
+                   style="width: 120px; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 0.25rem; background: var(--bg-secondary); color: var(--text-primary);"
+                   min="0" max="1440" value="5">
+            <span style="color: var(--text-secondary); font-size: 0.75rem;">
+              Automatically run a full network scan at this interval (0 to disable)
             </span>
           </div>
         </div>

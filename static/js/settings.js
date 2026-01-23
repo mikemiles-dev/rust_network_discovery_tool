@@ -29,6 +29,11 @@
                     activeThreshold.value = settings.active_threshold_seconds;
                 }
 
+                var autoScanInterval = document.getElementById('setting-auto-scan-interval');
+                if (autoScanInterval && settings.auto_scan_interval_minutes !== undefined) {
+                    autoScanInterval.value = settings.auto_scan_interval_minutes;
+                }
+
                 showStatus('Settings loaded', 'success');
             })
             .catch(function(error) {
@@ -86,6 +91,20 @@
             );
         }
 
+        var autoScanInterval = document.getElementById('setting-auto-scan-interval');
+        if (autoScanInterval) {
+            promises.push(
+                fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        key: 'auto_scan_interval_minutes',
+                        value: autoScanInterval.value
+                    })
+                })
+            );
+        }
+
         Promise.all(promises)
             .then(function(responses) {
                 return Promise.all(responses.map(function(r) { return r.json(); }));
@@ -94,6 +113,10 @@
                 var allSuccess = results.every(function(r) { return r.success; });
                 if (allSuccess) {
                     showStatus('Settings saved successfully. Restart the application for timing changes to take effect.', 'success');
+                    // Restart auto-scan with new interval
+                    if (window.startAutoScan) {
+                        window.startAutoScan();
+                    }
                 } else {
                     showStatus('Some settings failed to save', 'error');
                 }
