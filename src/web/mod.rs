@@ -726,52 +726,39 @@ fn get_endpoint_ssdp_models(_endpoints: &[String]) -> HashMap<String, EndpointMo
     let conn = new_connection();
     let mut result: HashMap<String, EndpointModelData> = HashMap::new();
 
-    // Query all endpoints with model/vendor data, storing under multiple keys for flexible lookup
+    // Use the same DISPLAY_NAME_SQL as dropdown_endpoints to ensure consistent key lookup
+    // This query computes the display_name exactly as dropdown_endpoints would
+    let query = format!(
+        "SELECT {DISPLAY_NAME_SQL} AS display_name,
+                e.custom_model, e.ssdp_model, e.ssdp_friendly_name, e.custom_vendor
+         FROM endpoints e
+         WHERE e.custom_model IS NOT NULL OR e.ssdp_model IS NOT NULL OR e.ssdp_friendly_name IS NOT NULL OR e.custom_vendor IS NOT NULL"
+    );
+
     let mut stmt = conn
-        .prepare(
-            "SELECT e.name, e.custom_name, e.custom_model, e.ssdp_model, e.ssdp_friendly_name, e.custom_vendor
-             FROM endpoints e
-             WHERE e.custom_model IS NOT NULL OR e.ssdp_model IS NOT NULL OR e.ssdp_friendly_name IS NOT NULL OR e.custom_vendor IS NOT NULL"
-        )
+        .prepare(&query)
         .expect("Failed to prepare SSDP models statement");
 
     let rows = stmt
         .query_map([], |row| {
-            let name: Option<String> = row.get(0)?;
-            let custom_name: Option<String> = row.get(1)?;
-            let custom_model: Option<String> = row.get(2)?;
-            let ssdp_model: Option<String> = row.get(3)?;
-            let friendly_name: Option<String> = row.get(4)?;
-            let custom_vendor: Option<String> = row.get(5)?;
-            Ok((name, custom_name, custom_model, ssdp_model, friendly_name, custom_vendor))
+            let display_name: Option<String> = row.get(0)?;
+            let custom_model: Option<String> = row.get(1)?;
+            let ssdp_model: Option<String> = row.get(2)?;
+            let friendly_name: Option<String> = row.get(3)?;
+            let custom_vendor: Option<String> = row.get(4)?;
+            Ok((display_name, custom_model, ssdp_model, friendly_name, custom_vendor))
         })
         .expect("Failed to execute SSDP models query");
 
     for row in rows.flatten() {
-        let (name, custom_name, custom_model, ssdp_model, friendly_name, custom_vendor) = row;
-        let data = (
-            custom_model.clone(),
-            ssdp_model.clone(),
-            friendly_name.clone(),
-            custom_vendor.clone(),
-        );
+        let (display_name, custom_model, ssdp_model, friendly_name, custom_vendor) = row;
+        let data = (custom_model, ssdp_model, friendly_name, custom_vendor);
 
-        // Store under multiple keys for flexible lookup (handles name mismatches)
-        if let Some(ref n) = name
-            && !n.is_empty()
+        // Store under the computed display name - this matches what dropdown_endpoints returns
+        if let Some(ref dn) = display_name
+            && !dn.is_empty()
         {
-            result.insert(n.to_lowercase(), data.clone());
-        }
-        if let Some(ref cn) = custom_name
-            && !cn.is_empty()
-        {
-            result.insert(cn.to_lowercase(), data.clone());
-        }
-        // Also store under ssdp_friendly_name as it might be the display name
-        if let Some(ref fn_) = friendly_name
-            && !fn_.is_empty()
-        {
-            result.insert(fn_.to_lowercase(), data.clone());
+            result.insert(dn.to_lowercase(), data);
         }
     }
 
@@ -4454,8 +4441,8 @@ async fn get_endpoints_table() -> impl Responder {
         })
         .collect();
 
-    // Build model lookup
-    let endpoint_models: HashMap<String, String> = dropdown_endpoints_list
+    // Build model lookup (first pass without device_type)
+    let mut endpoint_models: HashMap<String, String> = dropdown_endpoints_list
         .iter()
         .filter_map(|endpoint| {
             let endpoint_lower = endpoint.to_lowercase();
@@ -4484,6 +4471,18 @@ async fn get_endpoints_table() -> impl Responder {
             .map(|c| (endpoint_lower, c.value))
         })
         .collect();
+
+    // Second pass: enhance models using vendor + device type for endpoints without models
+    for endpoint in &dropdown_endpoints_list {
+        let endpoint_lower = endpoint.to_lowercase();
+        if !endpoint_models.contains_key(&endpoint_lower)
+            && let Some(vendor) = endpoint_vendors.get(&endpoint_lower)
+            && let Some(device_type) = dropdown_types.get(&endpoint_lower)
+            && let Some(model) = get_model_from_vendor_and_type(vendor, device_type)
+        {
+            endpoint_models.insert(endpoint_lower, model);
+        }
+    }
 
     // Build response
     let endpoints: Vec<EndpointTableRow> = dropdown_endpoints_list
