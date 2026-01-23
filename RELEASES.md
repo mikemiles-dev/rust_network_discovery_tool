@@ -3,16 +3,27 @@
 ## [0.5.6]
 
 ### Added
-- **Expanded MAC Vendor Database** - Added vendor prefixes for better device identification
+- **Expanded MAC Vendor Database** - Added 30+ vendor prefixes for better device identification
   - Sony Blu-ray players (`b0:52:16`)
   - Logitech/Harmony Hub (`00:04:20`)
   - Denon AV receivers (`00:05:cd`)
   - Yamaha audio equipment (`50:72:24`, `a4:5e:60`)
-  - Ubiquiti/UniFi networking (13 prefixes including `0c:ea:14`)
+  - Ubiquiti/UniFi networking (14 prefixes including `0c:ea:14`, `8c:30:66`)
   - Roku TVs (`c0:d2:f3`)
   - Brother printers (4 prefixes)
   - Google Chromecast/Eureka (`ac:67:84`)
-  - Espressif/ESP devices for Ratgdo garage openers (`68:c6:3a`, `84:f3:eb`)
+  - Espressif/ESP devices (`c0:49:ef`, `c4:5b:be`, and 2 more)
+  - Roborock robot vacuums (`b0:4a:39`)
+  - Dahua security cameras (`e0:2e:fe`, `f8:ce:07`)
+  - SimpliSafe security (`f8:51:28`)
+  - Nest/Google smart home (`18:b4:30`)
+  - Bosch/BSH appliances (`68:a4:0e`)
+  - Proxmox virtualization (`bc:24:11`)
+  - Texas Instruments IoT chips (`78:04:73`)
+  - Seeed Technology IoT (`2c:f7:f1`)
+  - ASRock computers (`9c:6b:00`)
+  - Cisco networking (`00:60:2f`)
+  - LG TV ODM/Arcadyan (`f4:ca:e7`)
 
 - **AV Receiver Detection** - Identify and classify audio/video receivers
   - Hostname patterns: Denon, Yamaha RX-V, Marantz, Onkyo, Pioneer VSX
@@ -24,7 +35,11 @@
   - Smart lighting: WLED, Hue, LIFX, Nanoleaf
   - Smart plugs: Wemo, Kasa, Tasmota, Shelly, Meross
   - NAS devices: TrueNAS, Synology, QNAP, FreeNAS, Unraid
+  - Security cameras: Dahua, Hikvision, SimpliSafe, Arlo, Blink
+  - Wyze cameras via `lcc-` hostname prefix
   - Other: Ecobee, Roomba, Dyson, Paperless
+
+- **LG WebOS TV Detection** - Added `lgwebostv` and `webostv` hostname patterns
 
 - **Expanded Gateway Detection** - Better router/gateway hostname patterns
   - Ubiquiti Dream Machine: `udm-`, `udm-se`, `udm-pro`

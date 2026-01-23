@@ -232,6 +232,8 @@ const TV_PATTERNS: &[&str] = &[
     "theframe",
     "the-serif",
     "the-sero",
+    "lgwebostv", // LG WebOS TVs
+    "webostv",
 ];
 // Note: "samsung" and "lg-" removed from TV_PATTERNS - too generic, matches soundbars/appliances
 const TV_PREFIXES: &[&str] = &[];
@@ -441,6 +443,14 @@ const APPLIANCE_PATTERNS: &[&str] = &[
     "freenas",   // FreeNAS
     "unraid",    // Unraid NAS
     "paperless", // Paperless-ngx document management
+    // Security cameras
+    "dahua",     // Dahua cameras/NVRs
+    "hikvision", // Hikvision cameras
+    "simplisafe",// SimpliSafe security
+    "arlo",      // Arlo cameras
+    "blink",     // Blink cameras
+    // Wyze cameras (often use lcc- hostname prefix)
+    "lcc-",      // Wyze camera cloud prefix
 ];
 const LG_APPLIANCE_PREFIXES: &[&str] = &["lma", "lmw", "ldf", "ldt", "ldp", "dle", "dlex", "lrmv"];
 
@@ -866,13 +876,17 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("b4:75:0e", "Belkin"),
     ("c4:41:1e", "Belkin"),
     ("ec:1a:59", "Belkin"),
-    // Wyze (cameras, plugs)
+    // Wyze (cameras, plugs) - often uses Texas Instruments chips
     ("2c:aa:8e", "Wyze"),
     ("7c:78:b2", "Wyze"),
     ("d0:3f:27", "Wyze"),
+    // Texas Instruments (IoT chips - used in Wyze, SmartThings, etc.)
+    ("78:04:73", "Texas Instruments"),
     // iRobot (Roomba)
     ("50:14:79", "iRobot"),
     ("80:c5:f2", "iRobot"),
+    // Roborock (robot vacuums)
+    ("b0:4a:39", "Roborock"),
     // Dyson (air purifiers, fans, vacuums)
     ("c8:ff:77", "Dyson"),
     // Tuya (generic IoT devices)
@@ -899,6 +913,8 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("84:cc:a8", "Espressif"),
     ("84:f3:eb", "Espressif"), // Used in Ratgdo garage door openers
     ("ac:67:b2", "Espressif"),
+    ("c0:49:ef", "Espressif"),
+    ("c4:5b:be", "Espressif"),
     ("cc:50:e3", "Espressif"),
     ("5c:cf:7f", "Espressif"),
     ("d8:bf:c0", "Espressif"),
@@ -908,6 +924,17 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("48:3f:da", "Espressif"),
     ("c4:4f:33", "Espressif"),
     ("70:03:9f", "Espressif"),
+    // Seeed Technology (IoT/maker devices)
+    ("2c:f7:f1", "Seeed"),
+    // SimpliSafe (home security)
+    ("f8:51:28", "SimpliSafe"),
+    // Dahua Technology (security cameras, DVRs, NVRs)
+    ("e0:2e:fe", "Dahua"),
+    ("f8:ce:07", "Dahua"),
+    // BSH Hausgeräte (Bosch/Siemens home appliances)
+    ("68:a4:0e", "Bosch"),
+    // Nest Labs (smart home - now Google)
+    ("18:b4:30", "Nest"),
     // SoftEnergy Co., Ltd. (Korean electronics)
     ("00:08:61", "SoftEnergy"),
     // Seongji Industry Company (Korean electronics)
@@ -1703,10 +1730,19 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("74:ac:b9", "Ubiquiti"),
     ("78:45:58", "Ubiquiti"),
     ("80:2a:a8", "Ubiquiti"),
+    ("8c:30:66", "Ubiquiti"),
     ("b4:fb:e4", "Ubiquiti"),
     ("dc:9f:db", "Ubiquiti"),
     ("f0:9f:c2", "Ubiquiti"),
     ("fc:ec:da", "Ubiquiti"),
+    // Cisco Systems (networking equipment)
+    ("00:60:2f", "Cisco"),
+    // Proxmox (virtualization servers)
+    ("bc:24:11", "Proxmox"),
+    // ASRock (motherboards, computers)
+    ("9c:6b:00", "ASRock"),
+    // Arcadyan (LG TV ODM manufacturer)
+    ("f4:ca:e7", "LG Electronics"),
     // Brother (printers)
     ("00:1b:a9", "Brother"),
     ("00:80:77", "Brother"),
@@ -2158,6 +2194,14 @@ const APPLIANCE_VENDORS: &[&str] = &[
     "iRobot",
     "Tuya",
     "Dyson",
+    "Roborock",      // Robot vacuums
+    "SimpliSafe",    // Home security
+    "Dahua",         // Security cameras
+    "Nest",          // Smart home (Google)
+    "Bosch",         // Home appliances
+    "Seeed",         // IoT devices
+    "Texas Instruments", // IoT chips (used in Wyze, SmartThings)
+    "Espressif",     // ESP32/ESP8266 IoT modules
 ];
 
 // Gaming vendors that should be classified as gaming devices
@@ -3485,6 +3529,26 @@ pub fn get_model_from_vendor_and_type(vendor: &str, device_type: &str) -> Option
         // IoT module vendors (used in DIY/custom devices)
         ("Espressif", "appliance") => Some("ESP Smart Device".to_string()),
         ("Espressif", _) => Some("ESP Device".to_string()),
+
+        // Robot vacuums
+        ("Roborock", _) => Some("Roborock Vacuum".to_string()),
+
+        // Security devices
+        ("SimpliSafe", _) => Some("SimpliSafe Security".to_string()),
+        ("Dahua", _) => Some("Dahua Camera".to_string()),
+
+        // Smart home appliances
+        ("Bosch", "appliance") => Some("Bosch Appliance".to_string()),
+        ("Bosch", _) => Some("Bosch Device".to_string()),
+        ("Seeed", _) => Some("Seeed IoT Device".to_string()),
+        ("Texas Instruments", _) => Some("IoT Device".to_string()),
+
+        // Virtualization
+        ("Proxmox", "virtualization") => Some("Proxmox Server".to_string()),
+        ("Proxmox", _) => Some("Proxmox VM".to_string()),
+
+        // Computers
+        ("ASRock", _) => Some("ASRock PC".to_string()),
 
         _ => None,
     }
