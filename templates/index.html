@@ -779,7 +779,7 @@
     }
 
     .stat-badge {
-      background: rgba(15, 23, 42, 0.5);
+      background: var(--bg-input);
       padding: 0.25rem 0.5rem;
       border-radius: 0.25rem;
       font-size: 0.6875rem;
@@ -1301,8 +1301,8 @@
     }
 
     .listbox {
-      background: rgba(15, 23, 42, 0.6);
-      border: 1px solid rgba(51, 65, 85, 0.6);
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
       border-radius: 0.5rem;
       max-height: 150px;
       overflow-y: auto;
@@ -1314,7 +1314,7 @@
     }
 
     .listbox::-webkit-scrollbar-track {
-      background: rgba(30, 41, 59, 0.3);
+      background: var(--bg-tertiary);
       border-radius: 3px;
     }
 
@@ -1331,7 +1331,7 @@
       padding: 0.5rem 0.75rem;
       font-size: 0.75rem;
       color: var(--text-primary);
-      border-bottom: 1px solid rgba(51, 65, 85, 0.3);
+      border-bottom: 1px solid var(--border-subtle);
       cursor: pointer;
       transition: background 0.15s;
       font-family: 'Monaco', 'Courier New', monospace;
@@ -1949,7 +1949,7 @@
         <div style="margin-bottom: 0.75rem;">
           <input type="text" id="portsListSearch" placeholder="Filter ports..."
                  oninput="filterPortsList(this.value)"
-                 style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
+                 style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
         </div>
         <div class="listbox" id="ports-container">
           {% if not endpoint %}
@@ -1969,7 +1969,7 @@
         <div style="margin-bottom: 0.75rem;">
           <input type="text" id="hostnamesListSearch" placeholder="Filter hostnames..."
                  oninput="filterHostnamesList(this.value)"
-                 style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
+                 style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
         </div>
         <div class="listbox" id="hostnames-container">
           {% if not endpoint %}
@@ -1990,7 +1990,7 @@
         <div style="margin-bottom: 0.75rem;">
           <input type="text" id="ipsListSearch" placeholder="Filter IPs..."
                  oninput="filterIpsList(this.value)"
-                 style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
+                 style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
         </div>
         <div class="overlay-hostnames" id="ips-container">
           {% if not endpoint %}
@@ -2011,7 +2011,7 @@
         <div style="margin-bottom: 0.75rem;">
           <input type="text" id="macsListSearch" placeholder="Filter MACs..."
                  oninput="filterMacsList(this.value)"
-                 style="width: 100%; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.6); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
+                 style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
         </div>
         <div class="overlay-hostnames" id="macs-container">
           {% if not endpoint %}
@@ -2425,42 +2425,42 @@
 
           <!-- Scan Type Checkboxes -->
           <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem;">
-            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: rgba(55, 65, 81, 0.5); border-radius: 0.5rem; border: 1px solid #4b5563; flex: 1; min-width: 120px;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-radius: 0.5rem; border: 1px solid var(--border-color); flex: 1; min-width: 120px;">
               <input type="checkbox" id="scan-arp" checked style="cursor: pointer; width: 1rem; height: 1rem;">
               <div>
                 <div style="font-weight: 500;">ARP</div>
                 <div style="font-size: 0.7rem; color: var(--text-secondary);">Find devices by MAC</div>
               </div>
             </label>
-            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: rgba(55, 65, 81, 0.5); border-radius: 0.5rem; border: 1px solid #4b5563; flex: 1; min-width: 120px;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-radius: 0.5rem; border: 1px solid var(--border-color); flex: 1; min-width: 120px;">
               <input type="checkbox" id="scan-icmp" checked style="cursor: pointer; width: 1rem; height: 1rem;">
               <div>
                 <div style="font-weight: 500;">Ping</div>
                 <div style="font-size: 0.7rem; color: var(--text-secondary);">ICMP echo sweep</div>
               </div>
             </label>
-            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: rgba(55, 65, 81, 0.5); border-radius: 0.5rem; border: 1px solid #4b5563; flex: 1; min-width: 120px;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-radius: 0.5rem; border: 1px solid var(--border-color); flex: 1; min-width: 120px;">
               <input type="checkbox" id="scan-port" style="cursor: pointer; width: 1rem; height: 1rem;">
               <div>
                 <div style="font-weight: 500;">Ports</div>
                 <div style="font-size: 0.7rem; color: var(--text-secondary);">TCP port probe</div>
               </div>
             </label>
-            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: rgba(55, 65, 81, 0.5); border-radius: 0.5rem; border: 1px solid #4b5563; flex: 1; min-width: 120px;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-radius: 0.5rem; border: 1px solid var(--border-color); flex: 1; min-width: 120px;">
               <input type="checkbox" id="scan-ssdp" checked style="cursor: pointer; width: 1rem; height: 1rem;">
               <div>
                 <div style="font-weight: 500;">SSDP</div>
                 <div style="font-size: 0.7rem; color: var(--text-secondary);">UPnP discovery</div>
               </div>
             </label>
-            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: rgba(55, 65, 81, 0.5); border-radius: 0.5rem; border: 1px solid #4b5563; flex: 1; min-width: 120px;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-radius: 0.5rem; border: 1px solid var(--border-color); flex: 1; min-width: 120px;">
               <input type="checkbox" id="scan-netbios" checked style="cursor: pointer; width: 1rem; height: 1rem;">
               <div>
                 <div style="font-weight: 500;">NetBIOS</div>
                 <div style="font-size: 0.7rem; color: var(--text-secondary);">Windows names</div>
               </div>
             </label>
-            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: rgba(55, 65, 81, 0.5); border-radius: 0.5rem; border: 1px solid #4b5563; flex: 1; min-width: 120px;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-radius: 0.5rem; border: 1px solid var(--border-color); flex: 1; min-width: 120px;">
               <input type="checkbox" id="scan-snmp" checked style="cursor: pointer; width: 1rem; height: 1rem;">
               <div>
                 <div style="font-weight: 500;">SNMP</div>
