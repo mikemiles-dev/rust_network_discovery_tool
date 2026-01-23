@@ -124,34 +124,6 @@ The UI automatically detects which scans are available:
 
 Disabled checkboxes indicate scans that require elevated privileges.
 
-### API Endpoints
-
-For automation or integration:
-
-```bash
-# Start a scan
-curl -X POST http://localhost:8080/api/scan/start \
-  -H "Content-Type: application/json" \
-  -d '{"scan_types": ["arp", "port", "ssdp", "netbios", "snmp"]}'
-
-# Check scan status
-curl http://localhost:8080/api/scan/status
-
-# Stop a running scan
-curl -X POST http://localhost:8080/api/scan/stop
-
-# Get scan capabilities
-curl http://localhost:8080/api/scan/capabilities
-
-# Export endpoints to Excel
-curl -O http://localhost:8080/api/export/endpoints.xlsx
-
-# Probe a specific endpoint
-curl -X POST http://localhost:8080/api/endpoint/probe \
-  -H "Content-Type: application/json" \
-  -d '{"ip": "192.168.1.100"}'
-```
-
 ## Installation
 
 ### Pre-built Binaries
@@ -323,25 +295,6 @@ The web UI includes a **Settings** tab for configuring runtime options without r
 4. Click **Save Settings**
 5. Restart the application for timing changes to take effect
 
-#### Settings API
-
-For automation or integration:
-
-```bash
-# Get all settings
-curl http://localhost:8080/api/settings
-
-# Update a setting
-curl -X POST http://localhost:8080/api/settings \
-  -H "Content-Type: application/json" \
-  -d '{"key": "cleanup_interval_seconds", "value": "60"}'
-
-# Update data retention
-curl -X POST http://localhost:8080/api/settings \
-  -H "Content-Type: application/json" \
-  -d '{"key": "data_retention_days", "value": "14"}'
-```
-
 ## How It Works
 
 1. **Captures packets** on selected network interfaces using libpnet
@@ -445,24 +398,10 @@ LG ThinQ appliances use cloud-based authentication via the official LG ThinQ Con
 
 #### Setting Up ThinQ in the App
 
-**Option 1: Via API**
-```bash
-curl -X POST http://localhost:8080/api/thinq/setup \
-  -H "Content-Type: application/json" \
-  -d '{
-    "pat_token": "your_personal_access_token_here",
-    "country_code": "US"
-  }'
-```
-
-**Option 2: Check Status**
-```bash
-# Check if ThinQ is configured and list devices
-curl http://localhost:8080/api/thinq/status
-
-# List all ThinQ devices
-curl http://localhost:8080/api/thinq/devices
-```
+1. Open the web UI at http://localhost:8080
+2. Go to the **Settings** tab
+3. Enter your PAT token and country code in the LG ThinQ section
+4. Click **Save Settings**
 
 #### Supported Country Codes
 
