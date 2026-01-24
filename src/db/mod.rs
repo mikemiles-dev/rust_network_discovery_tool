@@ -456,6 +456,13 @@ impl SQLWriter {
             println!("Removed {} duplicate endpoint_attribute rows", deduped);
         }
 
+        // Merge duplicate communications (after removing source_port from unique key)
+        // This aggregates records that differ only by source_port
+        let comm_merged = Self::merge_duplicate_communications(conn)?;
+        if comm_merged > 0 {
+            println!("Merged {} duplicate communication records", comm_merged);
+        }
+
         // Merge duplicate endpoints with same hostname (case-insensitive)
         // This handles cases where mDNS discovered the same device with different hostname cases
         let merged = Self::merge_duplicate_endpoints_by_hostname(conn)?;
@@ -488,6 +495,93 @@ impl SQLWriter {
         }
 
         Ok(())
+    }
+
+    /// Merge duplicate communication records that differ only by source_port
+    /// This is needed after migrating from the old unique index that included source_port
+    fn merge_duplicate_communications(conn: &Connection) -> rusqlite::Result<usize> {
+        // Find groups of communications with same key (excluding source_port)
+        let duplicates: Vec<(i64, i64, i64, String, String, String)> = conn
+            .prepare(
+                "SELECT src_endpoint_id, dst_endpoint_id,
+                        COALESCE(destination_port, 0) as dst_port,
+                        COALESCE(ip_header_protocol, '') as proto,
+                        COALESCE(sub_protocol, '') as sub_proto,
+                        GROUP_CONCAT(id) as ids
+                 FROM communications
+                 GROUP BY src_endpoint_id, dst_endpoint_id, dst_port, proto, sub_proto
+                 HAVING COUNT(*) > 1",
+            )?
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let mut merged_count = 0;
+
+        for (src, dst, dst_port, proto, sub_proto, ids_str) in duplicates {
+            let ids: Vec<i64> = ids_str.split(',').filter_map(|s| s.parse().ok()).collect();
+            if ids.len() < 2 {
+                continue;
+            }
+
+            // Keep the first (oldest) record, merge others into it
+            let keep_id = ids[0];
+            let merge_ids: Vec<i64> = ids[1..].to_vec();
+
+            // Calculate aggregates from records to merge
+            let (total_packets, total_bytes, max_last_seen): (i64, i64, i64) = conn.query_row(
+                &format!(
+                    "SELECT SUM(packet_count), SUM(bytes), MAX(last_seen_at)
+                     FROM communications WHERE id IN ({})",
+                    merge_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",")
+                ),
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )?;
+
+            // Update the kept record with aggregated values
+            conn.execute(
+                "UPDATE communications SET
+                    packet_count = packet_count + ?1,
+                    bytes = bytes + ?2,
+                    last_seen_at = MAX(last_seen_at, ?3)
+                 WHERE id = ?4",
+                rusqlite::params![total_packets, total_bytes, max_last_seen, keep_id],
+            )?;
+
+            // Delete the merged records
+            conn.execute(
+                &format!(
+                    "DELETE FROM communications WHERE id IN ({})",
+                    merge_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",")
+                ),
+                [],
+            )?;
+
+            merged_count += merge_ids.len();
+
+            // Log for debugging
+            eprintln!(
+                "Merged {} communication records for {}→{} port {} {:?}/{:?}",
+                merge_ids.len(),
+                src,
+                dst,
+                dst_port,
+                proto,
+                sub_proto
+            );
+        }
+
+        Ok(merged_count)
     }
 
     /// Merge duplicate endpoints that have the same hostname (case-insensitive)

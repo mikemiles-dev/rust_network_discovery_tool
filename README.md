@@ -68,6 +68,9 @@ sudo rust_network_discovery_tool
 - **Interactive Network Graph**: Click-to-navigate network visualization powered by Cytoscape.js
 - **Protocol Detection**: Identifies HTTP, HTTPS, DNS, SSH, and 20+ other protocols
 - **Hostname Resolution**: Uses DNS, mDNS, and deep packet inspection (SNI, HTTP Host headers)
+- **mDNS Device Discovery**: Creates endpoints for devices discovered via mDNS multicast
+  - Works on isolated networks (iPhone hotspot) where traffic capture is limited
+  - Discovers devices advertising services like `_rdlink._tcp`, `_airplay._tcp`, etc.
 - **Device Remote Control**: Control smart devices directly from the UI
   - **TVs**: Roku, Samsung, LG webOS (volume, playback, power, apps)
   - **LG ThinQ Appliances**: Dishwashers, washers, dryers, refrigerators, ACs (via cloud API)

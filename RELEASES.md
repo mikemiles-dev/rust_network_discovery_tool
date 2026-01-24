@@ -57,6 +57,17 @@
   - Filter by name, vendor, model, or device type
   - Click to select target endpoint, Escape to cancel
 
+- **Communication Aggregation** - Reduced database bloat by aggregating similar communications
+  - Removed source port from deduplication key
+  - Communications now aggregate by (src, dst, dst_port, protocol, sub_protocol)
+  - Multiple requests to same destination port are combined into single record
+  - Existing duplicate records merged during cleanup job
+
+- **mDNS Device Discovery** - Create endpoints from mDNS discoveries even without traffic
+  - Devices discovered via mDNS multicast now create database endpoints automatically
+  - Works on iPhone hotspot where traffic between devices is isolated
+  - Enables discovery of iPads, iPhones, and other devices advertising mDNS services
+
 ### Fixed
 - **Endpoint Edit Buttons** - Edit controls now appear when clicking on endpoints
   - Rename button, +Vendor, and +Model buttons previously only showed when page loaded with `?node=` URL parameter

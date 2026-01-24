@@ -307,11 +307,16 @@ impl Communication {
             "CREATE INDEX IF NOT EXISTS idx_communications_dst_endpoint_id ON communications (dst_endpoint_id);",
             [],
         )?;
+        // Drop old index that included source_port (if exists) and create new one without it
+        // This aggregates all communications between endpoints on the same destination port
         conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_communications_unique ON communications (
+            "DROP INDEX IF EXISTS idx_communications_unique;",
+            [],
+        )?;
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_communications_unique_v2 ON communications (
                 src_endpoint_id,
                 dst_endpoint_id,
-                COALESCE(source_port, 0),
                 COALESCE(destination_port, 0),
                 COALESCE(ip_header_protocol, ''),
                 COALESCE(sub_protocol, '')
@@ -400,11 +405,12 @@ impl Communication {
                 sub_protocol,
                 source
             ) VALUES (?1, ?2, ?3, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-            ON CONFLICT(src_endpoint_id, dst_endpoint_id, COALESCE(source_port, 0), COALESCE(destination_port, 0), COALESCE(ip_header_protocol, ''), COALESCE(sub_protocol, ''))
+            ON CONFLICT(src_endpoint_id, dst_endpoint_id, COALESCE(destination_port, 0), COALESCE(ip_header_protocol, ''), COALESCE(sub_protocol, ''))
             DO UPDATE SET
                 last_seen_at = ?3,
                 packet_count = packet_count + 1,
-                bytes = bytes + ?4",
+                bytes = bytes + ?4,
+                source_port = COALESCE(source_port, excluded.source_port)",
             params![
                 src_endpoint_id,
                 dst_endpoint_id,
