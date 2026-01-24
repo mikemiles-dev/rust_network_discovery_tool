@@ -45,9 +45,21 @@
   - Ubiquiti Dream Machine: `udm-`, `udm-se`, `udm-pro`
   - Consumer routers: Linksys, Netgear, Asus RT-series
 
+- **Hotspot Gateway Auto-Merge** - Automatically merge hotspot gateway endpoints into phones
+  - Detects endpoints with public IPv6 addresses and only ICMPv6 traffic (router advertisements)
+  - Identifies pattern: no MAC address, IPv6 as endpoint name, same /64 prefix as phone
+  - Merges into phone endpoint (iPhone, Galaxy, Pixel, Android) on the same network prefix
+  - Runs during periodic cleanup job (every 30 seconds by default)
+
+- **Merge Endpoint Selector** - Improved UI for merging duplicate endpoints
+  - Modal dialog with searchable list of all endpoints
+  - Shows endpoint name, vendor, model, and device type
+  - Filter by name, vendor, model, or device type
+  - Click to select target endpoint, Escape to cancel
+
 ### Fixed
 - **Endpoint Edit Buttons** - Edit controls now appear when clicking on endpoints
-  - Rename button (✏️), +Vendor, and +Model buttons previously only showed when page loaded with `?node=` URL parameter
+  - Rename button, +Vendor, and +Model buttons previously only showed when page loaded with `?node=` URL parameter
   - Now dynamically shown/hidden when selecting/deselecting endpoints via click
   - Can now set vendor and model on unknown devices without reloading page
 - **Bandwidth Display Formatting** - Bandwidth column now formats on page load

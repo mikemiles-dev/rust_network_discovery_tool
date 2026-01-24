@@ -80,6 +80,10 @@ sudo rust_network_discovery_tool
   - Auto-detected types (TV, printer, phone, etc.) stored in database
   - Renaming a device won't change its classification
   - Manual overrides always take priority
+- **Hotspot Gateway Detection**: Automatically merges iPhone/Android hotspot gateway addresses
+  - Detects public IPv6 addresses with only ICMPv6 traffic (router advertisements)
+  - Merges into the corresponding phone endpoint on the same /64 prefix
+  - Runs automatically during periodic cleanup
 - **Excel Export**: Download all endpoints as an Excel (.xlsx) file
   - Export button in the filter bar
   - Includes name, IP, MAC, vendor, model, device type, last seen, online status
