@@ -102,6 +102,26 @@
         },
 
         /**
+         * Check if a device is controllable (Roku, Samsung TV, LG ThinQ)
+         */
+        isControllableDevice: function(deviceType, endpointName) {
+            var dt = (deviceType || '').toLowerCase();
+            var name = (endpointName || '').toLowerCase();
+
+            // Check device type - "tv" covers Roku, Samsung, LG TVs; "appliance" covers LG ThinQ
+            if (dt === 'tv' || dt === 'appliance' || dt === 'roku' || dt === 'samsung' || dt === 'samsung_tv' || dt.indexOf('lg_thinq') === 0) {
+                return true;
+            }
+
+            // Check endpoint name hints
+            if (name.indexOf('roku') !== -1) return true;
+            if (name.indexOf('samsung') !== -1) return true;
+            if (name.indexOf('lma') !== -1) return true;  // LG ThinQ appliances
+
+            return false;
+        },
+
+        /**
          * Update endpoint details panel with data from API
          */
         updateDetails: function(data) {
@@ -263,6 +283,21 @@
                 controlContent.dataset.endpointName = data.endpoint_name;
                 if (data.device_type) {
                     controlContent.dataset.deviceType = data.device_type;
+                }
+            }
+
+            // Show/hide Control tab based on whether device is controllable
+            var controlTabBtn = document.getElementById('control-tab-btn');
+            if (controlTabBtn) {
+                var isControllable = App.Endpoints.isControllableDevice(data.device_type, data.endpoint_name);
+                controlTabBtn.style.display = isControllable ? '' : 'none';
+
+                // If Control tab was active but device is not controllable, switch to Details
+                if (!isControllable && controlTabBtn.classList.contains('active')) {
+                    var detailsTab = document.querySelector('.detail-tab[data-tab="details-tab-content"]');
+                    if (detailsTab) {
+                        switchDetailTab(detailsTab, 'details-tab-content');
+                    }
                 }
             }
 
@@ -498,6 +533,20 @@
             // Hide endpoint actions container
             var actionsContainer = document.getElementById('endpoint-actions-container');
             if (actionsContainer) actionsContainer.style.display = 'none';
+
+            // Hide Control tab (will be shown again when a controllable device is selected)
+            var controlTabBtn = document.getElementById('control-tab-btn');
+            if (controlTabBtn) controlTabBtn.style.display = 'none';
+
+            // Reset device capabilities so they reload for the next device
+            App.state.deviceCapabilitiesLoaded = false;
+
+            // Reset to Details tab if Control tab was active
+            var detailsTab = document.querySelector('.detail-tab[data-tab="details-tab-content"]');
+            var controlTabContent = document.getElementById('control-tab-content');
+            if (detailsTab && controlTabContent && controlTabContent.classList.contains('active')) {
+                switchDetailTab(detailsTab, 'details-tab-content');
+            }
         },
 
         /**

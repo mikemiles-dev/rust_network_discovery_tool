@@ -83,8 +83,15 @@
             if (deviceType) url += '&device_type=' + encodeURIComponent(deviceType);
             if (endpointName) url += '&hostname=' + encodeURIComponent(endpointName);
 
-            fetch(url)
-                .then(function(response) { return response.json(); })
+            // Add timeout for slow/unreachable devices
+            var controller = new AbortController();
+            var timeoutId = setTimeout(function() { controller.abort(); }, 8000);
+
+            fetch(url, { signal: controller.signal })
+                .then(function(response) {
+                    clearTimeout(timeoutId);
+                    return response.json();
+                })
                 .then(function(capabilities) {
                     if (loadingEl) loadingEl.style.display = 'none';
                     if (contentEl) contentEl.style.display = 'block';
@@ -167,11 +174,18 @@
                     App.state.deviceCapabilitiesLoaded = true;
                 })
                 .catch(function(error) {
+                    clearTimeout(timeoutId);
                     console.error('Failed to load device capabilities:', error);
                     if (loadingEl) loadingEl.style.display = 'none';
                     if (contentEl) contentEl.style.display = 'block';
-                    if (noControlEl) noControlEl.style.display = 'block';
-                    if (rokuRemoteEl) rokuRemoteEl.style.display = 'none';
+                    hideAll();
+                    if (noControlEl) {
+                        noControlEl.style.display = 'block';
+                        // Show timeout message if it was an abort
+                        if (error.name === 'AbortError') {
+                            noControlEl.innerHTML = '<p>Device not reachable (connection timeout)</p><p style="font-size: 0.8rem; color: var(--text-secondary);">The device may be on an isolated network (e.g., iPhone hotspot)</p>';
+                        }
+                    }
                     App.state.deviceCapabilitiesLoaded = true;
                 });
         },
