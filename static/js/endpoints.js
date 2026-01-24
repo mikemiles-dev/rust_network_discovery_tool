@@ -521,6 +521,52 @@
         },
 
         /**
+         * Merge this endpoint into another endpoint
+         */
+        mergeEndpoint: function(sourceEndpoint) {
+            var targetEndpoint = prompt('Merge "' + sourceEndpoint + '" into which endpoint?\n\nEnter the name, hostname, or IP of the target endpoint:');
+
+            if (!targetEndpoint || !targetEndpoint.trim()) {
+                return;
+            }
+
+            targetEndpoint = targetEndpoint.trim();
+
+            if (targetEndpoint.toLowerCase() === sourceEndpoint.toLowerCase()) {
+                alert('Cannot merge an endpoint into itself.');
+                return;
+            }
+
+            if (!confirm('Merge "' + sourceEndpoint + '" into "' + targetEndpoint + '"?\n\nAll communications, attributes, and scan data from "' + sourceEndpoint + '" will be moved to "' + targetEndpoint + '", and "' + sourceEndpoint + '" will be deleted.')) {
+                return;
+            }
+
+            fetch('/api/endpoint/merge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    target: targetEndpoint,
+                    source: sourceEndpoint
+                })
+            })
+            .then(function(response) { return response.json(); })
+            .then(function(result) {
+                if (result.success) {
+                    alert(result.message);
+                    // Navigate to the target endpoint
+                    var url = new URL(window.location.href);
+                    url.searchParams.set('node', targetEndpoint);
+                    window.location.href = url.toString();
+                } else {
+                    alert('Failed to merge endpoints: ' + result.message);
+                }
+            })
+            .catch(function(error) {
+                alert('Error merging endpoints: ' + error);
+            });
+        },
+
+        /**
          * Delete an endpoint and all associated data
          */
         deleteEndpoint: function(endpointName) {
@@ -611,6 +657,7 @@
     window.unselectNode = App.Endpoints.unselectNode;
     window.scrollToSection = App.Endpoints.scrollToSection;
     window.probeHostname = App.Endpoints.probeHostname;
+    window.mergeEndpoint = App.Endpoints.mergeEndpoint;
     window.deleteEndpoint = App.Endpoints.deleteEndpoint;
     window.getDeviceTypeInfo = App.Endpoints.getDeviceTypeInfo;
     window.updateEndpointDetails = App.Endpoints.updateDetails;

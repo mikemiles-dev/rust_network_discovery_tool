@@ -2028,9 +2028,18 @@
           {% endif %}
         </div>
 
-        <!-- Delete Endpoint Button -->
+        <!-- Merge and Delete Endpoint Buttons -->
         {% if endpoint %}
         <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(71, 85, 105, 0.3);">
+          <button onclick="mergeEndpoint('{{ endpoint }}')"
+                  style="width: 100%; padding: 0.75rem; background: #2563eb; color: white; border: none; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: background-color 0.2s; margin-bottom: 0.5rem;"
+                  onmouseover="this.style.backgroundColor='#1d4ed8'"
+                  onmouseout="this.style.backgroundColor='#2563eb'">
+            🔗 Merge Into Another Endpoint
+          </button>
+          <div style="font-size: 0.7rem; color: var(--text-secondary); text-align: center; margin-bottom: 1rem;">
+            Combine this endpoint with another (for duplicates)
+          </div>
           <button onclick="deleteEndpoint('{{ endpoint }}')"
                   style="width: 100%; padding: 0.75rem; background: #dc2626; color: white; border: none; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: background-color 0.2s;"
                   onmouseover="this.style.backgroundColor='#b91c1c'"

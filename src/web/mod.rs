@@ -2310,6 +2310,7 @@ pub fn start(preferred_port: u16) {
                         .service(set_endpoint_vendor)
                         .service(probe_endpoint)
                         .service(delete_endpoint)
+                        .service(merge_endpoints)
                         .service(probe_endpoint_model)
                         .service(get_dns_entries_api)
                         .service(get_internet_destinations)
@@ -3329,6 +3330,187 @@ async fn delete_endpoint(body: Json<DeleteEndpointRequest>) -> impl Responder {
             body.endpoint_name, deleted_endpoints, deleted_attrs, deleted_scans, updated_comms
         ),
     })
+}
+
+#[derive(Deserialize)]
+struct MergeEndpointsRequest {
+    /// The endpoint to keep (target) - can be name, custom_name, hostname, or IP
+    target: String,
+    /// The endpoint to merge and delete (source) - can be name, custom_name, hostname, or IP
+    source: String,
+}
+
+#[derive(Serialize)]
+struct MergeEndpointsResponse {
+    success: bool,
+    message: String,
+}
+
+/// Merge two endpoints into one, keeping the target and deleting the source
+/// All communications, attributes, scan results, and ports from source are moved to target
+#[post("/api/endpoint/merge")]
+async fn merge_endpoints(body: Json<MergeEndpointsRequest>) -> impl Responder {
+    let conn = new_connection();
+
+    // Find the target endpoint ID
+    let target_id: Option<i64> = match conn.prepare(&format!(
+        "SELECT DISTINCT e.id FROM endpoints e
+         LEFT JOIN endpoint_attributes ea ON e.id = ea.endpoint_id
+         WHERE {} = ?1 COLLATE NOCASE
+            OR LOWER(ea.hostname) = LOWER(?1)
+            OR LOWER(ea.ip) = LOWER(?1)
+         LIMIT 1",
+        DISPLAY_NAME_SQL
+    )) {
+        Ok(mut stmt) => stmt.query_row([&body.target], |row| row.get(0)).ok(),
+        Err(e) => {
+            eprintln!("Error preparing target query: {}", e);
+            return HttpResponse::InternalServerError().json(MergeEndpointsResponse {
+                success: false,
+                message: format!("Database error: {}", e),
+            });
+        }
+    };
+
+    let target_id = match target_id {
+        Some(id) => id,
+        None => {
+            return HttpResponse::NotFound().json(MergeEndpointsResponse {
+                success: false,
+                message: format!("Target endpoint '{}' not found", body.target),
+            });
+        }
+    };
+
+    // Find the source endpoint ID
+    let source_id: Option<i64> = match conn.prepare(&format!(
+        "SELECT DISTINCT e.id FROM endpoints e
+         LEFT JOIN endpoint_attributes ea ON e.id = ea.endpoint_id
+         WHERE {} = ?1 COLLATE NOCASE
+            OR LOWER(ea.hostname) = LOWER(?1)
+            OR LOWER(ea.ip) = LOWER(?1)
+         LIMIT 1",
+        DISPLAY_NAME_SQL
+    )) {
+        Ok(mut stmt) => stmt.query_row([&body.source], |row| row.get(0)).ok(),
+        Err(e) => {
+            eprintln!("Error preparing source query: {}", e);
+            return HttpResponse::InternalServerError().json(MergeEndpointsResponse {
+                success: false,
+                message: format!("Database error: {}", e),
+            });
+        }
+    };
+
+    let source_id = match source_id {
+        Some(id) => id,
+        None => {
+            return HttpResponse::NotFound().json(MergeEndpointsResponse {
+                success: false,
+                message: format!("Source endpoint '{}' not found", body.source),
+            });
+        }
+    };
+
+    // Check they're not the same endpoint
+    if target_id == source_id {
+        return HttpResponse::BadRequest().json(MergeEndpointsResponse {
+            success: false,
+            message: "Cannot merge an endpoint with itself".to_string(),
+        });
+    }
+
+    // Perform the merge
+    let mut merged_comms = 0;
+    let mut merged_attrs = 0;
+    let mut merged_ports = 0;
+    let mut merged_scans = 0;
+
+    // Merge communications
+    merged_comms += conn
+        .execute(
+            "UPDATE communications SET src_endpoint_id = ?1 WHERE src_endpoint_id = ?2",
+            params![target_id, source_id],
+        )
+        .unwrap_or(0);
+    merged_comms += conn
+        .execute(
+            "UPDATE communications SET dst_endpoint_id = ?1 WHERE dst_endpoint_id = ?2",
+            params![target_id, source_id],
+        )
+        .unwrap_or(0);
+
+    // Merge endpoint attributes (INSERT OR IGNORE to skip duplicates)
+    merged_attrs += conn
+        .execute(
+            "INSERT OR IGNORE INTO endpoint_attributes (created_at, endpoint_id, mac, ip, hostname, dhcp_client_id, dhcp_vendor_class)
+             SELECT created_at, ?1, mac, ip, hostname, dhcp_client_id, dhcp_vendor_class
+             FROM endpoint_attributes
+             WHERE endpoint_id = ?2",
+            params![target_id, source_id],
+        )
+        .unwrap_or(0);
+
+    // Delete source attributes after copying
+    conn.execute(
+        "DELETE FROM endpoint_attributes WHERE endpoint_id = ?1",
+        params![source_id],
+    )
+    .unwrap_or(0);
+
+    // Merge open ports (UPDATE OR IGNORE to skip duplicates)
+    merged_ports += conn
+        .execute(
+            "UPDATE OR IGNORE open_ports SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+            params![target_id, source_id],
+        )
+        .unwrap_or(0);
+
+    // Delete any remaining source ports (duplicates)
+    conn.execute(
+        "DELETE FROM open_ports WHERE endpoint_id = ?1",
+        params![source_id],
+    )
+    .unwrap_or(0);
+
+    // Merge scan results
+    merged_scans += conn
+        .execute(
+            "UPDATE scan_results SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+            params![target_id, source_id],
+        )
+        .unwrap_or(0);
+
+    // Copy over any useful metadata from source that target doesn't have
+    let _ = conn.execute(
+        "UPDATE endpoints SET
+            ssdp_model = COALESCE((SELECT ssdp_model FROM endpoints WHERE id = ?1), (SELECT ssdp_model FROM endpoints WHERE id = ?2)),
+            ssdp_friendly_name = COALESCE((SELECT ssdp_friendly_name FROM endpoints WHERE id = ?1), (SELECT ssdp_friendly_name FROM endpoints WHERE id = ?2)),
+            netbios_name = COALESCE((SELECT netbios_name FROM endpoints WHERE id = ?1), (SELECT netbios_name FROM endpoints WHERE id = ?2)),
+            auto_device_type = COALESCE((SELECT auto_device_type FROM endpoints WHERE id = ?1), (SELECT auto_device_type FROM endpoints WHERE id = ?2))
+         WHERE id = ?1",
+        params![target_id, source_id],
+    );
+
+    // Delete the source endpoint
+    let deleted = conn
+        .execute("DELETE FROM endpoints WHERE id = ?1", params![source_id])
+        .unwrap_or(0);
+
+    if deleted > 0 {
+        HttpResponse::Ok().json(MergeEndpointsResponse {
+            success: true,
+            message: format!(
+                "Merged '{}' into '{}': {} communication(s), {} attribute(s), {} port(s), {} scan result(s)",
+                body.source, body.target, merged_comms, merged_attrs, merged_ports, merged_scans
+            ),
+        })
+    } else {
+        HttpResponse::InternalServerError().json(MergeEndpointsResponse {
+            success: false,
+            message: "Failed to delete source endpoint after merge".to_string(),
+        })
+    }
 }
 
 #[derive(Deserialize)]
