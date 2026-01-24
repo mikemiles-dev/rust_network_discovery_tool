@@ -206,16 +206,28 @@ impl MDnsLookup {
 
                                     // Persist hostname to database if it's a new discovery
                                     // Only update if hostname is a valid display name
+                                    // Use a static connection to avoid opening too many connections
                                     if is_new_hostname && is_valid_display_name(&host) {
-                                        let addr_clone = addr.clone();
-                                        let host_clone = host.clone();
-                                        std::thread::spawn(move || {
-                                            if let Ok(conn) = crate::db::new_connection_result() {
+                                        use std::sync::OnceLock;
+                                        use std::sync::Mutex;
+                                        static MDNS_DB_CONN: OnceLock<Mutex<Option<rusqlite::Connection>>> = OnceLock::new();
+
+                                        let conn_mutex = MDNS_DB_CONN.get_or_init(|| {
+                                            Mutex::new(crate::db::new_connection_result().ok())
+                                        });
+
+                                        if let Ok(mut guard) = conn_mutex.lock() {
+                                            // Reconnect if connection was lost
+                                            if guard.is_none() {
+                                                *guard = crate::db::new_connection_result().ok();
+                                            }
+
+                                            if let Some(conn) = guard.as_ref() {
                                                 // Check if an endpoint exists for this IP
                                                 let endpoint_exists: bool = conn
                                                     .query_row(
                                                         "SELECT EXISTS(SELECT 1 FROM endpoint_attributes WHERE ip = ?1)",
-                                                        [&addr_clone],
+                                                        [&addr],
                                                         |row| row.get(0),
                                                     )
                                                     .unwrap_or(false);
@@ -226,7 +238,7 @@ impl MDnsLookup {
                                                         "UPDATE endpoint_attributes SET hostname = ?1
                                                          WHERE ip = ?2 AND (hostname IS NULL OR hostname = ?2
                                                          OR hostname LIKE '%:%' OR hostname GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*')",
-                                                        rusqlite::params![host_clone, addr_clone],
+                                                        rusqlite::params![host, addr],
                                                     );
 
                                                     // Also update endpoints.name if it's currently just an IP
@@ -238,30 +250,30 @@ impl MDnsLookup {
                                                          AND (name IS NULL OR name = ?2 OR name LIKE '%:%'
                                                               OR name GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*')
                                                          AND custom_name IS NULL",
-                                                        rusqlite::params![host_clone, addr_clone],
+                                                        rusqlite::params![host, addr],
                                                     );
                                                 } else {
                                                     // Create new endpoint from mDNS discovery
                                                     let now = chrono::Utc::now().timestamp();
                                                     if let Ok(_) = conn.execute(
                                                         "INSERT INTO endpoints (created_at, name) VALUES (?1, ?2)",
-                                                        rusqlite::params![now, host_clone],
+                                                        rusqlite::params![now, host],
                                                     ) {
                                                         let endpoint_id = conn.last_insert_rowid();
                                                         // Create endpoint_attributes entry
                                                         let _ = conn.execute(
                                                             "INSERT INTO endpoint_attributes (created_at, endpoint_id, ip, hostname)
                                                              VALUES (?1, ?2, ?3, ?4)",
-                                                            rusqlite::params![now, endpoint_id, addr_clone, host_clone],
+                                                            rusqlite::params![now, endpoint_id, addr, host],
                                                         );
                                                         eprintln!(
                                                             "Created endpoint '{}' from mDNS discovery ({})",
-                                                            host_clone, addr_clone
+                                                            host, addr
                                                         );
                                                     }
                                                 }
                                             }
-                                        });
+                                        }
                                     }
 
                                     // Store service type (always store for device classification)
