@@ -2,6 +2,8 @@ use rusqlite::Connection;
 use tokio::{sync::mpsc, task};
 
 use std::env;
+use std::fs;
+use std::path::Path;
 use std::sync::OnceLock;
 
 use crate::network::communication::Communication;
@@ -9,6 +11,123 @@ use crate::network::endpoint::EndPoint;
 use crate::network::endpoint_attribute::EndPointAttribute;
 
 const MAX_CHANNEL_BUFFER_SIZE: usize = 50_000; // ~25MB at 500 bytes per Communication
+
+/// Attempt to clean up stale WAL and SHM files from a previous crash.
+/// This is especially important on Windows where file locking is stricter.
+/// Returns true if cleanup was attempted (files existed), false otherwise.
+fn cleanup_stale_wal_files(db_path: &str) -> bool {
+    // Skip for in-memory databases
+    if db_path == ":memory:" || db_path.starts_with("file::memory:") {
+        return false;
+    }
+
+    let wal_path = format!("{}-wal", db_path);
+    let shm_path = format!("{}-shm", db_path);
+
+    let wal_exists = Path::new(&wal_path).exists();
+    let shm_exists = Path::new(&shm_path).exists();
+
+    if !wal_exists && !shm_exists {
+        return false;
+    }
+
+    // Check if the main database file exists - if not, WAL/SHM are definitely orphaned
+    let db_exists = Path::new(db_path).exists();
+
+    if !db_exists {
+        // Database doesn't exist but WAL/SHM do - definitely orphaned
+        eprintln!(
+            "Found orphaned WAL/SHM files without main database, cleaning up: {}",
+            db_path
+        );
+        let _ = fs::remove_file(&wal_path);
+        let _ = fs::remove_file(&shm_path);
+        return true;
+    }
+
+    // Try to detect if the WAL file is stale by checking if we can get exclusive access.
+    // On Windows, if another process has the file open, this will fail.
+    // On Unix, we check file modification time - if WAL is older than a threshold and
+    // hasn't been modified, it's likely stale.
+
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows, file deletion fails if another process has the file open.
+        // This is more reliable than checking file access modes.
+        // We try to delete both files - if they're in use, the delete will fail
+        // and we'll let SQLite handle the existing files normally.
+
+        let mut cleaned = false;
+
+        if wal_exists {
+            match fs::remove_file(&wal_path) {
+                Ok(()) => {
+                    eprintln!("Cleaned up stale WAL file: {}", wal_path);
+                    cleaned = true;
+                }
+                Err(e) => {
+                    // File is likely in use by another process
+                    eprintln!("Could not remove WAL file (may be in use): {} - {}", wal_path, e);
+                }
+            }
+        }
+
+        if shm_exists {
+            match fs::remove_file(&shm_path) {
+                Ok(()) => {
+                    eprintln!("Cleaned up stale SHM file: {}", shm_path);
+                    cleaned = true;
+                }
+                Err(e) => {
+                    // File is likely in use by another process
+                    eprintln!("Could not remove SHM file (may be in use): {} - {}", shm_path, e);
+                }
+            }
+        }
+
+        cleaned
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // On Unix, check if the WAL/SHM files haven't been modified recently.
+        // If idle for more than 30 seconds at startup, likely from a crashed process.
+        use std::time::{Duration, SystemTime};
+
+        const STALE_THRESHOLD_SECS: u64 = 30;
+
+        // Helper to check if a file is stale
+        let is_file_stale = |path: &str| -> bool {
+            if let Ok(metadata) = fs::metadata(path) {
+                if let Ok(modified) = metadata.modified() {
+                    if let Ok(elapsed) = SystemTime::now().duration_since(modified) {
+                        return elapsed > Duration::from_secs(STALE_THRESHOLD_SECS);
+                    }
+                }
+            }
+            false
+        };
+
+        // Check WAL file staleness (primary indicator)
+        let wal_stale = wal_exists && is_file_stale(&wal_path);
+        // Check SHM file staleness (fallback if WAL doesn't exist)
+        let shm_stale = shm_exists && is_file_stale(&shm_path);
+
+        if wal_stale || shm_stale {
+            if wal_exists {
+                eprintln!("Cleaning up stale WAL file: {}", wal_path);
+                let _ = fs::remove_file(&wal_path);
+            }
+            if shm_exists {
+                eprintln!("Cleaning up stale SHM file: {}", shm_path);
+                let _ = fs::remove_file(&shm_path);
+            }
+            return true;
+        }
+
+        false
+    }
+}
 
 /// Result of attempting to process a batch of communications
 enum BatchResult {
@@ -24,6 +143,11 @@ pub fn new_connection() -> Connection {
 pub fn new_connection_result() -> Result<Connection, rusqlite::Error> {
     let db_url = get_database_url();
     let db_path = db_url.strip_prefix("sqlite://").unwrap_or(&db_url);
+
+    // Attempt to clean up stale WAL/SHM files from previous crashes
+    // This is especially important on Windows where file locking is stricter
+    cleanup_stale_wal_files(db_path);
+
     let conn = Connection::open(db_path).map_err(|e| {
         eprintln!(
             "Failed to open database at '{}': {} (cwd: {:?})",
