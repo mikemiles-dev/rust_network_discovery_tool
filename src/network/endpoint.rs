@@ -741,6 +741,7 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("f8:b4:6a", "HP"),
     ("fc:15:b4", "HP"),
     ("fc:3f:db", "HP"),
+    ("28:c5:c8", "HP"),
     // Huawei (phones, tablets, routers, smart devices)
     ("00:18:82", "Huawei"),
     ("00:1e:10", "Huawei"),
@@ -832,8 +833,10 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("fc:48:ef", "Huawei"),
     // AzureWave Technology (WiFi/Bluetooth modules in laptops, tablets, etc.)
     ("2c:dc:d7", "AzureWave"),
+    ("40:9f:38", "AzureWave"),
     // Intel (WiFi/Ethernet adapters in laptops, desktops, etc.)
     ("4c:03:4f", "Intel"),
+    ("74:3a:f4", "Intel"),
     // Google/Nest (Nest thermostat, Home, Chromecast, etc.)
     ("18:d6:c7", "Google"),
     ("1c:f2:9a", "Google"),
@@ -868,6 +871,8 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("68:ff:7b", "TP-Link"),
     ("98:da:c4", "TP-Link"),
     ("b0:be:76", "TP-Link"),
+    ("48:22:54", "TP-Link"),
+    ("78:8c:b5", "TP-Link"),
     // Wemo (Belkin smart plugs)
     ("08:86:3b", "Belkin"),
     ("24:f5:a2", "Belkin"),
@@ -882,6 +887,7 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("d0:3f:27", "Wyze"),
     // Texas Instruments (IoT chips - used in Wyze, SmartThings, etc.)
     ("78:04:73", "Texas Instruments"),
+    ("80:f5:b5", "Texas Instruments"),
     // iRobot (Roomba)
     ("50:14:79", "iRobot"),
     ("80:c5:f2", "iRobot"),
@@ -900,6 +906,7 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("cc:8d:a2", "Tuya"),
     ("d4:a6:51", "Tuya"),
     ("dc:23:4e", "Tuya"),
+    ("d8:1f:12", "Tuya"),
     // USI (Universal Global Scientific Industrial - ODM/contract manufacturer)
     ("e0:4f:43", "USI"),
     // Wisol (Korean IoT/RF modules - sensors, trackers)
@@ -924,6 +931,7 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("48:3f:da", "Espressif"),
     ("c4:4f:33", "Espressif"),
     ("70:03:9f", "Espressif"),
+    ("fc:b4:67", "Espressif"),
     // Seeed Technology (IoT/maker devices)
     ("2c:f7:f1", "Seeed"),
     // SimpliSafe (home security)
@@ -1796,6 +1804,16 @@ const MAC_VENDOR_MAP: &[(&str, &str)] = &[
     ("e0:e7:51", "Nintendo"),
     ("e8:4e:ce", "Nintendo"),
     ("e8:96:3a", "Nintendo"),
+    // ASUS (computers, routers, motherboards, networking)
+    ("bc:35:1e", "ASUS"),
+    // Logitech (webcams, peripherals, gaming devices)
+    ("c8:db:26", "Logitech"),
+    // Synology (NAS devices)
+    ("00:11:32", "Synology"),
+    // LiteON (network cards, SSDs, optical drives)
+    ("6c:4b:90", "LiteON"),
+    // FN-Link Technology (WiFi/Bluetooth modules in TVs, IoT)
+    ("a8:96:09", "FN-Link"),
 ];
 
 // mDNS service types for device classification
@@ -2218,7 +2236,7 @@ const APPLIANCE_VENDORS: &[&str] = &[
 const GAMING_VENDORS: &[&str] = &["Nintendo", "Sony"];
 
 // TV/streaming vendors that should be classified as TV
-const TV_VENDORS: &[&str] = &["Roku", "TCL", "Hisense", "Vizio"];
+const TV_VENDORS: &[&str] = &["Roku", "TCL", "Hisense", "Vizio", "FN-Link"];
 
 // Gateway/router vendors - cable modems, routers, networking equipment
 const GATEWAY_VENDORS: &[&str] = &[
@@ -3395,6 +3413,11 @@ pub fn get_model_from_mac(mac: &str) -> Option<String> {
         "Texas Instruments" => Some("TI IoT Device".to_string()),
         "Samjin" => Some("SmartThings Sensor".to_string()),
         "Wisol" => Some("SmartThings Sensor".to_string()),
+        "Synology" => Some("Synology NAS".to_string()),
+        "ASUS" => Some("ASUS Device".to_string()),
+        "Logitech" => Some("Logitech Device".to_string()),
+        "LiteON" => Some("LiteON Device".to_string()),
+        "FN-Link" => Some("Smart TV".to_string()),
         _ => None,
     }
 }
@@ -3559,6 +3582,19 @@ pub fn get_model_from_vendor_and_type(vendor: &str, device_type: &str) -> Option
 
         // Computers
         ("ASRock", _) => Some("ASRock PC".to_string()),
+        ("ASUS", "gateway") => Some("ASUS Router".to_string()),
+        ("ASUS", "computer") => Some("ASUS Computer".to_string()),
+        ("ASUS", "local") => Some("ASUS Computer".to_string()),
+        ("ASUS", _) => Some("ASUS Device".to_string()),
+        ("LiteON", "computer") => Some("LiteON Network Card".to_string()),
+        ("LiteON", _) => Some("LiteON Device".to_string()),
+
+        // NAS devices
+        ("Synology", _) => Some("Synology NAS".to_string()),
+
+        // WiFi module vendors (embedded in other devices)
+        ("FN-Link", "tv") => Some("Smart TV".to_string()),
+        ("FN-Link", _) => Some("FN-Link WiFi Device".to_string()),
 
         _ => None,
     }
