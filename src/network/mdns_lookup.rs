@@ -208,9 +208,11 @@ impl MDnsLookup {
                                     // Only update if hostname is a valid display name
                                     // Use a static connection to avoid opening too many connections
                                     if is_new_hostname && is_valid_display_name(&host) {
-                                        use std::sync::OnceLock;
                                         use std::sync::Mutex;
-                                        static MDNS_DB_CONN: OnceLock<Mutex<Option<rusqlite::Connection>>> = OnceLock::new();
+                                        use std::sync::OnceLock;
+                                        static MDNS_DB_CONN: OnceLock<
+                                            Mutex<Option<rusqlite::Connection>>,
+                                        > = OnceLock::new();
 
                                         let conn_mutex = MDNS_DB_CONN.get_or_init(|| {
                                             Mutex::new(crate::db::new_connection_result().ok())
@@ -255,10 +257,10 @@ impl MDnsLookup {
                                                 } else {
                                                     // Create new endpoint from mDNS discovery
                                                     let now = chrono::Utc::now().timestamp();
-                                                    if let Ok(_) = conn.execute(
+                                                    if conn.execute(
                                                         "INSERT INTO endpoints (created_at, name) VALUES (?1, ?2)",
                                                         rusqlite::params![now, host],
-                                                    ) {
+                                                    ).is_ok() {
                                                         let endpoint_id = conn.last_insert_rowid();
                                                         // Create endpoint_attributes entry
                                                         let _ = conn.execute(

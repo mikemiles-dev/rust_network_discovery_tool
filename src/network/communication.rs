@@ -309,10 +309,7 @@ impl Communication {
         )?;
         // Drop old index that included source_port (if exists) and create new one without it
         // This aggregates all communications between endpoints on the same destination port
-        conn.execute(
-            "DROP INDEX IF EXISTS idx_communications_unique;",
-            [],
-        )?;
+        conn.execute("DROP INDEX IF EXISTS idx_communications_unique;", [])?;
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_communications_unique_v2 ON communications (
                 src_endpoint_id,

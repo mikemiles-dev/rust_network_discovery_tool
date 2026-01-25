@@ -5,6 +5,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::network::communication::Communication;
 use crate::network::endpoint::EndPoint;
@@ -12,10 +13,18 @@ use crate::network::endpoint_attribute::EndPointAttribute;
 
 const MAX_CHANNEL_BUFFER_SIZE: usize = 50_000; // ~25MB at 500 bytes per Communication
 
+/// Flag to ensure WAL cleanup only runs once at startup
+static WAL_CLEANUP_DONE: AtomicBool = AtomicBool::new(false);
+
 /// Attempt to clean up stale WAL and SHM files from a previous crash.
 /// This is especially important on Windows where file locking is stricter.
+/// Only runs once at startup - subsequent calls are no-ops.
 /// Returns true if cleanup was attempted (files existed), false otherwise.
 fn cleanup_stale_wal_files(db_path: &str) -> bool {
+    // Only attempt cleanup once at startup
+    if WAL_CLEANUP_DONE.swap(true, Ordering::SeqCst) {
+        return false;
+    }
     // Skip for in-memory databases
     if db_path == ":memory:" || db_path.starts_with("file::memory:") {
         return false;
@@ -67,7 +76,10 @@ fn cleanup_stale_wal_files(db_path: &str) -> bool {
                 }
                 Err(e) => {
                     // File is likely in use by another process
-                    eprintln!("Could not remove WAL file (may be in use): {} - {}", wal_path, e);
+                    eprintln!(
+                        "Could not remove WAL file (may be in use): {} - {}",
+                        wal_path, e
+                    );
                 }
             }
         }
@@ -80,7 +92,10 @@ fn cleanup_stale_wal_files(db_path: &str) -> bool {
                 }
                 Err(e) => {
                     // File is likely in use by another process
-                    eprintln!("Could not remove SHM file (may be in use): {} - {}", shm_path, e);
+                    eprintln!(
+                        "Could not remove SHM file (may be in use): {} - {}",
+                        shm_path, e
+                    );
                 }
             }
         }
@@ -98,12 +113,11 @@ fn cleanup_stale_wal_files(db_path: &str) -> bool {
 
         // Helper to check if a file is stale
         let is_file_stale = |path: &str| -> bool {
-            if let Ok(metadata) = fs::metadata(path) {
-                if let Ok(modified) = metadata.modified() {
-                    if let Ok(elapsed) = SystemTime::now().duration_since(modified) {
-                        return elapsed > Duration::from_secs(STALE_THRESHOLD_SECS);
-                    }
-                }
+            if let Ok(metadata) = fs::metadata(path)
+                && let Ok(modified) = metadata.modified()
+                && let Ok(elapsed) = SystemTime::now().duration_since(modified)
+            {
+                return elapsed > Duration::from_secs(STALE_THRESHOLD_SECS);
             }
             false
         };
@@ -666,7 +680,11 @@ impl SQLWriter {
                 &format!(
                     "SELECT SUM(packet_count), SUM(bytes), MAX(last_seen_at)
                      FROM communications WHERE id IN ({})",
-                    merge_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",")
+                    merge_ids
+                        .iter()
+                        .map(|id| id.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
                 ),
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
@@ -686,7 +704,11 @@ impl SQLWriter {
             conn.execute(
                 &format!(
                     "DELETE FROM communications WHERE id IN ({})",
-                    merge_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",")
+                    merge_ids
+                        .iter()
+                        .map(|id| id.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
                 ),
                 [],
             )?;
@@ -952,10 +974,7 @@ impl SQLWriter {
 
     /// Find a phone endpoint that could be the hotspot host
     /// Returns the endpoint ID if found
-    fn find_phone_for_hotspot_gateway(
-        conn: &Connection,
-        gateway_endpoint_id: i64,
-    ) -> Option<i64> {
+    fn find_phone_for_hotspot_gateway(conn: &Connection, gateway_endpoint_id: i64) -> Option<i64> {
         // Find phone endpoints that could be providing hotspot
         // Criteria:
         // 1. Has a link-local fe80:: address (typical for hotspot phones)
@@ -1049,7 +1068,10 @@ impl SQLWriter {
                 "UPDATE OR IGNORE open_ports SET endpoint_id = ?1 WHERE endpoint_id = ?2",
                 rusqlite::params![phone_id, gateway_id],
             )?;
-            conn.execute("DELETE FROM open_ports WHERE endpoint_id = ?1", [gateway_id])?;
+            conn.execute(
+                "DELETE FROM open_ports WHERE endpoint_id = ?1",
+                [gateway_id],
+            )?;
 
             // Move scan_results
             conn.execute(
@@ -1062,9 +1084,11 @@ impl SQLWriter {
 
             // Get phone name for logging
             let phone_name: String = conn
-                .query_row("SELECT name FROM endpoints WHERE id = ?1", [phone_id], |row| {
-                    row.get(0)
-                })
+                .query_row(
+                    "SELECT name FROM endpoints WHERE id = ?1",
+                    [phone_id],
+                    |row| row.get(0),
+                )
                 .unwrap_or_else(|_| format!("endpoint {}", phone_id));
 
             eprintln!(

@@ -326,7 +326,10 @@ async fn main() -> io::Result<()> {
     }
 
     if args.all {
-        println!("Monitoring ALL interfaces ({} total):", filtered_interfaces.len());
+        println!(
+            "Monitoring ALL interfaces ({} total):",
+            filtered_interfaces.len()
+        );
     } else {
         println!("Monitoring interfaces:");
     }

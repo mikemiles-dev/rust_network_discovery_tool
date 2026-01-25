@@ -746,7 +746,13 @@ fn get_endpoint_ssdp_models(_endpoints: &[String]) -> HashMap<String, EndpointMo
             let ssdp_model: Option<String> = row.get(2)?;
             let friendly_name: Option<String> = row.get(3)?;
             let custom_vendor: Option<String> = row.get(4)?;
-            Ok((display_name, custom_model, ssdp_model, friendly_name, custom_vendor))
+            Ok((
+                display_name,
+                custom_model,
+                ssdp_model,
+                friendly_name,
+                custom_vendor,
+            ))
         })
         .expect("Failed to execute SSDP models query");
 
@@ -4584,21 +4590,29 @@ async fn get_endpoints_table() -> impl Responder {
     // Build vendor lookup
     // Build vendor lookup
     let component_vendors = [
-        "Espressif", "Tuya", "Realtek", "MediaTek", "Qualcomm",
-        "Broadcom", "Marvell", "USI", "Wisol", "Murata", "AzureWave",
+        "Espressif",
+        "Tuya",
+        "Realtek",
+        "MediaTek",
+        "Qualcomm",
+        "Broadcom",
+        "Marvell",
+        "USI",
+        "Wisol",
+        "Murata",
+        "AzureWave",
     ];
 
     let endpoint_vendors: HashMap<String, String> = dropdown_endpoints_list
         .iter()
         .filter_map(|endpoint| {
             let endpoint_lower = endpoint.to_lowercase();
-            let (_custom_model, ssdp_model, ssdp_friendly, custom_vendor) =
-                endpoint_ssdp_models
-                    .get(&endpoint_lower)
-                    .map(|(cm, sm, sf, cv)| {
-                        (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
-                    })
-                    .unwrap_or((None, None, None, None));
+            let (_custom_model, ssdp_model, ssdp_friendly, custom_vendor) = endpoint_ssdp_models
+                .get(&endpoint_lower)
+                .map(|(cm, sm, sf, cv)| {
+                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
+                })
+                .unwrap_or((None, None, None, None));
 
             let macs: Vec<String> = endpoint_ips_macs
                 .get(&endpoint_lower)
