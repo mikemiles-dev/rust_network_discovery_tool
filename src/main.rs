@@ -40,6 +40,10 @@ struct Args {
     #[arg(short, long, value_delimiter = ',')]
     interface: Option<Vec<String>>,
 
+    /// Monitor all network interfaces (bypasses default filtering)
+    #[arg(short, long)]
+    all: bool,
+
     /// List all available network interfaces and exit
     #[arg(short, long)]
     list_interfaces: bool,
@@ -237,6 +241,11 @@ async fn main() -> io::Result<()> {
     let filtered_interfaces: Vec<NetworkInterface> = interfaces
         .into_iter()
         .filter(|iface| {
+            // If --all flag is set, monitor all interfaces
+            if args.all {
+                return true;
+            }
+
             // If specific interfaces are configured, only monitor those (bypass all other filters)
             if let Some(ref selected) = selected_interfaces {
                 return selected.contains(&iface.name);
@@ -316,7 +325,11 @@ async fn main() -> io::Result<()> {
         return Ok(());
     }
 
-    println!("Monitoring interfaces:");
+    if args.all {
+        println!("Monitoring ALL interfaces ({} total):", filtered_interfaces.len());
+    } else {
+        println!("Monitoring interfaces:");
+    }
     for iface in &filtered_interfaces {
         println!("  - {}", iface.name);
     }
@@ -369,9 +382,9 @@ async fn main() -> io::Result<()> {
 
     web::start(web_port);
 
-    // Warn on Windows if monitoring multiple interfaces
+    // Warn on Windows if monitoring multiple interfaces (unless explicitly requested with --all)
     #[cfg(target_os = "windows")]
-    if filtered_interfaces.len() > 1 && selected_interfaces.is_none() {
+    if filtered_interfaces.len() > 1 && selected_interfaces.is_none() && !args.all {
         println!(
             "\n⚠️  Warning: Monitoring {} interfaces simultaneously.",
             filtered_interfaces.len()
