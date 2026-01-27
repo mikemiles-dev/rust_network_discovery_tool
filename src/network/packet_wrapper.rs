@@ -1,3 +1,6 @@
+//! Packet abstraction layer. Wraps IPv4, IPv6, and Ethernet packets with unified
+//! methods for extracting source/destination IPs, ports, and protocol information.
+
 use pnet::packet::Packet;
 use pnet::packet::ethernet::EtherTypes;
 use pnet::packet::ethernet::EthernetPacket;

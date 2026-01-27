@@ -1,3 +1,6 @@
+//! Web server module. Implements the Actix-web REST API and HTML UI for endpoint
+//! browsing, scan control, device management, and PCAP file import.
+
 use actix_multipart::Multipart;
 use actix_web::{
     App, HttpServer,

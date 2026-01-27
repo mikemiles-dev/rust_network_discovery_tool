@@ -1,3 +1,6 @@
+//! Roku ECP controller. Implements the External Control Protocol on port 8060
+//! for device info retrieval, app listing, and remote command execution.
+
 use super::types::{AppInfo, CommandInfo, CommandResult, DeviceCapabilities, DeviceInfo};
 use std::time::Duration;
 

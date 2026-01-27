@@ -1,3 +1,6 @@
+//! Application entry point. Defines CLI arguments, initializes packet capture,
+//! and orchestrates network monitoring across interfaces.
+
 mod db;
 mod network;
 pub mod pcap;

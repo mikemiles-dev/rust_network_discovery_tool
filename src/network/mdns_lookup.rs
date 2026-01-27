@@ -1,3 +1,6 @@
+//! mDNS service discovery. Handles multicast DNS hostname resolution, service browsing,
+//! and result caching with local machine detection to avoid self-discovery.
+
 use dns_lookup::{get_hostname, lookup_addr};
 use mdns_sd::{ServiceDaemon, ServiceEvent};
 use pnet::datalink;

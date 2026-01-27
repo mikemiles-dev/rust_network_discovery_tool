@@ -1,3 +1,6 @@
+//! Shared types for device control. Defines capabilities, commands, app info,
+//! device info, and control result structures used across all device controllers.
+
 use serde::{Deserialize, Serialize};
 
 /// Device capabilities that can be controlled

@@ -1,3 +1,6 @@
+//! Samsung Smart TV controller. Communicates via WebSocket on port 8001 for
+//! device detection, capability reporting, and remote command execution.
+
 use super::types::{CommandInfo, CommandResult, DeviceCapabilities, DeviceInfo};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use std::net::TcpStream;

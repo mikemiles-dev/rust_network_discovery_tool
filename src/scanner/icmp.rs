@@ -1,3 +1,6 @@
+//! ICMP ping scanner. Performs concurrent ping sweeps using raw sockets with
+//! semaphore-based concurrency limiting to discover live hosts on the network.
+
 use std::mem::MaybeUninit;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;

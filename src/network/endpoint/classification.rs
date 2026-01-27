@@ -1,5 +1,14 @@
+//! Device classification by MAC and services. Identifies device types (printers, TVs,
+//! phones, gaming consoles, computers) using MAC vendor lookups and open port/service analysis.
+
 use super::detection::matches_prefix;
-use super::patterns::*;
+use super::patterns::{
+    APPLIANCE_SERVICES, APPLIANCE_VENDORS, CLASSIFICATION_APPLIANCE, CLASSIFICATION_GAMING,
+    CLASSIFICATION_PHONE, CLASSIFICATION_PRINTER, CLASSIFICATION_SOUNDBAR, CLASSIFICATION_TV,
+    CLASSIFICATION_VIRTUALIZATION, GAMING_VENDORS, GATEWAY_VENDORS, LG_APPLIANCE_PREFIXES,
+    MAC_DESKTOP_SERVICES, PHONE_SERVICES, PRINTER_SERVICES, SOUNDBAR_SERVICES, TV_SERVICES,
+    TV_VENDORS,
+};
 use super::vendor::get_mac_vendor;
 
 /// Check if any MAC address matches known IoT/appliance vendor OUIs

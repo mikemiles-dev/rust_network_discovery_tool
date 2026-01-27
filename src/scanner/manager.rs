@@ -1,3 +1,6 @@
+//! Scan orchestration. Manages concurrent scanner execution with configurable scan types,
+//! timeout settings, progress tracking, and stop signaling.
+
 use std::collections::HashSet;
 use std::net::IpAddr;
 use std::sync::Arc;

@@ -1,4 +1,11 @@
-use super::patterns::*;
+//! Hostname-based device detection. Pattern matching functions to classify devices
+//! as printers, TVs, gaming consoles, phones, soundbars, appliances, or VMs from their hostnames.
+
+use super::patterns::{
+    APPLIANCE_PATTERNS, GAMING_PATTERNS, PHONE_CONDITIONAL, PHONE_PATTERNS, PHONE_PREFIXES,
+    PRINTER_PATTERNS, PRINTER_PREFIXES, SOUNDBAR_MODEL_PREFIXES, SOUNDBAR_PATTERNS, TV_PATTERNS,
+    TV_PREFIXES, VM_PATTERNS,
+};
 
 /// Check if hostname matches any pattern in list
 pub(crate) fn matches_pattern(hostname: &str, patterns: &[&str]) -> bool {

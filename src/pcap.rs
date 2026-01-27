@@ -1,3 +1,6 @@
+//! PCAP file processing. Reads captured packet files, extracts Ethernet frames,
+//! and sends them to the database writer with progress tracking.
+
 use pcap::Capture;
 use pnet::packet::ethernet::EthernetPacket;
 use std::io::{self, Write};

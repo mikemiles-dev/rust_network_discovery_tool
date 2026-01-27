@@ -1,3 +1,6 @@
+//! Network communication processing. Parses DHCP options and network packets
+//! to extract client IDs, vendor classes, hostnames, and records endpoint communications.
+
 use pnet::packet::Packet;
 use pnet::packet::ethernet::EthernetPacket;
 use rusqlite::{Connection, Result, params};

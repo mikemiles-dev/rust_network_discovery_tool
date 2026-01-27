@@ -1,3 +1,6 @@
+//! TCP port scanner. Performs async connect-based port scanning with semaphore-limited
+//! concurrency and service name resolution for well-known ports.
+
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 

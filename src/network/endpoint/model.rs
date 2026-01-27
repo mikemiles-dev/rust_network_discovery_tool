@@ -1,5 +1,8 @@
+//! Device model identification. Normalizes raw model numbers to friendly display names
+//! and infers models from hostnames, MAC addresses, and vendor context.
+
 use super::detection::{is_roku_serial_number, is_roku_tv_model};
-use super::patterns::*;
+use super::patterns::{LG_TV_SERIES, SAMSUNG_TV_SERIES, SONY_TV_SERIES};
 use super::types::{Characterized, pick_best};
 use super::vendor::get_mac_vendor;
 

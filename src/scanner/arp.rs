@@ -1,3 +1,6 @@
+//! ARP scanner. Discovers devices on local subnets by constructing and sending
+//! ARP request packets and collecting MAC/IP address responses.
+
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::{Duration, Instant};
 

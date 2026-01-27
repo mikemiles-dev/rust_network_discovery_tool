@@ -1,3 +1,6 @@
+//! SNMP scanner. Queries devices on UDP port 161 using SNMPv2c GET requests
+//! to retrieve system description, name, location, and object ID.
+
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;

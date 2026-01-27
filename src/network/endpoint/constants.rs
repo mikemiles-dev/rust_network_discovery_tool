@@ -1,3 +1,6 @@
+//! Shared constants and caches. Provides DNS and gateway caches, hostname suffix stripping,
+//! UUID detection, MAC address analysis, and local network utility functions.
+
 use pnet::datalink::interfaces;
 use pnet::ipnetwork::IpNetwork;
 use std::collections::HashMap;

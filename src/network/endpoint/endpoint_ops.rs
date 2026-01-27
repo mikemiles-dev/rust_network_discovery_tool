@@ -1,3 +1,6 @@
+//! Core endpoint operations. Handles endpoint CRUD in SQLite, device type classification,
+//! gateway detection, DNS hostname resolution, and network locality checks.
+
 use dns_lookup::{get_hostname, lookup_addr};
 use pnet::datalink::interfaces;
 use rusqlite::{Connection, Result, params};
@@ -8,11 +11,25 @@ use std::time::Instant;
 use crate::network::endpoint_attribute::EndPointAttribute;
 use crate::network::mdns_lookup::MDnsLookup;
 
-use super::classification::*;
-use super::constants::*;
-use super::detection::*;
-use super::patterns::*;
-use super::types::*;
+use super::classification::{
+    classify_by_port, classify_by_services, is_appliance_mac, is_computer_by_ports, is_gaming_mac,
+    is_gateway_mac, is_lg_appliance, is_phone_mac, is_tv_mac,
+};
+use super::constants::{
+    DNS_CACHE, DNS_CACHE_TTL, GATEWAY_CACHE_TTL, GATEWAY_INFO, extract_mac_from_ipv6_eui64,
+    get_local_networks, is_ipv6_link_local, is_locally_administered_mac, is_valid_display_name,
+    strip_local_suffix,
+};
+use super::detection::{
+    is_appliance_hostname, is_gaming_hostname, is_phone_hostname, is_printer_hostname,
+    is_soundbar_hostname, is_soundbar_model, is_tv_hostname, is_tv_model, is_vm_hostname,
+};
+use super::patterns::{
+    CLASSIFICATION_APPLIANCE, CLASSIFICATION_COMPUTER, CLASSIFICATION_GAMING,
+    CLASSIFICATION_GATEWAY, CLASSIFICATION_INTERNET, CLASSIFICATION_PHONE, CLASSIFICATION_PRINTER,
+    CLASSIFICATION_SOUNDBAR, CLASSIFICATION_TV, CLASSIFICATION_VIRTUALIZATION,
+};
+use super::types::{InsertEndpointError, InternetDestination};
 
 #[derive(Default, Debug)]
 pub struct EndPoint;

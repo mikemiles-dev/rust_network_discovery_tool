@@ -1,3 +1,6 @@
+//! Device control module. Provides controllers for managing smart home and media
+//! devices (LG TVs, Samsung TVs, Roku, LG ThinQ appliances) via their network APIs.
+
 mod controller;
 mod lg;
 mod lg_thinq;
@@ -6,13 +9,3 @@ mod samsung;
 mod types;
 
 pub use controller::DeviceController;
-#[allow(unused_imports)]
-pub use lg::LgController;
-#[allow(unused_imports)]
-pub use lg_thinq::{LgThinQController, ThinQDevice, ThinQDeviceState};
-#[allow(unused_imports)]
-pub use roku::RokuController;
-#[allow(unused_imports)]
-pub use samsung::SamsungController;
-#[allow(unused_imports)]
-pub use types::{AppInfo, CommandInfo, CommandResult, DeviceCapabilities, DeviceInfo};

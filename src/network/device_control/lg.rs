@@ -1,3 +1,6 @@
+//! LG webOS TV controller. Communicates via WebSocket on port 3000 for TV power,
+//! volume, input control, and capability detection.
+
 use super::types::{AppInfo, CommandInfo, CommandResult, DeviceCapabilities, DeviceInfo};
 use std::net::TcpStream;
 use std::time::Duration;

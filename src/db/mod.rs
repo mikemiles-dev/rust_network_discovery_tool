@@ -1,3 +1,6 @@
+//! Database module. Manages SQLite connections, schema creation, endpoint and
+//! communication storage, settings persistence, and WAL file cleanup.
+
 use rusqlite::Connection;
 use tokio::{sync::mpsc, task};
 

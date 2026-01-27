@@ -1,6 +1,9 @@
+//! Vendor identification. Extracts vendor names from MAC OUI prefixes, hostname patterns,
+//! and model numbers with priority-based selection across multiple data sources.
+
 use super::detection::{is_roku_serial_number, is_roku_tv_model, matches_prefix};
 use super::mac_vendors::MAC_VENDOR_MAP;
-use super::patterns::*;
+use super::patterns::LG_APPLIANCE_PREFIXES;
 use super::types::{Characterized, pick_best};
 
 /// Get vendor name from MAC address OUI

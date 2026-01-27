@@ -1,3 +1,6 @@
+//! NetBIOS scanner. Queries UDP port 137 to discover Windows device names
+//! and workgroup information via NetBIOS Name Service (NBNS) requests.
+
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::Duration;

@@ -1,3 +1,6 @@
+//! Test utilities. Provides a PacketBuilder for creating synthetic TCP/UDP/Ethernet
+//! packets with proper headers and checksums for use in unit and integration tests.
+
 use pnet::packet::ethernet::{EthernetPacket, MutableEthernetPacket};
 use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::ipv4::{MutableIpv4Packet, checksum};

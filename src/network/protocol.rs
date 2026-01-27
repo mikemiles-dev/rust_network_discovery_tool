@@ -1,3 +1,6 @@
+//! Protocol-to-port mapping. Defines the ProtocolPort enum mapping well-known
+//! network protocols to their standard port numbers with display name formatting.
+
 pub enum ProtocolPort {
     // Web protocols
     Http,

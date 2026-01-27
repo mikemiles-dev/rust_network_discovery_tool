@@ -1,3 +1,6 @@
+//! NDP scanner. Uses IPv6 Neighbor Discovery Protocol to find devices on
+//! link-local networks via multicast neighbor solicitation messages.
+
 use std::net::{IpAddr, Ipv6Addr};
 use std::time::{Duration, Instant};
 

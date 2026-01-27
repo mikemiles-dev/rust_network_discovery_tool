@@ -1,3 +1,6 @@
+//! Scanner module. Defines ScanType and ScanResult enums and exports all scanner
+//! implementations (ARP, ICMP, NDP, NetBIOS, Port, SNMP, SSDP).
+
 pub mod arp;
 pub mod icmp;
 pub mod manager;

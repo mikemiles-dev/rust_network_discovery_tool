@@ -1,3 +1,6 @@
+//! LG ThinQ cloud controller. Interfaces with the LG Connect API for monitoring
+//! and controlling appliances (dishwashers, washers, dryers, refrigerators).
+
 use super::types::{CommandInfo, CommandResult, DeviceCapabilities, DeviceInfo};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;

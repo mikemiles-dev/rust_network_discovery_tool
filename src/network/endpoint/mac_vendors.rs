@@ -1,3 +1,6 @@
+//! MAC OUI vendor database. Maps thousands of MAC address prefixes (first 3 bytes)
+//! to their manufacturer names for device identification and classification.
+
 // MAC OUI prefixes mapped to vendor names (first 3 bytes, lowercase, colon-separated)
 // Used for both appliance classification and vendor display
 pub(crate) const MAC_VENDOR_MAP: &[(&str, &str)] = &[

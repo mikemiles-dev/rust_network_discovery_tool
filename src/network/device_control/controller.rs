@@ -1,3 +1,6 @@
+//! Device controller router. Detects device types (LG TV, Samsung TV, Roku, LG ThinQ)
+//! and dispatches control commands to the appropriate protocol-specific controller.
+
 use super::lg::LgController;
 use super::lg_thinq::{LgThinQController, ThinQDevice};
 use super::roku::RokuController;

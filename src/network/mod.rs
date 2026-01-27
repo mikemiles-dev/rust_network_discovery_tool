@@ -1,3 +1,6 @@
+//! Network module. Exports submodules for packet processing, endpoint management,
+//! device control, and protocol handling.
+
 pub mod communication;
 pub mod device_control;
 pub mod endpoint;

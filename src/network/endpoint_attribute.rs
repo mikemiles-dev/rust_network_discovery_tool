@@ -1,3 +1,6 @@
+//! Endpoint attribute storage. Manages MAC, IP, hostname, and DHCP attributes in SQLite
+//! with duplicate endpoint merging and gateway vendor detection.
+
 use std::net::Ipv4Addr;
 
 use rusqlite::{Connection, OptionalExtension, Result, params};

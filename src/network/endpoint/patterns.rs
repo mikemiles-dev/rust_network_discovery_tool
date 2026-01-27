@@ -1,3 +1,6 @@
+//! Device classification patterns and constants. Defines hostname patterns, vendor lists,
+//! TV series data, mDNS service identifiers, and classification constants for device type detection.
+
 // Classification type constants
 pub(crate) const CLASSIFICATION_GATEWAY: &str = "gateway";
 pub(crate) const CLASSIFICATION_INTERNET: &str = "internet";

@@ -1,3 +1,6 @@
+//! Core types for endpoint characterization. Defines DataSource priority levels,
+//! the Characterized<T> wrapper for priority-based value resolution, and error types.
+
 use serde::{Deserialize, Serialize};
 
 /// Data source for characterized values (vendor, model, hostname).

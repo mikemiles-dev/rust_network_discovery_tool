@@ -1,3 +1,6 @@
+//! SSDP/UPnP scanner. Discovers network devices via multicast M-SEARCH requests
+//! and fetches device description XML from UPnP location URLs.
+
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::Duration;
