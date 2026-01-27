@@ -1,0 +1,252 @@
+use super::detection::{is_roku_serial_number, is_roku_tv_model, matches_prefix};
+use super::mac_vendors::MAC_VENDOR_MAP;
+use super::patterns::*;
+use super::types::{Characterized, pick_best};
+
+/// Get vendor name from MAC address OUI
+pub fn get_mac_vendor(mac: &str) -> Option<&'static str> {
+    let mac_lower = mac.to_lowercase();
+    if mac_lower.len() >= 8 {
+        let oui = &mac_lower[..8];
+        for (prefix, vendor) in MAC_VENDOR_MAP {
+            if oui == *prefix {
+                return Some(vendor);
+            }
+        }
+    }
+    None
+}
+
+/// Get vendor name from hostname patterns (fallback when MAC is locally administered)
+pub fn get_hostname_vendor(hostname: &str) -> Option<&'static str> {
+    let lower = hostname.to_lowercase();
+
+    // LG ThinQ appliances (lma, lmw, wm, etc.)
+    if matches_prefix(&lower, LG_APPLIANCE_PREFIXES)
+        || (lower.starts_with("wm")
+            && lower
+                .chars()
+                .nth(2)
+                .map(|c| c.is_ascii_digit())
+                .unwrap_or(false))
+    {
+        return Some("LG");
+    }
+    // Samsung devices (including Galaxy phones/tablets)
+    if lower.contains("samsung") || lower.contains("smartthings") || lower.contains("galaxy") {
+        return Some("Samsung");
+    }
+    // Amazon Echo/Alexa
+    if lower.contains("echo") || lower.contains("alexa") || lower.contains("amazon") {
+        return Some("Amazon");
+    }
+    // Google/Nest
+    if lower.contains("google") || lower.contains("nest-") || lower.contains("chromecast") {
+        return Some("Google");
+    }
+    // Apple
+    if lower.contains("apple")
+        || lower.contains("homepod")
+        || lower.contains("macbook")
+        || lower.contains("iphone")
+        || lower.contains("ipad")
+    {
+        return Some("Apple");
+    }
+    // Roku
+    if lower.contains("roku") {
+        return Some("Roku");
+    }
+    // Roku serial number as hostname (e.g., YN00NJ468680) - typically TCL Roku TVs
+    if is_roku_serial_number(&hostname.to_uppercase()) {
+        return Some("TCL");
+    }
+    // Sonos
+    if lower.contains("sonos") {
+        return Some("Sonos");
+    }
+    // Philips Hue
+    if lower.contains("philips") || lower.contains("hue") {
+        return Some("Philips Hue");
+    }
+    // Ring
+    if lower.contains("ring-") || lower.starts_with("ring") {
+        return Some("Ring");
+    }
+    // Ecobee
+    if lower.contains("ecobee") {
+        return Some("Ecobee");
+    }
+    // iRobot Roomba
+    if lower.contains("irobot") || lower.contains("roomba") {
+        return Some("iRobot");
+    }
+    // Wyze
+    if lower.contains("wyze") {
+        return Some("Wyze");
+    }
+    // eero routers
+    if lower.contains("eero") {
+        return Some("eero");
+    }
+    // Sony PlayStation
+    if lower.starts_with("ps4") || lower.starts_with("ps5") || lower.contains("playstation") {
+        return Some("Sony");
+    }
+    // Xbox
+    if lower.starts_with("xbox") {
+        return Some("Microsoft");
+    }
+    // HP printers
+    if lower.starts_with("hp") || lower.starts_with("npi") {
+        return Some("HP");
+    }
+    // Canon printers
+    if lower.contains("canon") {
+        return Some("Canon");
+    }
+    // Epson printers
+    if lower.contains("epson") {
+        return Some("Epson");
+    }
+    // Brother printers
+    if lower.starts_with("brn") || lower.starts_with("brw") || lower.contains("brother") {
+        return Some("Brother");
+    }
+
+    None
+}
+
+/// Characterize vendor from all available sources, returning the best match with source info.
+/// Priority: custom_vendor (UserSet) > SSDP (DeviceReported) > hostname (PatternMatched) > MAC (NetworkInferred)
+pub fn characterize_vendor(
+    custom_vendor: Option<&str>,
+    ssdp_friendly_name: Option<&str>,
+    hostname: Option<&str>,
+    macs: &[String],
+    model: Option<&str>,
+) -> Option<Characterized<String>> {
+    // Gather all sources
+    let user = custom_vendor
+        .filter(|v| !v.is_empty())
+        .map(|v| Characterized::user_set(v.to_string()));
+
+    // SSDP friendly name often contains vendor (e.g., "[TV] Samsung The Frame")
+    let ssdp = ssdp_friendly_name
+        .filter(|v| !v.is_empty())
+        .and_then(|name| {
+            // Extract vendor from SSDP friendly name patterns
+            let lower = name.to_lowercase();
+            if lower.contains("samsung") {
+                Some("Samsung")
+            } else if lower.contains("lg") {
+                Some("LG")
+            } else if lower.contains("sony") {
+                Some("Sony")
+            } else if lower.contains("roku") {
+                Some("Roku")
+            } else if lower.contains("eero") {
+                Some("eero")
+            } else {
+                None
+            }
+        })
+        .map(|v| Characterized::device_reported(v.to_string()));
+
+    // Hostname pattern matching
+    let from_hostname = hostname
+        .filter(|h| !h.is_empty())
+        .and_then(|h| get_hostname_vendor(h))
+        .map(|v| Characterized::pattern_matched(v.to_string()));
+
+    // Model-based vendor detection
+    let from_model = model
+        .filter(|m| !m.is_empty())
+        .and_then(|m| get_vendor_from_model(m))
+        .map(|v| Characterized::pattern_matched(v.to_string()));
+
+    // MAC OUI lookup (try each MAC until we find a vendor)
+    let from_mac = macs
+        .iter()
+        .find_map(|mac| get_mac_vendor(mac))
+        .map(|v| Characterized::network_inferred(v.to_string()));
+
+    // Pick the best one (highest priority source)
+    pick_best(&[user, ssdp, from_hostname, from_model, from_mac])
+}
+
+pub fn get_vendor_from_model(model: &str) -> Option<&'static str> {
+    let model_upper = model.to_uppercase();
+    let model_lower = model.to_lowercase();
+
+    // Samsung Galaxy phones/tablets/watches
+    if model_lower.starts_with("galaxy") || model_lower.starts_with("sm-") {
+        return Some("Samsung");
+    }
+
+    // Samsung TV models: QN/UN/UA prefix
+    if model_upper.starts_with("QN")
+        || model_upper.starts_with("UN")
+        || model_upper.starts_with("UA")
+    {
+        return Some("Samsung");
+    }
+
+    // Samsung soundbars: HW- prefix
+    if model_lower.starts_with("hw-") || model_lower.starts_with("spk-") {
+        return Some("Samsung");
+    }
+
+    // LG TV models: OLED/NANO prefix
+    if model_upper.starts_with("OLED") || model_upper.starts_with("NANO") {
+        return Some("LG");
+    }
+
+    // LG soundbars: SL/SN/SP prefix (without dash)
+    if model_lower.starts_with("sl")
+        || model_lower.starts_with("sn")
+        || model_lower.starts_with("sp")
+    {
+        // Make sure it's followed by a digit (to avoid false positives)
+        if model.len() > 2
+            && model
+                .chars()
+                .nth(2)
+                .map(|c| c.is_ascii_digit())
+                .unwrap_or(false)
+        {
+            return Some("LG");
+        }
+    }
+
+    // Sony Bravia TVs: XR/KD- prefix
+    if model_upper.starts_with("XR") || model_upper.starts_with("KD-") {
+        return Some("Sony");
+    }
+
+    // Roku TV platform identifiers (TCL, Hisense TVs running Roku OS)
+    // Models like 7105X, 7000X, 6500X are TCL Roku TVs
+    if is_roku_tv_model(&model_upper) {
+        return Some("TCL");
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_roku_tv_model_vendor_detection() {
+        assert_eq!(get_vendor_from_model("7105X"), Some("TCL"));
+        assert_eq!(get_vendor_from_model("7000X"), Some("TCL"));
+        assert_eq!(get_vendor_from_model("YN00NJ468680"), Some("TCL")); // Roku serial number
+        assert_eq!(get_vendor_from_model("HW-MS750"), Some("Samsung"));
+        assert_eq!(get_vendor_from_model("OLED55C3"), Some("LG"));
+
+        // Vendor detection from hostname
+        assert_eq!(get_hostname_vendor("YN00NJ468680"), Some("TCL"));
+        assert_eq!(get_hostname_vendor("yn00nj468680"), Some("TCL"));
+    }
+}
