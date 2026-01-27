@@ -95,6 +95,17 @@ impl From<rusqlite::Error> for InsertEndpointError {
     }
 }
 
+/// Groups the identity fields needed to look up or insert an endpoint.
+pub struct EndpointData<'a> {
+    pub mac: Option<String>,
+    pub ip: Option<String>,
+    pub protocol: Option<String>,
+    pub payload: &'a [u8],
+    pub dhcp_client_id: Option<String>,
+    pub dhcp_vendor_class: Option<String>,
+    pub dhcp_hostname: Option<String>,
+}
+
 /// Represents an internet destination (external host) tracked separately from local endpoints
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InternetDestination {

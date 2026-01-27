@@ -6,7 +6,7 @@ use pnet::packet::ethernet::EthernetPacket;
 use rusqlite::{Connection, Result, params};
 
 use crate::network::{
-    endpoint::{EndPoint, InsertEndpointError},
+    endpoint::{EndPoint, EndpointData, InsertEndpointError},
     packet_wrapper::PacketWrapper,
 };
 
@@ -339,13 +339,15 @@ impl Communication {
         // For DHCP packets, the source is the client - pass DHCP Client ID, Vendor Class, and Hostname for tracking
         let src_endpoint_id = match EndPoint::get_or_insert_endpoint_with_dhcp(
             conn,
-            self.source_mac.clone(),
-            self.source_ip.clone(),
-            self.sub_protocol.clone(),
-            &[],
-            self.dhcp_client_id.clone(), // Pass DHCP Client ID for source (client)
-            self.dhcp_vendor_class.clone(), // Pass DHCP Vendor Class for model identification
-            self.dhcp_hostname.clone(),  // Pass DHCP Hostname (Option 12) - device's actual name
+            EndpointData {
+                mac: self.source_mac.clone(),
+                ip: self.source_ip.clone(),
+                protocol: self.sub_protocol.clone(),
+                payload: &[],
+                dhcp_client_id: self.dhcp_client_id.clone(),
+                dhcp_vendor_class: self.dhcp_vendor_class.clone(),
+                dhcp_hostname: self.dhcp_hostname.clone(),
+            },
         ) {
             Ok(id) => id,
             Err(InsertEndpointError::BothMacAndIpNone) => {
@@ -363,13 +365,15 @@ impl Communication {
         };
         let dst_endpoint_id = match EndPoint::get_or_insert_endpoint_with_dhcp(
             conn,
-            self.destination_mac.clone(),
-            self.destination_ip.clone(),
-            self.sub_protocol.clone(),
-            self.get_payload(),
-            None, // Destination doesn't need DHCP Client ID (usually the server)
-            None, // Destination doesn't need DHCP Vendor Class
-            None, // Destination doesn't need DHCP Hostname
+            EndpointData {
+                mac: self.destination_mac.clone(),
+                ip: self.destination_ip.clone(),
+                protocol: self.sub_protocol.clone(),
+                payload: self.get_payload(),
+                dhcp_client_id: None,
+                dhcp_vendor_class: None,
+                dhcp_hostname: None,
+            },
         ) {
             Ok(id) => id,
             Err(InsertEndpointError::BothMacAndIpNone) => {
