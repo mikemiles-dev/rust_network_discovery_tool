@@ -31,12 +31,6 @@ impl ArpScanner {
         self
     }
 
-    #[allow(dead_code)]
-    pub fn with_delay(mut self, delay_ms: u64) -> Self {
-        self.delay_ms = delay_ms;
-        self
-    }
-
     /// Get the best interface for scanning a target network
     fn find_interface_for_network(&self, network: &Ipv4Network) -> Option<NetworkInterface> {
         datalink::interfaces()

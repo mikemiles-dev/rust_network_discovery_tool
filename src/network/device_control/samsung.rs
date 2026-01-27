@@ -9,16 +9,8 @@ pub struct SamsungController;
 
 impl SamsungController {
     const WS_PORT: u16 = 8001;
-    #[allow(dead_code)]
-    const WSS_PORT: u16 = 8002; // For future TLS support
     const APP_NAME: &'static str = "RustNetworkDiscovery";
     const TIMEOUT: Duration = Duration::from_secs(3);
-
-    /// Check if a device is a Samsung TV by attempting to connect to its API
-    #[allow(dead_code)]
-    pub fn is_samsung(ip: &str) -> bool {
-        Self::is_samsung_with_hostname(ip, None)
-    }
 
     /// Check if a device is a Samsung TV, with optional hostname hint
     pub fn is_samsung_with_hostname(ip: &str, hostname: Option<&str>) -> bool {

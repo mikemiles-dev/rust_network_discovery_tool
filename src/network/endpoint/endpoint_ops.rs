@@ -612,16 +612,6 @@ impl EndPoint {
         map
     }
 
-    #[allow(dead_code)]
-    fn insert_endpoint(
-        conn: &Connection,
-        mac: Option<String>,
-        ip: Option<String>,
-        hostname: Option<String>,
-    ) -> Result<i64, InsertEndpointError> {
-        Self::insert_endpoint_with_dhcp(conn, mac, ip, hostname, None, None)
-    }
-
     fn insert_endpoint_with_dhcp(
         conn: &Connection,
         mac: Option<String>,

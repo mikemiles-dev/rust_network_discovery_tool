@@ -16,12 +16,6 @@ impl SsdpScanner {
         Self { timeout_secs: 3 }
     }
 
-    #[allow(dead_code)]
-    pub fn with_timeout(mut self, timeout_secs: u64) -> Self {
-        self.timeout_secs = timeout_secs;
-        self
-    }
-
     /// Fetch and parse UPnP device description XML to get friendly name and model
     async fn fetch_device_info(location: &str) -> Option<(Option<String>, Option<String>)> {
         let client = reqwest::Client::builder()

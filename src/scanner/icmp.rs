@@ -27,12 +27,6 @@ impl IcmpScanner {
         self
     }
 
-    #[allow(dead_code)]
-    pub fn with_concurrency(mut self, max_concurrent: usize) -> Self {
-        self.max_concurrent = max_concurrent;
-        self
-    }
-
     /// Build an ICMP echo request packet
     fn build_echo_request(identifier: u16, sequence: u16) -> Vec<u8> {
         let mut packet = vec![0u8; 8];

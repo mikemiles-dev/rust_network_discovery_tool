@@ -100,16 +100,6 @@ impl EndPointAttribute {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    pub fn find_existing_endpoint_id(
-        conn: &Connection,
-        mac: Option<String>,
-        ip: Option<String>,
-        _hostname: Option<String>,
-    ) -> Option<i64> {
-        Self::find_existing_endpoint_id_with_dhcp(conn, mac, ip, _hostname, None)
-    }
-
     pub fn find_existing_endpoint_id_with_dhcp(
         conn: &Connection,
         mac: Option<String>,
@@ -390,17 +380,6 @@ impl EndPointAttribute {
         ips1.iter().any(|ip| ip.contains(':')) || ips2.iter().any(|ip| ip.contains(':'))
     }
 
-    #[allow(dead_code)]
-    pub fn insert_endpoint_attribute(
-        conn: &Connection,
-        endpoint_id: i64,
-        mac: Option<String>,
-        ip: Option<String>,
-        hostname: String,
-    ) -> Result<()> {
-        Self::insert_endpoint_attribute_with_dhcp(conn, endpoint_id, mac, ip, hostname, None, None)
-    }
-
     pub fn insert_endpoint_attribute_with_dhcp(
         conn: &Connection,
         endpoint_id: i64,
@@ -452,13 +431,4 @@ impl EndPointAttribute {
         Ok(())
     }
 
-    /// Get DHCP Vendor Class for an endpoint
-    #[allow(dead_code)]
-    pub fn get_dhcp_vendor_class(conn: &Connection, endpoint_id: i64) -> Option<String> {
-        conn.query_row(
-            "SELECT dhcp_vendor_class FROM endpoint_attributes WHERE endpoint_id = ?1 AND dhcp_vendor_class IS NOT NULL LIMIT 1",
-            params![endpoint_id],
-            |row| row.get(0),
-        ).ok()
-    }
 }

@@ -1,13 +1,11 @@
 use std::collections::HashSet;
 use std::net::IpAddr;
 use std::sync::Arc;
-use std::time::Duration;
 
 use ipnetwork::Ipv4Network;
 use pnet::datalink;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{RwLock, mpsc};
-use tokio::time::interval;
 
 use super::arp::ArpScanner;
 use super::icmp::IcmpScanner;
@@ -16,7 +14,7 @@ use super::netbios::NetBiosScanner;
 use super::port::{DEFAULT_PORTS, PortScanner};
 use super::snmp::SnmpScanner;
 use super::ssdp::SsdpScanner;
-use super::{ScanCapabilities, ScanResult, ScanType, check_scan_privileges};
+use super::{ScanResult, ScanType, check_scan_privileges};
 
 /// Scan status for API responses
 #[derive(Debug, Clone, Serialize)]
@@ -94,12 +92,6 @@ impl ScanManager {
     /// Update config
     pub async fn set_config(&self, config: ScanConfig) {
         *self.config.write().await = config;
-    }
-
-    /// Get scan capabilities based on privileges
-    #[allow(dead_code)]
-    pub fn get_capabilities(&self) -> ScanCapabilities {
-        check_scan_privileges()
     }
 
     /// Get local subnets to scan
@@ -306,25 +298,6 @@ impl ScanManager {
     /// Stop the current scan
     pub async fn stop_scan(&self) {
         *self.stop_signal.write().await = true;
-    }
-
-    /// Start periodic scanning
-    #[allow(dead_code)]
-    pub async fn start_periodic(self: Arc<Self>, interval_secs: u64) {
-        let mut interval_timer = interval(Duration::from_secs(interval_secs));
-
-        tokio::spawn(async move {
-            loop {
-                interval_timer.tick().await;
-
-                let config = self.config.read().await.clone();
-                let scan_types: Vec<ScanType> = config.enabled_scanners.into_iter().collect();
-
-                if !scan_types.is_empty() {
-                    let _ = self.start_scan(scan_types).await;
-                }
-            }
-        });
     }
 }
 

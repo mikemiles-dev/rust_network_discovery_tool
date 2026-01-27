@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 pub enum ProtocolPort {
     // Web protocols
     Http,
@@ -45,7 +44,6 @@ pub enum ProtocolPort {
     Wmi,
     ActiveDirectory,
     Kerberos,
-    Ldaps,
 
     // Database
     Mysql,
@@ -72,7 +70,6 @@ pub enum ProtocolPort {
     // VoIP & Media
     Sip,
     SipTls,
-    Rtp,
     Rtsp,
 
     // VPN
@@ -104,12 +101,6 @@ pub enum ProtocolPort {
     Nagios,
     Splunk,
 
-    // Proxies & Load Balancers
-    Squid,
-    Haproxy,
-    Nginx,
-    Varnish,
-
     // Development
     Webpack,
     Vite,
@@ -121,32 +112,22 @@ pub enum ProtocolPort {
     Valve,
     TeamSpeak,
     Mumble,
-    Discord,
 
     // Apple Services
     Mdns,
-    Bonjour,
     AppleXServerAid,
     Airplay,
-    HomeKit,
 
     // Streaming & CDN
     Rtmp,
-    Hls,
-    WebRtc,
-    Icecast,
 
     // IoT
     CoAp,
     HomeAssistant,
-    Zigbee,
-    Zwave,
 
     // Backup & Storage
     Rsync,
     Nfs,
-    Samba,
-    WebDav,
 
     // Misc
     Llmnr,
@@ -189,138 +170,6 @@ impl ProtocolPort {
         .collect()
     }
 
-    /// Detect protocol from payload heuristics
-    #[allow(dead_code)]
-    pub fn from_payload(port: u16, payload: &[u8]) -> Option<Self> {
-        if payload.is_empty() {
-            return None;
-        }
-
-        // HTTP detection
-        if payload.len() > 4 {
-            let http_methods = [
-                b"GET ", b"POST", b"PUT ", b"HEAD", b"DELE", b"PATC", b"OPTI",
-            ];
-            if http_methods
-                .iter()
-                .any(|method| payload.starts_with(*method))
-            {
-                return Some(ProtocolPort::Http);
-            }
-
-            // HTTP response
-            if payload.starts_with(b"HTTP/") {
-                return Some(ProtocolPort::Http);
-            }
-        }
-
-        // TLS/SSL detection (for HTTPS, FTPS, etc.)
-        if payload.len() > 3 {
-            // TLS handshake: 0x16 (handshake), 0x03 (SSL 3.0/TLS 1.x)
-            if payload[0] == 0x16 && payload[1] == 0x03 {
-                return match port {
-                    443 | 8443 => Some(ProtocolPort::Https),
-                    465 => Some(ProtocolPort::SmtpSecure),
-                    993 => Some(ProtocolPort::ImapSecure),
-                    995 => Some(ProtocolPort::Pop3Secure),
-                    990 => Some(ProtocolPort::Ftps),
-                    8883 => Some(ProtocolPort::MqttSecure),
-                    5671 => Some(ProtocolPort::AmqpSecure),
-                    _ => None,
-                };
-            }
-        }
-
-        // SSH detection
-        if payload.starts_with(b"SSH-") {
-            return Some(ProtocolPort::Ssh);
-        }
-
-        // FTP detection
-        if payload.starts_with(b"220 ") || payload.starts_with(b"USER ") {
-            return Some(ProtocolPort::Ftp);
-        }
-
-        // SMTP detection
-        if payload.starts_with(b"220 ")
-            && payload.len() > 10
-            && payload.windows(4).any(|w| w == b"SMTP" || w == b"smtp")
-        {
-            return Some(ProtocolPort::Smtp);
-        }
-        if payload.starts_with(b"HELO ") || payload.starts_with(b"EHLO ") {
-            return Some(ProtocolPort::Smtp);
-        }
-
-        // DNS detection (simple check for DNS query/response)
-        if payload.len() > 12 && port == 53 {
-            // DNS header flags check
-            return Some(ProtocolPort::Dns);
-        }
-
-        // MQTT detection
-        if payload.len() > 2 {
-            let msg_type = (payload[0] >> 4) & 0x0F;
-            // MQTT CONNECT = 1, CONNACK = 2, PUBLISH = 3, etc.
-            if (1..=14).contains(&msg_type) {
-                return Some(ProtocolPort::Mqtt);
-            }
-        }
-
-        // MySQL detection
-        if payload.len() > 5 && payload[4] == 0x0a {
-            // MySQL greeting packet starts with protocol version (usually 10)
-            return Some(ProtocolPort::Mysql);
-        }
-
-        // PostgreSQL detection
-        if payload.len() >= 8 {
-            // PostgreSQL startup message length check
-            let len = u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
-            if len > 8 && len < 10000 {
-                let protocol = u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]);
-                if protocol == 0x00030000 || protocol == 0x00020000 {
-                    return Some(ProtocolPort::PostgreSql);
-                }
-            }
-        }
-
-        // MongoDB wire protocol
-        if payload.len() >= 16 {
-            // MongoDB message header
-            let msg_len = i32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
-            if msg_len > 16 && msg_len < 48000000 {
-                return Some(ProtocolPort::MongoDB);
-            }
-        }
-
-        // Redis detection (RESP protocol)
-        if payload.len() > 1 {
-            let first_char = payload[0];
-            // RESP data types: +, -, :, $, *
-            if matches!(first_char, b'+' | b'-' | b':' | b'$' | b'*') {
-                return Some(ProtocolPort::Redis);
-            }
-        }
-
-        // SIP detection
-        if payload.starts_with(b"SIP/")
-            || payload.starts_with(b"INVITE ")
-            || payload.starts_with(b"REGISTER ")
-        {
-            return Some(ProtocolPort::Sip);
-        }
-
-        // RTSP detection
-        if payload.starts_with(b"RTSP/")
-            || payload.starts_with(b"OPTIONS rtsp://")
-            || payload.starts_with(b"DESCRIBE rtsp://")
-        {
-            return Some(ProtocolPort::Rtsp);
-        }
-
-        None
-    }
 }
 
 impl From<u16> for ProtocolPort {
@@ -539,7 +388,6 @@ impl std::fmt::Display for ProtocolPort {
             ProtocolPort::Wmi => "WMI",
             ProtocolPort::ActiveDirectory => "Active Directory",
             ProtocolPort::Kerberos => "Kerberos",
-            ProtocolPort::Ldaps => "LDAPS",
 
             // Databases
             ProtocolPort::Mysql => "MySQL",
@@ -566,7 +414,6 @@ impl std::fmt::Display for ProtocolPort {
             // VoIP
             ProtocolPort::Sip => "SIP",
             ProtocolPort::SipTls => "SIP/TLS",
-            ProtocolPort::Rtp => "RTP",
             ProtocolPort::Rtsp => "RTSP",
 
             // VPN
@@ -598,12 +445,6 @@ impl std::fmt::Display for ProtocolPort {
             ProtocolPort::Nagios => "Nagios",
             ProtocolPort::Splunk => "Splunk",
 
-            // Proxies
-            ProtocolPort::Squid => "Squid",
-            ProtocolPort::Haproxy => "HAProxy",
-            ProtocolPort::Nginx => "Nginx",
-            ProtocolPort::Varnish => "Varnish",
-
             // Development
             ProtocolPort::Webpack => "Webpack Dev",
             ProtocolPort::Vite => "Vite",
@@ -615,32 +456,22 @@ impl std::fmt::Display for ProtocolPort {
             ProtocolPort::Valve => "Valve/Steam",
             ProtocolPort::TeamSpeak => "TeamSpeak",
             ProtocolPort::Mumble => "Mumble",
-            ProtocolPort::Discord => "Discord",
 
             // Apple
             ProtocolPort::Mdns => "mDNS",
-            ProtocolPort::Bonjour => "Bonjour",
             ProtocolPort::AppleXServerAid => "Apple Xserve",
             ProtocolPort::Airplay => "AirPlay",
-            ProtocolPort::HomeKit => "HomeKit",
 
             // Streaming
             ProtocolPort::Rtmp => "RTMP",
-            ProtocolPort::Hls => "HLS",
-            ProtocolPort::WebRtc => "WebRTC",
-            ProtocolPort::Icecast => "Icecast",
 
             // IoT
             ProtocolPort::CoAp => "CoAP",
             ProtocolPort::HomeAssistant => "Home Assistant",
-            ProtocolPort::Zigbee => "Zigbee",
-            ProtocolPort::Zwave => "Z-Wave",
 
             // Backup & Storage
             ProtocolPort::Rsync => "Rsync",
             ProtocolPort::Nfs => "NFS",
-            ProtocolPort::Samba => "Samba",
-            ProtocolPort::WebDav => "WebDAV",
 
             // Misc
             ProtocolPort::Llmnr => "LLMNR",

@@ -8,8 +8,6 @@ pub struct LgController;
 
 impl LgController {
     const WS_PORT: u16 = 3000;
-    #[allow(dead_code)]
-    const WSS_PORT: u16 = 3001;
     const TIMEOUT: Duration = Duration::from_secs(3);
 
     /// Check if a device is an LG webOS TV

@@ -38,12 +38,6 @@ impl SnmpScanner {
         self
     }
 
-    #[allow(dead_code)]
-    pub fn with_communities(mut self, communities: Vec<String>) -> Self {
-        self.communities = communities;
-        self
-    }
-
     /// Encode an OID in BER format
     fn encode_oid(oid: &[u32]) -> Vec<u8> {
         let mut encoded = Vec::new();

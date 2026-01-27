@@ -65,12 +65,6 @@ impl PortScanner {
         self
     }
 
-    #[allow(dead_code)]
-    pub fn with_concurrency(mut self, max_concurrent: usize) -> Self {
-        self.max_concurrent = max_concurrent;
-        self
-    }
-
     /// Scan a single port on an IP
     async fn scan_port(&self, ip: IpAddr, port: u16) -> PortResult {
         let addr = SocketAddr::new(ip, port);
@@ -94,33 +88,6 @@ impl PortScanner {
             open,
             service_name,
         }
-    }
-
-    /// Scan multiple ports on a single IP
-    #[allow(dead_code)]
-    pub async fn scan_ip(&self, ip: IpAddr, ports: &[u16]) -> Vec<PortResult> {
-        let semaphore = std::sync::Arc::new(Semaphore::new(self.max_concurrent));
-        let mut handles = Vec::with_capacity(ports.len());
-
-        for &port in ports {
-            let sem = semaphore.clone();
-            let scanner_timeout = self.timeout_ms;
-
-            handles.push(tokio::spawn(async move {
-                let _permit = sem.acquire().await.unwrap();
-                let scanner = PortScanner::new().with_timeout(scanner_timeout);
-                scanner.scan_port(ip, port).await
-            }));
-        }
-
-        let mut results = Vec::with_capacity(ports.len());
-        for handle in handles {
-            if let Ok(result) = handle.await {
-                results.push(result);
-            }
-        }
-
-        results
     }
 
     /// Scan multiple IPs for open ports
