@@ -430,5 +430,4 @@ impl EndPointAttribute {
         )?;
         Ok(())
     }
-
 }

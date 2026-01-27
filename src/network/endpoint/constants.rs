@@ -2,14 +2,14 @@ use pnet::datalink::interfaces;
 use pnet::ipnetwork::IpNetwork;
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 // Simple DNS cache to avoid repeated slow lookups
-lazy_static::lazy_static! {
-    pub(crate) static ref DNS_CACHE: Arc<Mutex<HashMap<String, (String, Instant)>>> = Arc::new(Mutex::new(HashMap::new()));
-    pub(crate) static ref GATEWAY_INFO: Arc<Mutex<Option<(String, Instant)>>> = Arc::new(Mutex::new(None));
-}
+pub(crate) static DNS_CACHE: LazyLock<Mutex<HashMap<String, (String, Instant)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+pub(crate) static GATEWAY_INFO: LazyLock<Mutex<Option<(String, Instant)>>> =
+    LazyLock::new(|| Mutex::new(None));
 
 // Cache for local network CIDR blocks (computed once at startup)
 static LOCAL_NETWORKS: OnceLock<Vec<IpNetwork>> = OnceLock::new();

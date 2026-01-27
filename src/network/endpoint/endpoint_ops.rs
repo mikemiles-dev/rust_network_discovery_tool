@@ -1492,7 +1492,6 @@ mod tests {
         ));
     }
 
-
     #[test]
     fn test_classify_device_type_integration() {
         // Full integration test of classify_device_type

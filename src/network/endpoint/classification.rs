@@ -103,7 +103,10 @@ pub(crate) fn is_lg_appliance(hostname: &str) -> bool {
 }
 
 /// Check mDNS services for device type
-pub(crate) fn classify_by_services(services: &[String], hostname: Option<&str>) -> Option<&'static str> {
+pub(crate) fn classify_by_services(
+    services: &[String],
+    hostname: Option<&str>,
+) -> Option<&'static str> {
     for service in services {
         let s = service.as_str();
         // Check more specific types first

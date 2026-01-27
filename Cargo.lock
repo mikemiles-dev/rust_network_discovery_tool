@@ -2328,7 +2328,6 @@ dependencies = [
  "futures",
  "futures-util",
  "ipnetwork",
- "lazy_static",
  "mdns-sd",
  "mime_guess",
  "native-tls",

@@ -169,7 +169,6 @@ impl ProtocolPort {
         .map(|protocol| format!("{}", protocol))
         .collect()
     }
-
 }
 
 impl From<u16> for ProtocolPort {

@@ -270,7 +270,8 @@ pub(crate) const APPLIANCE_PATTERNS: &[&str] = &[
     // Wyze cameras (often use lcc- hostname prefix)
     "lcc-", // Wyze camera cloud prefix
 ];
-pub(crate) const LG_APPLIANCE_PREFIXES: &[&str] = &["lma", "lmw", "ldf", "ldt", "ldp", "dle", "dlex", "lrmv"];
+pub(crate) const LG_APPLIANCE_PREFIXES: &[&str] =
+    &["lma", "lmw", "ldf", "ldt", "ldp", "dle", "dlex", "lrmv"];
 
 // mDNS service types for device classification
 pub(crate) const TV_SERVICES: &[&str] = &[
@@ -281,7 +282,8 @@ pub(crate) const TV_SERVICES: &[&str] = &[
                    // Note: _spotify-connect._tcp removed - too generic (phones, speakers, consoles all use it)
                    // Note: _airplay._tcp removed - too generic (iPhones, MacBooks also advertise it)
 ];
-pub(crate) const PRINTER_SERVICES: &[&str] = &["_ipp._tcp", "_printer._tcp", "_pdl-datastream._tcp"];
+pub(crate) const PRINTER_SERVICES: &[&str] =
+    &["_ipp._tcp", "_printer._tcp", "_pdl-datastream._tcp"];
 
 pub(crate) const PHONE_SERVICES: &[&str] = &[
     "_apple-mobdev2._tcp",  // Apple mobile device service (iPhones/iPads)
@@ -351,4 +353,3 @@ pub(crate) const MAC_DESKTOP_SERVICES: &[&str] = &[
     "_ssh._tcp",        // SSH access (typically enabled on Macs)
     "_sftp-ssh._tcp",   // SFTP
 ];
-

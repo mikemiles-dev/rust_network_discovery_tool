@@ -221,7 +221,6 @@ mod tests {
 
     #[test]
     fn test_classify_printer() {
-
         // Hostname patterns
         assert_eq!(is_printer_hostname("hp-laserjet-pro"), true);
         assert_eq!(is_printer_hostname("canon-mx920"), true);
@@ -237,7 +236,6 @@ mod tests {
 
     #[test]
     fn test_classify_tv() {
-
         // Hostname patterns
         assert_eq!(is_tv_hostname("samsung-tv"), true);
         assert_eq!(is_tv_hostname("roku-ultra"), true);
@@ -259,7 +257,6 @@ mod tests {
 
     #[test]
     fn test_roku_serial_number_detection() {
-
         // Valid Roku serial numbers: 2 letters + 2 digits + 2 letters + 6 digits (12 chars)
         assert_eq!(is_roku_serial_number("YN00NJ468680"), true);
         assert_eq!(is_roku_serial_number("YK00KM123456"), true);
@@ -286,7 +283,6 @@ mod tests {
 
     #[test]
     fn test_roku_tv_model_detection() {
-
         // Roku TV platform identifiers (TCL, Hisense TVs running Roku OS)
         assert_eq!(is_roku_tv_model("7105X"), true);
         assert_eq!(is_roku_tv_model("7000X"), true);
@@ -313,7 +309,6 @@ mod tests {
 
     #[test]
     fn test_classify_gaming() {
-
         assert_eq!(is_gaming_hostname("xbox-series-x"), true);
         assert_eq!(is_gaming_hostname("playstation-5"), true);
         assert_eq!(is_gaming_hostname("nintendo-switch"), true);
@@ -324,7 +319,6 @@ mod tests {
 
     #[test]
     fn test_classify_phone() {
-
         assert_eq!(is_phone_hostname("iphone-14-pro"), true);
         assert_eq!(is_phone_hostname("ipad-mini"), true);
         assert_eq!(is_phone_hostname("galaxy-s23"), true);
@@ -340,7 +334,6 @@ mod tests {
 
     #[test]
     fn test_classify_vm() {
-
         assert_eq!(is_vm_hostname("vmware-esxi-01"), true);
         assert_eq!(is_vm_hostname("proxmox-server"), true);
         assert_eq!(is_vm_hostname("docker-host"), true);
@@ -353,7 +346,6 @@ mod tests {
 
     #[test]
     fn test_classify_soundbar() {
-
         assert_eq!(is_soundbar_hostname("sonos-beam"), true);
         assert_eq!(is_soundbar_hostname("bose-soundbar-700"), true);
         assert_eq!(is_soundbar_hostname("samsung-sound-plus"), true);
@@ -364,7 +356,6 @@ mod tests {
 
     #[test]
     fn test_is_tv_model() {
-
         // Samsung QLED TVs
         assert!(is_tv_model("QN43LS03TAFXZA")); // The Frame
         assert!(is_tv_model("QN65Q80AAFXZA")); // QLED Q80A
@@ -406,7 +397,6 @@ mod tests {
 
     #[test]
     fn test_classify_appliance() {
-
         assert_eq!(is_appliance_hostname("lg-dishwasher"), true);
         assert_eq!(is_appliance_hostname("samsung-washer"), true);
         assert_eq!(is_appliance_hostname("whirlpool-dryer"), true);
