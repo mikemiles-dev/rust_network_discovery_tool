@@ -1143,40 +1143,29 @@ impl EndPoint {
         }
     }
 
+    const HTTP_HOST_HEADERS: &[&str] = &[
+        "host:",
+        "server:",
+        "location:",
+        "x-host:",
+        "x-forwarded-host:",
+        "x-forwarded-server:",
+        "referer:",
+        "report-uri:",
+    ];
+
     fn get_http_host(payload: &[u8]) -> Option<String> {
         let payload_str = String::from_utf8_lossy(payload);
 
-        let mut host = None;
-
         for line in payload_str.lines() {
             let line = line.to_lowercase();
-            if let Some(header_value) = line.strip_prefix("host:") {
-                host = Some(header_value.trim().to_string());
-                break;
-            } else if let Some(header_value) = line.strip_prefix("server:") {
-                host = Some(header_value.trim().to_string());
-                break;
-            } else if let Some(header_value) = line.strip_prefix("location:") {
-                host = Some(header_value.trim().to_string());
-                break;
-            } else if let Some(header_value) = line.strip_prefix("x-host:") {
-                host = Some(header_value.trim().to_string());
-                break;
-            } else if let Some(header_value) = line.strip_prefix("x-forwarded-host:") {
-                host = Some(header_value.trim().to_string());
-                break;
-            } else if let Some(header_value) = line.strip_prefix("x-forwarded-server:") {
-                host = Some(header_value.trim().to_string());
-                break;
-            } else if let Some(header_value) = line.strip_prefix("referer:") {
-                host = Some(header_value.trim().to_string());
-                break;
-            } else if let Some(header_value) = line.strip_prefix("report-uri:") {
-                host = Some(header_value.trim().to_string());
-                break;
+            for header in Self::HTTP_HOST_HEADERS {
+                if let Some(value) = line.strip_prefix(header) {
+                    return Some(Self::remove_all_but_alphanumeric_and_dots(value.trim()));
+                }
             }
         }
-        host.map(|host| Self::remove_all_but_alphanumeric_and_dots(host.as_str()))
+        None
     }
 
     fn remove_all_but_alphanumeric_and_dots(hostname: &str) -> String {

@@ -11,14 +11,19 @@ use super::patterns::{
 };
 use super::vendor::get_mac_vendor;
 
+/// Check if any MAC address has a vendor in the given list
+fn has_vendor_in_list(macs: &[String], vendors: &[&str]) -> bool {
+    macs.iter()
+        .any(|mac| get_mac_vendor(mac).is_some_and(|v| vendors.contains(&v)))
+}
+
 /// Check if any MAC address matches known IoT/appliance vendor OUIs
 pub(crate) fn is_appliance_mac(macs: &[String]) -> bool {
+    if has_vendor_in_list(macs, APPLIANCE_VENDORS) {
+        return true;
+    }
+    // Check SmartThings sensor MAC prefixes (mapped to Samsung vendor)
     macs.iter().any(|mac| {
-        // Check vendor list
-        if get_mac_vendor(mac).is_some_and(|v| APPLIANCE_VENDORS.contains(&v)) {
-            return true;
-        }
-        // Check SmartThings sensor MAC prefixes (mapped to Samsung vendor)
         let mac_lower = mac.to_lowercase();
         mac_lower.starts_with("70:2c:1f") || mac_lower.starts_with("28:6d:97")
     })
@@ -26,14 +31,12 @@ pub(crate) fn is_appliance_mac(macs: &[String]) -> bool {
 
 /// Check if any MAC address matches known gaming vendor OUIs
 pub(crate) fn is_gaming_mac(macs: &[String]) -> bool {
-    macs.iter()
-        .any(|mac| get_mac_vendor(mac).is_some_and(|v| GAMING_VENDORS.contains(&v)))
+    has_vendor_in_list(macs, GAMING_VENDORS)
 }
 
 /// Check if any MAC address matches known TV/streaming vendor OUIs
 pub(crate) fn is_tv_mac(macs: &[String]) -> bool {
-    macs.iter()
-        .any(|mac| get_mac_vendor(mac).is_some_and(|v| TV_VENDORS.contains(&v)))
+    has_vendor_in_list(macs, TV_VENDORS)
 }
 
 /// Check if any MAC address is from Apple
@@ -44,8 +47,7 @@ pub(crate) fn is_apple_mac(macs: &[String]) -> bool {
 
 /// Check if any MAC address matches known gateway/router vendor OUIs
 pub(crate) fn is_gateway_mac(macs: &[String]) -> bool {
-    macs.iter()
-        .any(|mac| get_mac_vendor(mac).is_some_and(|v| GATEWAY_VENDORS.contains(&v)))
+    has_vendor_in_list(macs, GATEWAY_VENDORS)
 }
 
 /// Check if device is likely a phone based on MAC and services
@@ -111,6 +113,15 @@ pub(crate) fn is_lg_appliance(hostname: &str) -> bool {
     false
 }
 
+/// Service-to-classification mapping, checked in priority order
+const SERVICE_CLASSIFICATIONS: &[(&[&str], &str)] = &[
+    (APPLIANCE_SERVICES, CLASSIFICATION_APPLIANCE),
+    (PHONE_SERVICES, CLASSIFICATION_PHONE),
+    (SOUNDBAR_SERVICES, CLASSIFICATION_SOUNDBAR),
+    (PRINTER_SERVICES, CLASSIFICATION_PRINTER),
+    (TV_SERVICES, CLASSIFICATION_TV),
+];
+
 /// Check mDNS services for device type
 pub(crate) fn classify_by_services(
     services: &[String],
@@ -118,27 +129,18 @@ pub(crate) fn classify_by_services(
 ) -> Option<&'static str> {
     for service in services {
         let s = service.as_str();
-        // Check more specific types first
-        if APPLIANCE_SERVICES.contains(&s) {
-            return Some(CLASSIFICATION_APPLIANCE);
-        }
-        // Skip phone classification for Mac computers (they also advertise _companion-link._tcp)
-        if PHONE_SERVICES.contains(&s) {
-            if let Some(h) = hostname
-                && is_mac_computer_hostname(h)
-            {
-                continue;
+        for &(svc_list, classification) in SERVICE_CLASSIFICATIONS {
+            if svc_list.contains(&s) {
+                // Skip phone classification for Mac computers
+                // (they also advertise _companion-link._tcp)
+                if classification == CLASSIFICATION_PHONE
+                    && let Some(h) = hostname
+                    && is_mac_computer_hostname(h)
+                {
+                    continue;
+                }
+                return Some(classification);
             }
-            return Some(CLASSIFICATION_PHONE);
-        }
-        if SOUNDBAR_SERVICES.contains(&s) {
-            return Some(CLASSIFICATION_SOUNDBAR);
-        }
-        if PRINTER_SERVICES.contains(&s) {
-            return Some(CLASSIFICATION_PRINTER);
-        }
-        if TV_SERVICES.contains(&s) {
-            return Some(CLASSIFICATION_TV);
         }
     }
     None

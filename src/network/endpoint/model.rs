@@ -1085,182 +1085,180 @@ pub fn get_model_from_mac(mac: &str) -> Option<String> {
     }
 }
 
+/// (vendor, device_type_or_empty_for_wildcard, label, is_literal)
+/// When is_literal is true, return label as-is instead of "{vendor} {label}"
+const VENDOR_TYPE_MODELS: &[(&str, &str, &str, bool)] = &[
+    // Samsung
+    ("Samsung", "tv", "Smart TV", false),
+    ("Samsung", "phone", "Galaxy", false),
+    ("Samsung", "computer", "Computer", false),
+    ("Samsung", "appliance", "Appliance", false),
+    ("Samsung", "soundbar", "Soundbar", false),
+    ("Samsung", "", "Device", false),
+    // LG
+    ("LG", "tv", "Smart TV", false),
+    ("LG", "phone", "Phone", false),
+    ("LG", "computer", "Computer", false),
+    ("LG", "appliance", "ThinQ Appliance", false),
+    ("LG", "soundbar", "Soundbar", false),
+    ("LG", "", "Device", false),
+    // Sony
+    ("Sony", "tv", "Bravia TV", false),
+    ("Sony", "gaming", "PlayStation", true),
+    ("Sony", "computer", "VAIO", false),
+    ("Sony", "soundbar", "Soundbar", false),
+    ("Sony", "", "Device", false),
+    // Apple
+    ("Apple", "phone", "iPhone", true),
+    ("Apple", "tv", "Apple TV", true),
+    ("Apple", "computer", "Mac", true),
+    ("Apple", "local", "Mac", true),
+    ("Apple", "", "Apple Device", true),
+    // Microsoft
+    ("Microsoft", "gaming", "Xbox", true),
+    ("Microsoft", "computer", "Surface", true),
+    ("Microsoft", "", "Device", false),
+    // Nintendo
+    ("Nintendo", "gaming", "Switch", false),
+    ("Nintendo", "", "Device", false),
+    // Google
+    ("Google", "tv", "Chromecast", true),
+    ("Google", "phone", "Pixel", false),
+    ("Google", "", "Device", false),
+    // Huawei
+    ("Huawei", "phone", "Phone", false),
+    ("Huawei", "gateway", "Router", false),
+    ("Huawei", "tv", "Smart Screen", false),
+    ("Huawei", "", "Device", false),
+    // Amazon
+    ("Amazon", "tv", "Fire TV", true),
+    ("Amazon", "", "Device", false),
+    // HP
+    ("HP", "printer", "Printer", false),
+    ("HP", "computer", "Computer", false),
+    ("HP", "local", "Computer", false),
+    ("HP", "", "Device", false),
+    // Belkin/WeMo
+    ("Belkin", "appliance", "WeMo Smart Plug", true),
+    ("Belkin", "gateway", "Router", false),
+    ("Belkin", "", "WeMo Device", true),
+    // Wisol IoT devices
+    ("Wisol", "appliance", "Sensor", false),
+    ("Wisol", "", "IoT Device", false),
+    // USI (contract manufacturer)
+    ("USI", "phone", "Mobile Device", false),
+    ("USI", "appliance", "IoT Device", false),
+    ("USI", "", "Device", false),
+    // TCL TVs (often running Roku OS)
+    ("TCL", "tv", "Roku TV", true),
+    ("TCL", "", "Device", false),
+    // Hisense
+    ("Hisense", "tv", "Smart TV", false),
+    ("Hisense", "", "Device", false),
+    // Vizio
+    ("Vizio", "tv", "Smart TV", false),
+    ("Vizio", "soundbar", "Soundbar", false),
+    ("Vizio", "", "Device", false),
+    // Roku
+    ("Roku", "tv", "TV", false),
+    ("Roku", "", "Roku", true),
+    // Single-wildcard vendors
+    ("Sonos", "", "Speaker", false),
+    ("iRobot", "", "Roomba", true),
+    ("Ecobee", "", "Thermostat", false),
+    ("Ring", "", "Device", false),
+    ("Philips Hue", "", "Hue Device", true),
+    ("Wyze", "", "Device", false),
+    ("eero", "gateway", "Router", false),
+    ("eero", "", "eero", true),
+    ("Nest", "", "Device", false),
+    ("TP-Link", "appliance", "Kasa Smart Plug", true),
+    ("TP-Link", "gateway", "Router", false),
+    ("TP-Link", "", "Device", false),
+    ("Tuya", "", "Smart Device", false),
+    ("Dyson", "", "Air Purifier", false),
+    // Networking equipment
+    ("Commscope", "gateway", "ARRIS Modem/Router", true),
+    ("Commscope", "", "ARRIS Device", true),
+    ("ARRIS", "gateway", "Modem/Router", false),
+    ("ARRIS", "", "Device", false),
+    ("Netgear", "gateway", "Router", false),
+    ("Netgear", "", "Device", false),
+    ("Linksys", "gateway", "Router", false),
+    ("Linksys", "", "Device", false),
+    ("Ubiquiti", "gateway", "UniFi Gateway", true),
+    ("Ubiquiti", "", "UniFi Device", true),
+    ("MikroTik", "gateway", "Router", false),
+    ("MikroTik", "", "Device", false),
+    ("Cisco", "gateway", "Router", false),
+    ("Cisco", "", "Device", false),
+    // AV equipment
+    ("Denon", "soundbar", "AV Receiver", false),
+    ("Denon", "", "AV Receiver", false),
+    ("Yamaha", "soundbar", "AV Receiver", false),
+    ("Yamaha", "", "Audio Device", false),
+    ("Logitech", "appliance", "Harmony Hub", true),
+    ("Logitech", "", "Device", false),
+    // Printers
+    ("Brother", "printer", "Printer", false),
+    ("Brother", "", "Device", false),
+    // IoT module vendors
+    ("Espressif", "appliance", "ESP Smart Device", true),
+    ("Espressif", "", "ESP Device", true),
+    // Robot vacuums
+    ("Roborock", "", "Vacuum", false),
+    // Security devices
+    ("SimpliSafe", "", "Security", false),
+    ("Dahua", "", "Camera", false),
+    // Smart home appliances
+    ("Bosch", "appliance", "Appliance", false),
+    ("Bosch", "", "Device", false),
+    ("Seeed", "", "IoT Device", false),
+    ("Texas Instruments", "", "IoT Device", true),
+    // Virtualization
+    ("Proxmox", "virtualization", "Server", false),
+    ("Proxmox", "", "VM", false),
+    // Computers
+    ("ASRock", "", "PC", false),
+    ("ASUS", "gateway", "Router", false),
+    ("ASUS", "computer", "Computer", false),
+    ("ASUS", "local", "Computer", false),
+    ("ASUS", "", "Device", false),
+    ("LiteON", "computer", "Network Card", false),
+    ("LiteON", "", "Device", false),
+    // NAS devices
+    ("Synology", "", "NAS", false),
+    // WiFi module vendors
+    ("FN-Link", "tv", "Smart TV", true),
+    ("FN-Link", "", "WiFi Device", false),
+];
+
 /// Get a more specific model using both vendor and device classification
 /// Called after device type classification is complete for better accuracy
 pub fn get_model_from_vendor_and_type(vendor: &str, device_type: &str) -> Option<String> {
-    match (vendor, device_type) {
-        // Samsung by device type
-        ("Samsung", "tv") => Some("Samsung Smart TV".to_string()),
-        ("Samsung", "phone") => Some("Samsung Galaxy".to_string()),
-        ("Samsung", "computer") => Some("Samsung Computer".to_string()),
-        ("Samsung", "appliance") => Some("Samsung Appliance".to_string()),
-        ("Samsung", "soundbar") => Some("Samsung Soundbar".to_string()),
-        ("Samsung", _) => Some("Samsung Device".to_string()),
-
-        // LG by device type
-        ("LG", "tv") => Some("LG Smart TV".to_string()),
-        ("LG", "phone") => Some("LG Phone".to_string()),
-        ("LG", "computer") => Some("LG Computer".to_string()),
-        ("LG", "appliance") => Some("LG ThinQ Appliance".to_string()),
-        ("LG", "soundbar") => Some("LG Soundbar".to_string()),
-        ("LG", _) => Some("LG Device".to_string()),
-
-        // Sony by device type
-        ("Sony", "tv") => Some("Sony Bravia TV".to_string()),
-        ("Sony", "gaming") => Some("PlayStation".to_string()),
-        ("Sony", "computer") => Some("Sony VAIO".to_string()),
-        ("Sony", "soundbar") => Some("Sony Soundbar".to_string()),
-        ("Sony", _) => Some("Sony Device".to_string()),
-
-        // Apple by device type
-        ("Apple", "phone") => Some("iPhone".to_string()),
-        ("Apple", "tv") => Some("Apple TV".to_string()),
-        ("Apple", "computer") => Some("Mac".to_string()),
-        ("Apple", "local") => Some("Mac".to_string()),
-        ("Apple", _) => Some("Apple Device".to_string()),
-
-        // Microsoft by device type
-        ("Microsoft", "gaming") => Some("Xbox".to_string()),
-        ("Microsoft", "computer") => Some("Surface".to_string()),
-        ("Microsoft", _) => Some("Microsoft Device".to_string()),
-
-        // Nintendo
-        ("Nintendo", "gaming") => Some("Nintendo Switch".to_string()),
-        ("Nintendo", _) => Some("Nintendo Device".to_string()),
-
-        // Google by device type
-        ("Google", "tv") => Some("Chromecast".to_string()),
-        ("Google", "phone") => Some("Google Pixel".to_string()),
-        ("Google", _) => Some("Google Device".to_string()),
-
-        // Huawei by device type
-        ("Huawei", "phone") => Some("Huawei Phone".to_string()),
-        ("Huawei", "gateway") => Some("Huawei Router".to_string()),
-        ("Huawei", "tv") => Some("Huawei Smart Screen".to_string()),
-        ("Huawei", _) => Some("Huawei Device".to_string()),
-
-        // Amazon by device type
-        ("Amazon", "tv") => Some("Fire TV".to_string()),
-        ("Amazon", _) => Some("Amazon Device".to_string()),
-
-        // HP by device type
-        ("HP", "printer") => Some("HP Printer".to_string()),
-        ("HP", "computer") => Some("HP Computer".to_string()),
-        ("HP", "local") => Some("HP Computer".to_string()),
-        ("HP", _) => Some("HP Device".to_string()),
-
-        // Belkin/WeMo by device type
-        ("Belkin", "appliance") => Some("WeMo Smart Plug".to_string()),
-        ("Belkin", "gateway") => Some("Belkin Router".to_string()),
-        ("Belkin", _) => Some("WeMo Device".to_string()),
-
-        // Wisol IoT devices (sensors, trackers)
-        ("Wisol", "appliance") => Some("Wisol Sensor".to_string()),
-        ("Wisol", _) => Some("Wisol IoT Device".to_string()),
-
-        // USI (contract manufacturer - could be many things)
-        ("USI", "phone") => Some("USI Mobile Device".to_string()),
-        ("USI", "appliance") => Some("USI IoT Device".to_string()),
-        ("USI", _) => Some("USI Device".to_string()),
-
-        // TCL TVs (often running Roku OS)
-        ("TCL", "tv") => Some("Roku TV".to_string()),
-        ("TCL", _) => Some("TCL Device".to_string()),
-
-        // Hisense - Roku TVs and Android TVs
-        ("Hisense", "tv") => Some("Hisense Smart TV".to_string()),
-        ("Hisense", _) => Some("Hisense Device".to_string()),
-
-        // Vizio
-        ("Vizio", "tv") => Some("Vizio Smart TV".to_string()),
-        ("Vizio", "soundbar") => Some("Vizio Soundbar".to_string()),
-        ("Vizio", _) => Some("Vizio Device".to_string()),
-
-        // Other vendors
-        ("Roku", "tv") => Some("Roku TV".to_string()),
-        ("Roku", _) => Some("Roku".to_string()),
-        ("Sonos", _) => Some("Sonos Speaker".to_string()),
-        ("iRobot", _) => Some("Roomba".to_string()),
-        ("Ecobee", _) => Some("Ecobee Thermostat".to_string()),
-        ("Ring", _) => Some("Ring Device".to_string()),
-        ("Philips Hue", _) => Some("Hue Device".to_string()),
-        ("Wyze", _) => Some("Wyze Device".to_string()),
-        ("eero", "gateway") => Some("eero Router".to_string()),
-        ("eero", _) => Some("eero".to_string()),
-        ("Nest", _) => Some("Nest Device".to_string()),
-        ("TP-Link", "appliance") => Some("Kasa Smart Plug".to_string()),
-        ("TP-Link", "gateway") => Some("TP-Link Router".to_string()),
-        ("TP-Link", _) => Some("TP-Link Device".to_string()),
-        ("Tuya", _) => Some("Tuya Smart Device".to_string()),
-        ("Dyson", _) => Some("Dyson Air Purifier".to_string()),
-
-        // Networking equipment vendors
-        ("Commscope", "gateway") => Some("ARRIS Modem/Router".to_string()),
-        ("Commscope", _) => Some("ARRIS Device".to_string()),
-        ("ARRIS", "gateway") => Some("ARRIS Modem/Router".to_string()),
-        ("ARRIS", _) => Some("ARRIS Device".to_string()),
-        ("Netgear", "gateway") => Some("Netgear Router".to_string()),
-        ("Netgear", _) => Some("Netgear Device".to_string()),
-        ("Linksys", "gateway") => Some("Linksys Router".to_string()),
-        ("Linksys", _) => Some("Linksys Device".to_string()),
-        ("Ubiquiti", "gateway") => Some("UniFi Gateway".to_string()),
-        ("Ubiquiti", _) => Some("UniFi Device".to_string()),
-        ("MikroTik", "gateway") => Some("MikroTik Router".to_string()),
-        ("MikroTik", _) => Some("MikroTik Device".to_string()),
-        ("Cisco", "gateway") => Some("Cisco Router".to_string()),
-        ("Cisco", _) => Some("Cisco Device".to_string()),
-
-        // AV equipment vendors
-        ("Denon", "soundbar") => Some("Denon AV Receiver".to_string()),
-        ("Denon", _) => Some("Denon AV Receiver".to_string()),
-        ("Yamaha", "soundbar") => Some("Yamaha AV Receiver".to_string()),
-        ("Yamaha", _) => Some("Yamaha Audio Device".to_string()),
-        ("Logitech", "appliance") => Some("Harmony Hub".to_string()),
-        ("Logitech", _) => Some("Logitech Device".to_string()),
-
-        // Printers
-        ("Brother", "printer") => Some("Brother Printer".to_string()),
-        ("Brother", _) => Some("Brother Device".to_string()),
-
-        // IoT module vendors (used in DIY/custom devices)
-        ("Espressif", "appliance") => Some("ESP Smart Device".to_string()),
-        ("Espressif", _) => Some("ESP Device".to_string()),
-
-        // Robot vacuums
-        ("Roborock", _) => Some("Roborock Vacuum".to_string()),
-
-        // Security devices
-        ("SimpliSafe", _) => Some("SimpliSafe Security".to_string()),
-        ("Dahua", _) => Some("Dahua Camera".to_string()),
-
-        // Smart home appliances
-        ("Bosch", "appliance") => Some("Bosch Appliance".to_string()),
-        ("Bosch", _) => Some("Bosch Device".to_string()),
-        ("Seeed", _) => Some("Seeed IoT Device".to_string()),
-        ("Texas Instruments", _) => Some("IoT Device".to_string()),
-
-        // Virtualization
-        ("Proxmox", "virtualization") => Some("Proxmox Server".to_string()),
-        ("Proxmox", _) => Some("Proxmox VM".to_string()),
-
-        // Computers
-        ("ASRock", _) => Some("ASRock PC".to_string()),
-        ("ASUS", "gateway") => Some("ASUS Router".to_string()),
-        ("ASUS", "computer") => Some("ASUS Computer".to_string()),
-        ("ASUS", "local") => Some("ASUS Computer".to_string()),
-        ("ASUS", _) => Some("ASUS Device".to_string()),
-        ("LiteON", "computer") => Some("LiteON Network Card".to_string()),
-        ("LiteON", _) => Some("LiteON Device".to_string()),
-
-        // NAS devices
-        ("Synology", _) => Some("Synology NAS".to_string()),
-
-        // WiFi module vendors (embedded in other devices)
-        ("FN-Link", "tv") => Some("Smart TV".to_string()),
-        ("FN-Link", _) => Some("FN-Link WiFi Device".to_string()),
-
-        _ => None,
+    let mut wildcard: Option<(&str, bool)> = None;
+    for &(v, dt, label, literal) in VENDOR_TYPE_MODELS {
+        if v != vendor {
+            continue;
+        }
+        if dt == device_type {
+            return Some(if literal {
+                label.to_string()
+            } else {
+                format!("{} {}", vendor, label)
+            });
+        }
+        if dt.is_empty() {
+            wildcard = Some((label, literal));
+        }
     }
+    wildcard.map(|(label, literal)| {
+        if literal {
+            label.to_string()
+        } else {
+            format!("{} {}", vendor, label)
+        }
+    })
 }
 
 #[cfg(test)]
