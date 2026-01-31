@@ -356,6 +356,12 @@ impl EndPointAttribute {
                 params![keep_id, merge_id],
             )?;
 
+            // Reassign notifications so they point to the surviving endpoint
+            conn.execute(
+                "UPDATE notifications SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+                params![keep_id, merge_id],
+            )?;
+
             // Delete duplicate endpoint
             conn.execute("DELETE FROM endpoints WHERE id = ?1", params![merge_id])?;
         }

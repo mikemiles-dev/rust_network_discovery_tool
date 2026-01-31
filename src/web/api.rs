@@ -1535,6 +1535,12 @@ pub async fn merge_endpoints(body: Json<MergeEndpointsRequest>) -> impl Responde
         params![target_id, source_id],
     );
 
+    // Reassign notifications so they point to the surviving endpoint
+    let _ = conn.execute(
+        "UPDATE notifications SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+        params![target_id, source_id],
+    );
+
     // Delete the source endpoint
     let deleted = conn
         .execute("DELETE FROM endpoints WHERE id = ?1", params![source_id])
