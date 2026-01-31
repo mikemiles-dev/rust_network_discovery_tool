@@ -975,6 +975,146 @@
       display: block;
     }
 
+    /* Notification badge */
+    .notification-badge {
+      background: #ef4444;
+      color: white;
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 0.1rem 0.4rem;
+      border-radius: 9999px;
+      margin-left: 0.3rem;
+      vertical-align: top;
+      min-width: 1.1rem;
+      text-align: center;
+      display: inline-block;
+    }
+
+    /* Notification items */
+    .notification-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .notification-item:hover {
+      border-color: var(--accent-primary);
+    }
+
+    .notification-icon {
+      font-size: 1.2rem;
+      flex-shrink: 0;
+      margin-top: 0.1rem;
+    }
+
+    .notification-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .notification-title {
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    a.notification-link {
+      color: var(--accent-primary);
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    a.notification-link:hover {
+      text-decoration: underline;
+    }
+
+    .notification-details {
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      margin-top: 0.15rem;
+    }
+
+    .notification-time {
+      color: var(--text-secondary);
+      font-size: 0.7rem;
+      margin-top: 0.25rem;
+    }
+
+    .notification-dismiss {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 0.2rem;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+
+    .notification-dismiss:hover {
+      color: var(--text-primary);
+    }
+
+    .notification-empty {
+      text-align: center;
+      color: var(--text-secondary);
+      padding: 3rem 1rem;
+      font-size: 0.9rem;
+    }
+
+    .notifications-pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.25rem;
+      padding: 0.75rem 0;
+      flex-wrap: wrap;
+    }
+
+    .notifications-pagination .notif-page-btn {
+      padding: 0.3rem 0.6rem;
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 0.25rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+      min-width: 2rem;
+      text-align: center;
+    }
+
+    .notifications-pagination .notif-page-btn:hover:not(:disabled) {
+      border-color: var(--accent-primary);
+    }
+
+    .notifications-pagination .notif-page-btn.active {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+      color: white;
+    }
+
+    .notifications-pagination .notif-page-btn:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    .notifications-pagination .notif-page-info {
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      margin: 0 0.5rem;
+    }
+
+    .notifications-pagination .notif-page-ellipsis {
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      padding: 0 0.2rem;
+    }
+
     /* DNS Table */
     .dns-table-container {
       padding: 1rem;
@@ -1771,6 +1911,7 @@
       <button class="tab-btn" onclick="switchTab('dns')">mDNS Entries</button>
       <button class="tab-btn" onclick="switchTab('scanner')">Scanner</button>
       <button class="tab-btn" onclick="switchTab('pcap')">PCAP</button>
+      <button class="tab-btn" onclick="switchTab('notifications')" id="notifications-tab-btn">Notifications <span id="notification-badge" class="notification-badge" style="display:none;">0</span></button>
       <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
     </div>
     <div class="logo"><a href="/">⚡ Rust Network Discovery Tool</a></div>
@@ -2791,6 +2932,31 @@
   </div><!-- End PCAP Tab -->
 
   <!-- Settings Tab Content -->
+  <div id="notifications-tab" class="tab-content">
+    <div class="dns-table-container" style="max-width: 800px; margin: 0 auto; padding: 1rem 2rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+        <h2 style="color: var(--text-primary); font-size: 1.25rem; margin: 0;">Notifications</h2>
+        <div style="display: flex; gap: 0.5rem;">
+          <button onclick="App.Notifications.refresh()" style="padding: 0.4rem 0.8rem; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 0.25rem; cursor: pointer; font-size: 0.8rem;">Refresh</button>
+          <button onclick="App.Notifications.clearAll()" style="padding: 0.4rem 0.8rem; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 0.25rem; cursor: pointer; font-size: 0.8rem;">Clear All</button>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem;">
+        <input type="text" id="notifications-search" placeholder="Search notifications..."
+               oninput="App.Notifications.onSearch()"
+               style="flex: 1; padding: 0.4rem 0.75rem; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 0.25rem; font-size: 0.85rem; outline: none;">
+        <select id="notifications-page-size" onchange="App.Notifications.changePageSize()"
+                style="padding: 0.4rem 0.5rem; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 0.25rem; font-size: 0.8rem; cursor: pointer;">
+          <option value="25">25</option>
+          <option value="50" selected>50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+      <div id="notifications-list"></div>
+      <div id="notifications-pagination" class="notifications-pagination"></div>
+    </div>
+  </div>
+
   <div id="settings-tab" class="tab-content">
     <div class="scanner-container" style="max-width: 800px; margin: 0 auto; padding: 2rem;">
       <h2 style="color: var(--text-primary); margin-bottom: 1.5rem; font-size: 1.5rem;">Settings</h2>
@@ -2907,6 +3073,7 @@
   <script src="/static/js/internet.js"></script>
   <script src="/static/js/settings.js"></script>
   <script src="/static/js/network-actions.js"></script>
+  <script src="/static/js/notifications.js"></script>
   <script src="/static/js/app.js"></script>
 
   <!-- Inline script for template data initialization -->

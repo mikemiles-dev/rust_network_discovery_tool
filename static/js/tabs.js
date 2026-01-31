@@ -51,6 +51,11 @@
             if (tabName === 'scanner' && App.Scanner) {
                 App.Scanner.checkCapabilities();
             }
+
+            // If switching to Notifications tab, do an immediate refresh
+            if (tabName === 'notifications' && App.Notifications) {
+                App.Notifications.refresh();
+            }
         },
 
         /**

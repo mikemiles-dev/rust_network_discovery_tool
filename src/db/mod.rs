@@ -189,6 +189,22 @@ pub fn new_connection_result() -> Result<Connection, rusqlite::Error> {
     Ok(conn)
 }
 
+/// Fire-and-forget helper to insert a notification. Errors are logged, never propagated.
+pub fn insert_notification(
+    conn: &Connection,
+    event_type: &str,
+    title: &str,
+    details: Option<&str>,
+    endpoint_name: Option<&str>,
+) {
+    if let Err(e) = conn.execute(
+        "INSERT INTO notifications (event_type, title, details, endpoint_name) VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![event_type, title, details, endpoint_name],
+    ) {
+        eprintln!("Failed to insert notification: {}", e);
+    }
+}
+
 /// Get a setting value from the database
 pub fn get_setting(key: &str) -> Option<String> {
     let conn = new_connection();
@@ -347,6 +363,27 @@ impl SQLWriter {
                 [],
             )
             .expect("Failed to create settings table");
+
+            // Create notifications table for event logging
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS notifications (
+                    id INTEGER PRIMARY KEY,
+                    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                    event_type TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    details TEXT,
+                    endpoint_name TEXT,
+                    dismissed INTEGER NOT NULL DEFAULT 0
+                )",
+                [],
+            )
+            .expect("Failed to create notifications table");
+
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC)",
+                [],
+            )
+            .expect("Failed to create notifications index");
 
             // Insert default settings if they don't exist
             conn.execute(
@@ -627,6 +664,16 @@ impl SQLWriter {
                 "Merged {} hotspot gateway endpoints into phones",
                 hotspot_merged
             );
+        }
+
+        // Clean up old dismissed notifications (keep 7 days)
+        let dismissed_cleaned = conn.execute(
+            "DELETE FROM notifications WHERE dismissed = 1 AND created_at < (strftime('%s', 'now') - ?1)",
+            [retention_seconds],
+        ).unwrap_or(0);
+
+        if dismissed_cleaned > 0 {
+            println!("Cleaned up {} old dismissed notifications", dismissed_cleaned);
         }
 
         // Vacuum database occasionally to reclaim space

@@ -169,7 +169,7 @@ impl EndPoint {
         ip: Option<String>,
         protocol: Option<String>,
         payload: &[u8],
-    ) -> Result<i64, InsertEndpointError> {
+    ) -> Result<(i64, bool), InsertEndpointError> {
         Self::get_or_insert_endpoint_with_dhcp(
             conn,
             EndpointData {
@@ -187,7 +187,7 @@ impl EndPoint {
     pub fn get_or_insert_endpoint_with_dhcp(
         conn: &Connection,
         data: EndpointData<'_>,
-    ) -> Result<i64, InsertEndpointError> {
+    ) -> Result<(i64, bool), InsertEndpointError> {
         let EndpointData {
             mac,
             ip,
@@ -276,7 +276,7 @@ impl EndPoint {
             .clone()
             .or_else(|| Self::lookup_hostname(ip.clone(), mac.clone(), protocol.clone(), payload))
             .map(|h| strip_local_suffix(&h).to_lowercase());
-        let endpoint_id = match EndPointAttribute::find_existing_endpoint_id_with_dhcp(
+        let (endpoint_id, is_new) = match EndPointAttribute::find_existing_endpoint_id_with_dhcp(
             conn,
             lookup_mac.clone(),
             ip.clone(),
@@ -314,16 +314,19 @@ impl EndPoint {
                 if let Some(ref vendor_class) = dhcp_vendor_class {
                     let _ = EndPointAttribute::update_dhcp_vendor_class(conn, id, vendor_class);
                 }
-                id
+                (id, false)
             }
-            _ => Self::insert_endpoint_with_dhcp(
-                conn,
-                lookup_mac.clone(),
-                ip.clone(),
-                hostname.clone(),
-                dhcp_client_id.clone(),
-                dhcp_vendor_class.clone(),
-            )?,
+            _ => {
+                let id = Self::insert_endpoint_with_dhcp(
+                    conn,
+                    lookup_mac.clone(),
+                    ip.clone(),
+                    hostname.clone(),
+                    dhcp_client_id.clone(),
+                    dhcp_vendor_class.clone(),
+                )?;
+                (id, true)
+            }
         };
         Self::check_and_update_endpoint_name(
             conn,
@@ -348,7 +351,7 @@ impl EndPoint {
             );
         }
 
-        Ok(endpoint_id)
+        Ok((endpoint_id, is_new))
     }
 
     fn check_and_update_endpoint_name(
@@ -811,8 +814,9 @@ mod tests {
         );
 
         assert!(result.is_ok());
-        let endpoint_id = result.unwrap();
+        let (endpoint_id, is_new) = result.unwrap();
         assert!(endpoint_id > 0);
+        assert!(is_new);
 
         // Verify endpoint exists
         let count: i64 = conn
@@ -830,7 +834,7 @@ mod tests {
         let conn = new_test_connection();
 
         // Insert endpoint first time - use loopback IP which is always local
-        let id1 = EndPoint::get_or_insert_endpoint(
+        let (id1, new1) = EndPoint::get_or_insert_endpoint(
             &conn,
             Some("00:11:22:33:44:55".to_string()),
             Some("127.0.0.2".to_string()),
@@ -838,9 +842,10 @@ mod tests {
             &[],
         )
         .unwrap();
+        assert!(new1);
 
         // Insert same endpoint again
-        let id2 = EndPoint::get_or_insert_endpoint(
+        let (id2, new2) = EndPoint::get_or_insert_endpoint(
             &conn,
             Some("00:11:22:33:44:55".to_string()),
             Some("127.0.0.2".to_string()),
@@ -848,6 +853,7 @@ mod tests {
             &[],
         )
         .unwrap();
+        assert!(!new2);
 
         // Should return the same ID
         assert_eq!(id1, id2);

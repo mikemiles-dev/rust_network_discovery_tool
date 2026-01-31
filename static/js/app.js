@@ -253,6 +253,11 @@
         // Start scan indicator polling for network tab
         App.startScanIndicatorPolling();
 
+        // Start notification badge polling
+        if (App.Notifications) {
+            App.Notifications.startBadgePolling();
+        }
+
         // Restore scroll positions and detail tab after refresh
         var savedScroll = sessionStorage.getItem('scrollPosition');
         var savedTableScroll = sessionStorage.getItem('tableScrollPosition');

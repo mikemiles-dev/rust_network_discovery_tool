@@ -5,6 +5,7 @@ use pnet::packet::Packet;
 use pnet::packet::ethernet::EthernetPacket;
 use rusqlite::{Connection, Result, params};
 
+use crate::db::insert_notification;
 use crate::network::{
     endpoint::{EndPoint, EndpointData, InsertEndpointError},
     packet_wrapper::PacketWrapper,
@@ -349,7 +350,23 @@ impl Communication {
                 dhcp_hostname: self.dhcp_hostname.clone(),
             },
         ) {
-            Ok(id) => id,
+            Ok((id, is_new)) => {
+                if is_new {
+                    let name = self.dhcp_hostname.as_deref()
+                        .or(self.source_ip.as_deref())
+                        .unwrap_or("unknown");
+                    let details = self.source_mac.as_deref()
+                        .map(|m| format!("MAC: {}", m));
+                    insert_notification(
+                        conn,
+                        "endpoint_discovered",
+                        &format!("New device discovered: {}", name),
+                        details.as_deref(),
+                        Some(name),
+                    );
+                }
+                id
+            }
             Err(InsertEndpointError::BothMacAndIpNone) => {
                 return Ok(()); // Skip insertion if both MAC and IP are None
             }
@@ -375,7 +392,21 @@ impl Communication {
                 dhcp_hostname: None,
             },
         ) {
-            Ok(id) => id,
+            Ok((id, is_new)) => {
+                if is_new {
+                    let name = self.destination_ip.as_deref().unwrap_or("unknown");
+                    let details = self.destination_mac.as_deref()
+                        .map(|m| format!("MAC: {}", m));
+                    insert_notification(
+                        conn,
+                        "endpoint_discovered",
+                        &format!("New device discovered: {}", name),
+                        details.as_deref(),
+                        Some(name),
+                    );
+                }
+                id
+            }
             Err(InsertEndpointError::BothMacAndIpNone) => {
                 return Ok(()); // Skip insertion if both MAC and IP are None
             }

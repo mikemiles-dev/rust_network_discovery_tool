@@ -107,6 +107,9 @@
                     } else if (App.state.activeTab === 'scanner') {
                         // Don't reload page when on scanner tab - scanner has its own polling
                         if (App.Scanner) App.Scanner.pollStatus();
+                    } else if (App.state.activeTab === 'notifications') {
+                        // Refresh notifications
+                        if (App.Notifications) App.Notifications.refresh();
                     } else if (App.state.activeTab === 'network') {
                         // Refresh only the endpoint table, not the details panel
                         App.Refresh.refreshEndpointTable();
@@ -144,6 +147,8 @@
                 if (App.Tabs) App.Tabs.refreshDnsEntries();
             } else if (App.state.activeTab === 'scanner') {
                 if (App.Scanner) App.Scanner.pollStatus();
+            } else if (App.state.activeTab === 'notifications') {
+                if (App.Notifications) App.Notifications.refresh();
             } else if (App.state.activeTab === 'network') {
                 App.Refresh.refreshEndpointTable();
             }
