@@ -17,7 +17,7 @@ use tera::{Context, Tera};
 use tokio::task;
 
 use crate::db::{
-    get_setting_i64, new_connection, new_connection_result,
+    get_setting_i64, insert_notification_with_endpoint_id, new_connection, new_connection_result,
 };
 use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::endpoint::{
@@ -280,10 +280,17 @@ pub(super) fn probe_and_save_hp_printer_model_blocking(ip: &str, endpoint_id: i6
     if let Some(model) = probe_hp_printer_model_blocking(ip) {
         // Save the model to the database
         if let Ok(conn) = new_connection_result() {
-            let _ = conn.execute(
+            let rows = conn.execute(
                 "UPDATE endpoints SET ssdp_model = ?1 WHERE id = ?2 AND (ssdp_model IS NULL OR ssdp_model = '')",
                 params![model, endpoint_id],
-            );
+            ).unwrap_or(0);
+            if rows > 0 {
+                insert_notification_with_endpoint_id(
+                    &conn, "model_identified",
+                    &format!("Device model identified: {}", model),
+                    None, None, Some(endpoint_id),
+                );
+            }
         }
     }
 }
@@ -827,6 +834,19 @@ pub(super) fn resolve_identifier_to_endpoint_ids(conn: &Connection, identifier: 
     endpoint_ids.sort_unstable();
     endpoint_ids.dedup();
     endpoint_ids
+}
+
+/// Resolve an IP or MAC identifier to the current display name of the matching endpoint.
+/// Uses `resolve_identifier_to_endpoint_ids` to find the endpoint, then queries its display name.
+pub(super) fn resolve_identifier_to_display_name(conn: &Connection, identifier: &str) -> Option<String> {
+    let ids = resolve_identifier_to_endpoint_ids(conn, identifier);
+    let first_id = ids.first()?;
+    let sql = format!(
+        "SELECT {DISPLAY_NAME_SQL} FROM endpoints e WHERE e.id = ?1"
+    );
+    conn.query_row(&sql, [first_id], |row| row.get::<_, Option<String>>(0))
+        .ok()
+        .flatten()
 }
 
 fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
@@ -1705,11 +1725,39 @@ async fn static_files(path: actix_web::web::Path<String>) -> impl Responder {
 #[get("/")]
 async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let hostname = strip_local_suffix(&get_hostname().unwrap_or_else(|_| "Unknown".to_string()));
-    let selected_endpoint = query.node.clone().unwrap_or_default();
     let scan_interval = query.scan_interval.unwrap_or(525600);
 
+    // Resolve ip=/mac= query params to an effective node name
+    let effective_node: Option<String> = if query.node.is_some() {
+        query.node.clone()
+    } else if let Some(ref ip) = query.ip {
+        let ip_clone = ip.clone();
+        let resolved = task::spawn_blocking(move || {
+            let conn = new_connection();
+            resolve_identifier_to_display_name(&conn, &ip_clone)
+        })
+        .await
+        .ok()
+        .flatten();
+        Some(resolved.unwrap_or_else(|| ip.clone()))
+    } else if let Some(ref mac) = query.mac {
+        let mac_clone = mac.clone();
+        let resolved = task::spawn_blocking(move || {
+            let conn = new_connection();
+            resolve_identifier_to_display_name(&conn, &mac_clone)
+        })
+        .await
+        .ok()
+        .flatten();
+        Some(resolved.unwrap_or_else(|| mac.clone()))
+    } else {
+        None
+    };
+
+    let selected_endpoint = effective_node.clone().unwrap_or_default();
+
     // Phase 1: Run independent queries in parallel
-    let query_node_1 = query.node.clone();
+    let query_node_1 = effective_node.clone();
     let nodes_future = tokio::task::spawn_blocking(move || get_nodes(query_node_1, scan_interval));
     let dropdown_future = tokio::task::spawn_blocking(move || dropdown_endpoints(scan_interval));
     let interfaces_future = tokio::task::spawn_blocking(get_interfaces);
@@ -1725,13 +1773,13 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
 
     // If a specific node was selected but isn't in the endpoints list, add it
     // This handles isolated endpoints with no communications
-    if let Some(ref selected_node) = query.node
+    if let Some(ref selected_node) = effective_node
         && !endpoints.contains(selected_node)
     {
         endpoints.push(selected_node.clone());
     }
     // Also add to dropdown_endpoints so the node appears in the list
-    if let Some(ref selected_node) = query.node
+    if let Some(ref selected_node) = effective_node
         && !dropdown_endpoints.contains(selected_node)
     {
         dropdown_endpoints.push(selected_node.clone());
@@ -1952,7 +2000,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     });
 
     // Ports query depends on whether a node is selected
-    let ports_future = if query.node.is_some() {
+    let ports_future = if effective_node.is_some() {
         // Use in-memory data, no DB query needed
         let comms = communications.clone();
         let selected = selected_endpoint.clone();
@@ -2090,7 +2138,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     context.insert("hostname", &hostname);
     context.insert("endpoint", &selected_endpoint);
     context.insert("supported_protocols", &supported_protocols);
-    context.insert("selected_node", &query.node);
+    context.insert("selected_node", &effective_node);
     context.insert("dropdown_endpoints", &dropdown_endpoints);
     context.insert("endpoint_ips_macs", &endpoint_ips_macs);
     context.insert("endpoint_vendors", &endpoint_vendors);
@@ -2122,6 +2170,8 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
 #[derive(serde::Deserialize)]
 pub(super) struct NodeQuery {
     pub(super) node: Option<String>,
+    pub(super) ip: Option<String>,
+    pub(super) mac: Option<String>,
     pub(super) scan_interval: Option<u64>,
 }
 

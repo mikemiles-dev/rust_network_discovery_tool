@@ -10,7 +10,7 @@
 
     var paging = {
         page: 1,
-        pageSize: 50,
+        pageSize: 25,
         total: 0,
         search: ''
     };
@@ -73,18 +73,6 @@
         },
 
         /**
-         * Handle page size change
-         */
-        changePageSize: function() {
-            var select = document.getElementById('notifications-page-size');
-            if (select) {
-                paging.pageSize = parseInt(select.value, 10);
-                paging.page = 1;
-                App.Notifications.refresh();
-            }
-        },
-
-        /**
          * Go to a specific page
          */
         goToPage: function(page) {
@@ -126,16 +114,16 @@
                 var body = document.createElement('div');
                 body.className = 'notification-body';
 
-                var hasLink = item.endpoint_name && item.event_type !== 'endpoint_deleted';
+                var link = getBestEndpointLink(item);
                 var title;
-                if (hasLink) {
+                if (link) {
                     title = document.createElement('a');
                     title.className = 'notification-title notification-link';
                     title.textContent = item.title;
-                    title.href = '/?node=' + encodeURIComponent(item.endpoint_name);
+                    title.href = '/?' + link.param + '=' + encodeURIComponent(link.value);
                     title.onclick = function(e) {
                         e.preventDefault();
-                        App.Notifications.navigateToEndpoint(item.endpoint_name);
+                        App.Notifications.navigateToEndpoint(link.param, link.value);
                     };
                 } else {
                     title = document.createElement('div');
@@ -236,7 +224,10 @@
                 'endpoint_reclassified': '\uD83C\uDFF7\uFE0F',
                 'scan_started': '\u25B6\uFE0F',
                 'scan_stopped': '\u23F9\uFE0F',
-                'model_identified': '\uD83D\uDCF1'
+                'model_identified': '\uD83D\uDCF1',
+                'model_changed': '\uD83D\uDCF1',
+                'vendor_identified': '\uD83C\uDFED',
+                'vendor_changed': '\uD83C\uDFED'
             };
             return icons[eventType] || '\uD83D\uDD14';
         },
@@ -347,10 +338,13 @@
         /**
          * Navigate to an endpoint on the network tab
          */
-        navigateToEndpoint: function(endpointName) {
+        navigateToEndpoint: function(param, value) {
             var url = new URL(window.location.href);
-            url.searchParams.set('node', endpointName);
+            url.searchParams.delete('node');
+            url.searchParams.delete('ip');
+            url.searchParams.delete('mac');
             url.searchParams.delete('tab');
+            url.searchParams.set(param, value);
             window.location.href = url.toString();
         },
 
@@ -384,6 +378,64 @@
             }, 30000);
         }
     };
+
+    /**
+     * Check if a string looks like an IP address (IPv4 or IPv6)
+     */
+    function looksLikeIp(s) {
+        if (!s) return false;
+        // IPv6: contains colons
+        if (s.indexOf(':') !== -1) return true;
+        // IPv4: four dot-separated octets
+        var parts = s.split('.');
+        if (parts.length === 4 && parts.every(function(p) {
+            var n = parseInt(p, 10);
+            return !isNaN(n) && n >= 0 && n <= 255 && String(n) === p;
+        })) return true;
+        return false;
+    }
+
+    /**
+     * Determine the best query parameter and value for linking to an endpoint
+     * Returns { param, value } or null if no link should be shown
+     */
+    /**
+     * Extract a MAC address from notification details text (e.g. "MAC: AA:BB:CC:DD:EE:FF")
+     */
+    function extractMacFromDetails(details) {
+        if (!details) return null;
+        var m = details.match(/MAC:\s*([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})/);
+        return m ? m[1] : null;
+    }
+
+    function getBestEndpointLink(item) {
+        // Deleted endpoints get no link
+        if (item.event_type === 'endpoint_deleted') return null;
+        var name = item.endpoint_name;
+        // Proper name (not null, not "unknown", not IP-like) -> use node=
+        if (name && name.toLowerCase() !== 'unknown' && !looksLikeIp(name)) {
+            return { param: 'node', value: name };
+        }
+        // Has a real IP -> use ip=
+        if (item.endpoint_ip) {
+            return { param: 'ip', value: item.endpoint_ip };
+        }
+        // Has a real MAC -> use mac=
+        if (item.endpoint_mac) {
+            return { param: 'mac', value: item.endpoint_mac };
+        }
+        // endpoint_name itself looks like an IP -> use ip=
+        if (name && looksLikeIp(name)) {
+            return { param: 'ip', value: name };
+        }
+        // Try extracting MAC from details text as last resort
+        var detailsMac = extractMacFromDetails(item.details);
+        if (detailsMac) {
+            return { param: 'mac', value: detailsMac };
+        }
+        // No good identifier available
+        return null;
+    }
 
     /**
      * Calculate which page numbers to show

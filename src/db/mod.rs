@@ -197,9 +197,21 @@ pub fn insert_notification(
     details: Option<&str>,
     endpoint_name: Option<&str>,
 ) {
+    insert_notification_with_endpoint_id(conn, event_type, title, details, endpoint_name, None);
+}
+
+/// Fire-and-forget helper to insert a notification with an endpoint_id for dynamic name resolution.
+pub fn insert_notification_with_endpoint_id(
+    conn: &Connection,
+    event_type: &str,
+    title: &str,
+    details: Option<&str>,
+    endpoint_name: Option<&str>,
+    endpoint_id: Option<i64>,
+) {
     if let Err(e) = conn.execute(
-        "INSERT INTO notifications (event_type, title, details, endpoint_name) VALUES (?1, ?2, ?3, ?4)",
-        rusqlite::params![event_type, title, details, endpoint_name],
+        "INSERT INTO notifications (event_type, title, details, endpoint_name, endpoint_id) VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![event_type, title, details, endpoint_name, endpoint_id],
     ) {
         eprintln!("Failed to insert notification: {}", e);
     }
@@ -373,11 +385,18 @@ impl SQLWriter {
                     title TEXT NOT NULL,
                     details TEXT,
                     endpoint_name TEXT,
+                    endpoint_id INTEGER,
                     dismissed INTEGER NOT NULL DEFAULT 0
                 )",
                 [],
             )
             .expect("Failed to create notifications table");
+
+            // Add endpoint_id column if it doesn't exist (migration for existing databases)
+            let _ = conn.execute(
+                "ALTER TABLE notifications ADD COLUMN endpoint_id INTEGER",
+                [],
+            );
 
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC)",

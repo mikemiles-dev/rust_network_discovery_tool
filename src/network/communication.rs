@@ -5,9 +5,12 @@ use pnet::packet::Packet;
 use pnet::packet::ethernet::EthernetPacket;
 use rusqlite::{Connection, Result, params};
 
-use crate::db::insert_notification;
+use crate::db::insert_notification_with_endpoint_id;
 use crate::network::{
-    endpoint::{EndPoint, EndpointData, InsertEndpointError},
+    endpoint::{
+        EndPoint, EndpointData, InsertEndpointError,
+        get_mac_vendor, get_model_from_mac,
+    },
     packet_wrapper::PacketWrapper,
 };
 
@@ -188,6 +191,32 @@ pub struct Communication {
     payload: Vec<u8>,
 }
 
+/// Emit vendor_identified / model_identified notifications from MAC OUI lookup
+/// when a new endpoint is first discovered.
+fn emit_mac_vendor_model_notifications(conn: &Connection, mac: Option<&str>, endpoint_id: i64) {
+    let mac = match mac {
+        Some(m) if !m.is_empty() => m,
+        _ => return,
+    };
+    let details = format!("MAC: {}", mac);
+    if let Some(vendor) = get_mac_vendor(mac) {
+        insert_notification_with_endpoint_id(
+            conn,
+            "vendor_identified",
+            &format!("Vendor identified: {}", vendor),
+            Some(&details), None, Some(endpoint_id),
+        );
+    }
+    if let Some(model) = get_model_from_mac(mac) {
+        insert_notification_with_endpoint_id(
+            conn,
+            "model_identified",
+            &format!("Device model identified: {}", model),
+            Some(&details), None, Some(endpoint_id),
+        );
+    }
+}
+
 impl Communication {
     pub fn new(ethernet_packet: EthernetPacket) -> Self {
         Self::new_with_source(ethernet_packet, None)
@@ -357,13 +386,15 @@ impl Communication {
                         .unwrap_or("unknown");
                     let details = self.source_mac.as_deref()
                         .map(|m| format!("MAC: {}", m));
-                    insert_notification(
+                    insert_notification_with_endpoint_id(
                         conn,
                         "endpoint_discovered",
                         &format!("New device discovered: {}", name),
                         details.as_deref(),
                         Some(name),
+                        Some(id),
                     );
+                    emit_mac_vendor_model_notifications(conn, self.source_mac.as_deref(), id);
                 }
                 id
             }
@@ -397,13 +428,15 @@ impl Communication {
                     let name = self.destination_ip.as_deref().unwrap_or("unknown");
                     let details = self.destination_mac.as_deref()
                         .map(|m| format!("MAC: {}", m));
-                    insert_notification(
+                    insert_notification_with_endpoint_id(
                         conn,
                         "endpoint_discovered",
                         &format!("New device discovered: {}", name),
                         details.as_deref(),
                         Some(name),
+                        Some(id),
                     );
+                    emit_mac_vendor_model_notifications(conn, self.destination_mac.as_deref(), id);
                 }
                 id
             }

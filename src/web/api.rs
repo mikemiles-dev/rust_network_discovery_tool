@@ -13,8 +13,8 @@ use std::sync::{Mutex, OnceLock};
 use tokio::sync::mpsc;
 
 use crate::db::{
-    SQLWriter, get_all_settings, get_setting_i64, insert_notification, new_connection,
-    new_connection_result, set_setting,
+    SQLWriter, get_all_settings, get_setting_i64, insert_notification,
+    insert_notification_with_endpoint_id, new_connection, new_connection_result, set_setting,
 };
 use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::device_control::DeviceController;
@@ -982,6 +982,14 @@ pub async fn set_endpoint_model(body: Json<SetModelRequest>) -> impl Responder {
     match EndPoint::set_custom_model(&conn, &body.endpoint_name, model) {
         Ok(rows_updated) => {
             if rows_updated > 0 {
+                let (event, title) = if let Some(m) = model {
+                    ("model_changed", format!("Model set to '{}' for {}", m, body.endpoint_name))
+                } else {
+                    ("model_changed", format!("Model cleared for {}", body.endpoint_name))
+                };
+                insert_notification(
+                    &conn, event, &title, None, Some(&body.endpoint_name),
+                );
                 HttpResponse::Ok().json(SetModelResponse {
                     success: true,
                     message: format!(
@@ -1032,6 +1040,14 @@ pub async fn set_endpoint_vendor(body: Json<SetVendorRequest>) -> impl Responder
     match EndPoint::set_custom_vendor(&conn, &body.endpoint_name, vendor) {
         Ok(rows_updated) => {
             if rows_updated > 0 {
+                let (event, title) = if let Some(v) = vendor {
+                    ("vendor_changed", format!("Vendor set to '{}' for {}", v, body.endpoint_name))
+                } else {
+                    ("vendor_changed", format!("Vendor cleared for {}", body.endpoint_name))
+                };
+                insert_notification(
+                    &conn, event, &title, None, Some(&body.endpoint_name),
+                );
                 HttpResponse::Ok().json(SetVendorResponse {
                     success: true,
                     message: format!(
@@ -1150,17 +1166,31 @@ pub async fn probe_endpoint(body: Json<ProbeEndpointRequest>) -> impl Responder 
                         // Extract and save vendor/model from sysDescr
                         if let Some(ref sys_descr) = result.sys_descr {
                             let (vendor, model) = parse_snmp_sys_descr(sys_descr);
-                            if let Some(v) = vendor {
-                                let _ = conn.execute(
+                            if let Some(v) = &vendor {
+                                let rows = conn.execute(
                                     "UPDATE endpoints SET vendor = ?1 WHERE id = ?2 AND (vendor IS NULL OR vendor = '')",
                                     params![v, eid],
-                                );
+                                ).unwrap_or(0);
+                                if rows > 0 {
+                                    insert_notification_with_endpoint_id(
+                                        &conn, "vendor_identified",
+                                        &format!("Vendor identified: {}", v),
+                                        None, None, Some(eid),
+                                    );
+                                }
                             }
-                            if let Some(m) = model {
-                                let _ = conn.execute(
+                            if let Some(m) = &model {
+                                let rows = conn.execute(
                                     "UPDATE endpoints SET ssdp_model = ?1 WHERE id = ?2 AND (ssdp_model IS NULL OR ssdp_model = '')",
                                     params![m, eid],
-                                );
+                                ).unwrap_or(0);
+                                if rows > 0 {
+                                    insert_notification_with_endpoint_id(
+                                        &conn, "model_identified",
+                                        &format!("Device model identified: {}", m),
+                                        None, None, Some(eid),
+                                    );
+                                }
                             }
                         }
 
@@ -1583,11 +1613,24 @@ pub async fn probe_endpoint_model(body: Json<ProbeModelRequest>) -> impl Respond
         );
 
         match update_result {
-            Ok(rows) => HttpResponse::Ok().json(ProbeModelResponse {
-                success: true,
-                message: format!("Found model '{}', updated {} endpoint(s)", model, rows),
-                model: Some(model),
-            }),
+            Ok(rows) => {
+                if rows > 0 {
+                    let eid: Option<i64> = conn.query_row(
+                        "SELECT endpoint_id FROM endpoint_attributes WHERE ip = ?1 LIMIT 1",
+                        params![ip], |row| row.get(0),
+                    ).ok();
+                    insert_notification_with_endpoint_id(
+                        &conn, "model_identified",
+                        &format!("Device model identified: {}", model),
+                        None, None, eid,
+                    );
+                }
+                HttpResponse::Ok().json(ProbeModelResponse {
+                    success: true,
+                    message: format!("Found model '{}', updated {} endpoint(s)", model, rows),
+                    model: Some(model),
+                })
+            }
             Err(e) => HttpResponse::InternalServerError().json(ProbeModelResponse {
                 success: false,
                 message: format!("Found model '{}' but failed to save: {}", model, e),
@@ -1956,12 +1999,13 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
                 &[],
             ) {
                 if is_new {
-                    insert_notification(
+                    insert_notification_with_endpoint_id(
                         &conn,
                         "endpoint_discovered",
                         &format!("New device discovered: {}", ip_str),
                         Some(&format!("MAC: {}", mac_str)),
                         Some(&ip_str),
+                        Some(endpoint_id),
                     );
                 }
 
@@ -2053,12 +2097,21 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
                         );
 
                         if current_model.as_ref().is_none_or(|m| m.is_empty()) {
-                            insert_notification(
+                            insert_notification_with_endpoint_id(
                                 &conn,
                                 "model_identified",
                                 &format!("Device model identified: {}", model),
-                                Some(&format!("IP: {}", ip_str)),
-                                Some(&ip_str),
+                                None, None,
+                                Some(endpoint_id),
+                            );
+                        } else if let Some(ref old) = current_model {
+                            insert_notification_with_endpoint_id(
+                                &conn,
+                                "model_changed",
+                                &format!("Device model updated: {}", model),
+                                Some(&format!("Previous: {}", old)),
+                                None,
+                                Some(endpoint_id),
                             );
                         }
                     }
@@ -2097,12 +2150,13 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
                 EndPoint::get_or_insert_endpoint(&conn, Some(mac_str.clone()), Some(ip_str.clone()), None, &[])
             {
                 if is_new {
-                    insert_notification(
+                    insert_notification_with_endpoint_id(
                         &conn,
                         "endpoint_discovered",
                         &format!("New device discovered: {}", ip_str),
                         Some(&format!("MAC: {} (NDP)", mac_str)),
                         Some(&ip_str),
+                        Some(endpoint_id),
                     );
                 }
 
@@ -2163,19 +2217,33 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
                     let (vendor, model) = parse_snmp_sys_descr(sys_descr);
 
                     // Update vendor if we found one and endpoint doesn't have one
-                    if let Some(v) = vendor {
-                        let _ = conn.execute(
+                    if let Some(v) = &vendor {
+                        let rows = conn.execute(
                             "UPDATE endpoints SET vendor = ?1 WHERE id = ?2 AND (vendor IS NULL OR vendor = '')",
                             params![v, endpoint_id],
-                        );
+                        ).unwrap_or(0);
+                        if rows > 0 {
+                            insert_notification_with_endpoint_id(
+                                &conn, "vendor_identified",
+                                &format!("Vendor identified: {}", v),
+                                None, None, Some(endpoint_id),
+                            );
+                        }
                     }
 
                     // Update model if we found one and endpoint doesn't have one
-                    if let Some(m) = model {
-                        let _ = conn.execute(
+                    if let Some(m) = &model {
+                        let rows = conn.execute(
                             "UPDATE endpoints SET model = ?1 WHERE id = ?2 AND (model IS NULL OR model = '')",
                             params![m, endpoint_id],
-                        );
+                        ).unwrap_or(0);
+                        if rows > 0 {
+                            insert_notification_with_endpoint_id(
+                                &conn, "model_identified",
+                                &format!("Device model identified: {}", m),
+                                None, None, Some(endpoint_id),
+                            );
+                        }
                     }
                 }
 
@@ -3322,6 +3390,8 @@ pub struct NotificationItem {
     details: Option<String>,
     endpoint_name: Option<String>,
     dismissed: bool,
+    endpoint_ip: Option<String>,
+    endpoint_mac: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -3344,60 +3414,93 @@ pub async fn get_notifications(query: Query<NotificationsQuery>) -> impl Respond
         let has_search = !search.is_empty();
         let search_pattern = format!("%{}%", search);
 
-        // Build WHERE clause
-        let mut conditions = vec!["created_at > ?1"];
+        // Build WHERE clause (use n. prefix since we JOIN with endpoints)
+        let mut conditions = vec!["n.created_at > ?1"];
         if !include_dismissed {
-            conditions.push("dismissed = 0");
+            conditions.push("n.dismissed = 0");
         }
         if has_search {
-            conditions.push("(title LIKE ?4 OR COALESCE(details, '') LIKE ?4 OR COALESCE(endpoint_name, '') LIKE ?4 OR event_type LIKE ?4)");
+            conditions.push("(n.title LIKE ?4 OR COALESCE(n.details, '') LIKE ?4 OR COALESCE(n.endpoint_name, '') LIKE ?4 OR n.event_type LIKE ?4)");
         }
         let where_clause = conditions.join(" AND ");
 
         // Get total count
-        let count_sql = format!("SELECT COUNT(*) FROM notifications WHERE {}", where_clause);
+        let count_sql = format!("SELECT COUNT(*) FROM notifications n WHERE {}", where_clause);
         let total: i64 = if has_search {
             conn.query_row(&count_sql, params![since, limit, offset, search_pattern], |row| row.get(0))
         } else {
             conn.query_row(&count_sql, params![since], |row| row.get(0))
         }.unwrap_or(0);
 
-        // Get page of results
-        let sql = format!(
-            "SELECT id, created_at, event_type, title, details, endpoint_name, dismissed
-             FROM notifications WHERE {} ORDER BY created_at DESC LIMIT ?2 OFFSET ?3",
-            where_clause
+        // Resolve current endpoint display name via LEFT JOIN when endpoint_id is available.
+        // This fixes stale names (e.g. "unknown" or bare IPs) in notifications created before
+        // the endpoint received a proper name via mDNS, DHCP, SNMP, etc.
+        let resolve_name_sql = format!(
+            "COALESCE(
+                e.custom_name,
+                CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%'
+                     AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
+                (SELECT MIN(hostname) FROM endpoint_attributes WHERE endpoint_id = e.id
+                 AND hostname IS NOT NULL AND hostname != ''
+                 AND hostname NOT LIKE '%:%' AND hostname NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'),
+                (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
+                 AND ip IS NOT NULL AND ip != ''),
+                n.endpoint_name
+            )"
         );
+
+        // Get page of results with resolved endpoint names
+        let sql = format!(
+            "SELECT n.id, n.created_at, n.event_type, n.title, n.details, n.endpoint_name, n.dismissed,
+                    {resolve_name} AS resolved_name,
+                    (SELECT MIN(ip) FROM endpoint_attributes WHERE endpoint_id = e.id
+                     AND ip IS NOT NULL AND ip != '') AS endpoint_ip,
+                    (SELECT MIN(mac) FROM endpoint_attributes WHERE endpoint_id = e.id
+                     AND mac IS NOT NULL AND mac != '') AS endpoint_mac
+             FROM notifications n
+             LEFT JOIN endpoints e ON n.endpoint_id = e.id
+             WHERE {where_clause}
+             ORDER BY n.created_at DESC LIMIT ?2 OFFSET ?3",
+            resolve_name = resolve_name_sql,
+            where_clause = where_clause
+        );
+
+        let map_row = |row: &rusqlite::Row| -> rusqlite::Result<NotificationItem> {
+            let original_title: String = row.get(3)?;
+            let original_endpoint_name: Option<String> = row.get(5)?;
+            let resolved_name: Option<String> = row.get(7)?;
+
+            // Rewrite the title if we have a resolved name that differs from the original
+            let title = match (&resolved_name, &original_endpoint_name) {
+                (Some(resolved), Some(original)) if resolved != original && !resolved.is_empty() => {
+                    original_title.replace(original, resolved)
+                }
+                _ => original_title,
+            };
+
+            Ok(NotificationItem {
+                id: row.get(0)?,
+                created_at: row.get(1)?,
+                event_type: row.get(2)?,
+                title,
+                details: row.get(4)?,
+                endpoint_name: resolved_name.or(original_endpoint_name),
+                dismissed: row.get::<_, i64>(6)? != 0,
+                endpoint_ip: row.get(8)?,
+                endpoint_mac: row.get(9)?,
+            })
+        };
+
         let notifications: Vec<NotificationItem> = if has_search {
             let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
             let rows = stmt
-                .query_map(params![since, limit, offset, search_pattern], |row| {
-                    Ok(NotificationItem {
-                        id: row.get(0)?,
-                        created_at: row.get(1)?,
-                        event_type: row.get(2)?,
-                        title: row.get(3)?,
-                        details: row.get(4)?,
-                        endpoint_name: row.get(5)?,
-                        dismissed: row.get::<_, i64>(6)? != 0,
-                    })
-                })
+                .query_map(params![since, limit, offset, search_pattern], map_row)
                 .map_err(|e| e.to_string())?;
             rows.filter_map(|r| r.ok()).collect()
         } else {
             let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
             let rows = stmt
-                .query_map(params![since, limit, offset], |row| {
-                    Ok(NotificationItem {
-                        id: row.get(0)?,
-                        created_at: row.get(1)?,
-                        event_type: row.get(2)?,
-                        title: row.get(3)?,
-                        details: row.get(4)?,
-                        endpoint_name: row.get(5)?,
-                        dismissed: row.get::<_, i64>(6)? != 0,
-                    })
-                })
+                .query_map(params![since, limit, offset], map_row)
                 .map_err(|e| e.to_string())?;
             rows.filter_map(|r| r.ok()).collect()
         };
