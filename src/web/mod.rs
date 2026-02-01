@@ -1570,9 +1570,48 @@ pub(super) fn get_all_endpoints_online_status(
     result
 }
 
+/// Check if another instance of this application is already running on any of the
+/// candidate ports. Returns `Some((port, pid))` if a running instance is found.
+fn detect_existing_instance(ports: &[u16]) -> Option<(u16, u32)> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_millis(500))
+        .build()
+        .ok()?;
+
+    for &port in ports {
+        if let Ok(resp) = client
+            .get(format!("http://127.0.0.1:{}/api/instance", port))
+            .send()
+        {
+            if let Ok(json) = resp.json::<serde_json::Value>() {
+                if json.get("app").and_then(|v| v.as_str()) == Some("awareness") {
+                    let pid = json
+                        .get("pid")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as u32;
+                    return Some((port, pid));
+                }
+            }
+        }
+    }
+    None
+}
+
 pub fn start(preferred_port: u16) {
     task::spawn_blocking(move || {
         println!("Starting web server");
+
+        // Check if another instance is already running
+        let check_ports = [preferred_port, 8081, 8082, 8083, 8084];
+        if let Some((port, pid)) = detect_existing_instance(&check_ports) {
+            eprintln!(
+                "Another instance is already running on http://127.0.0.1:{} (PID {})",
+                port, pid
+            );
+            eprintln!("Stop the existing instance before starting a new one.");
+            std::process::exit(1);
+        }
+
         let sys = actix_rt::System::new();
 
         // Load templates from embedded files
@@ -1645,6 +1684,7 @@ pub fn start(preferred_port: u16) {
                         .service(get_notifications)
                         .service(dismiss_notifications)
                         .service(clear_notifications)
+                        .service(get_instance)
                 })
                 .bind(("127.0.0.1", port))
                 {

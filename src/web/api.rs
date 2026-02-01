@@ -3577,3 +3577,13 @@ pub async fn clear_notifications() -> impl Responder {
         })),
     }
 }
+
+/// Lightweight identity endpoint used to detect if another instance is already running.
+#[get("/api/instance")]
+pub async fn get_instance() -> impl Responder {
+    HttpResponse::Ok().json(serde_json::json!({
+        "app": "awareness",
+        "version": env!("CARGO_PKG_VERSION"),
+        "pid": std::process::id(),
+    }))
+}
