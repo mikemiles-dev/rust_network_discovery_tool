@@ -165,28 +165,42 @@ pub fn new_connection_result() -> Result<Connection, rusqlite::Error> {
     // This is especially important on Windows where file locking is stricter
     cleanup_stale_wal_files(db_path);
 
-    let conn = Connection::open(db_path).map_err(|e| {
-        eprintln!(
-            "Failed to open database at '{}': {} (cwd: {:?})",
-            db_path,
-            e,
-            std::env::current_dir()
-        );
-        e
-    })?;
+    // Retry opening the database with backoff to handle transient CannotOpen errors
+    // from concurrent connection storms (e.g., parallel web handler queries)
+    let mut last_err = None;
+    for attempt in 0..5 {
+        match Connection::open(db_path) {
+            Ok(conn) => {
+                // Set busy timeout first (this doesn't require any locks)
+                // 30 seconds to handle heavy contention during scanning
+                let _ = conn.execute("PRAGMA busy_timeout = 30000;", []);
 
-    // Set busy timeout first (this doesn't require any locks)
-    // 30 seconds to handle heavy contention during scanning
-    let _ = conn.execute("PRAGMA busy_timeout = 30000;", []);
+                // Try to enable WAL mode (only needs to succeed once per database)
+                // This may fail if another connection has an active transaction, which is OK
+                let _ = conn.execute("PRAGMA journal_mode = WAL;", []);
 
-    // Try to enable WAL mode (only needs to succeed once per database)
-    // This may fail if another connection has an active transaction, which is OK
-    let _ = conn.execute("PRAGMA journal_mode = WAL;", []);
+                // NORMAL sync is safe with WAL mode
+                let _ = conn.execute("PRAGMA synchronous = NORMAL;", []);
 
-    // NORMAL sync is safe with WAL mode
-    let _ = conn.execute("PRAGMA synchronous = NORMAL;", []);
+                return Ok(conn);
+            }
+            Err(e) => {
+                last_err = Some(e);
+                if attempt < 4 {
+                    std::thread::sleep(std::time::Duration::from_millis(50 * (1 << attempt)));
+                }
+            }
+        }
+    }
 
-    Ok(conn)
+    let e = last_err.unwrap();
+    eprintln!(
+        "Failed to open database at '{}' after 5 attempts: {} (cwd: {:?})",
+        db_path,
+        e,
+        std::env::current_dir()
+    );
+    Err(e)
 }
 
 /// Fire-and-forget helper to insert a notification. Errors are logged, never propagated.

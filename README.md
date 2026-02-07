@@ -304,24 +304,20 @@ The web UI includes a **Settings** tab for configuring runtime options without r
 
 ## Updating the MAC Vendor Database
 
-The MAC vendor database (`src/network/endpoint/mac_vendors.rs`) is auto-generated from the IEEE OUI registry using a standalone tool. To regenerate it with the latest data:
+The MAC vendor database (`src/network/endpoint/mac_vendor_data.rs`) is auto-generated from the IEEE OUI registry using a standalone tool. The data file is included at compile time by `mac_vendors.rs` via `include!()`. To regenerate with the latest data:
 
 ```bash
-# Build and run the generator
 cd tools/oui-generator
 cargo run --release -- --verify
-
-# Or with explicit output path
-cargo run --release -- --output ../../src/network/endpoint/mac_vendors.rs --verify
 ```
 
-This downloads the official IEEE MA-L OUI CSV (~30K+ entries), merges with hand-curated overrides in `overrides.toml`, and generates a sorted Rust source file. The `--verify` flag confirms all original override entries are preserved.
+This downloads the official IEEE MA-L OUI CSV (~30K+ entries), merges with hand-curated overrides in `overrides.toml`, and generates a sorted data file. The `--verify` flag confirms all original override entries are preserved.
 
 ### Generator Options
 
 | Flag | Description |
 |------|-------------|
-| `--output <path>` | Output path for generated `mac_vendors.rs` (default: `../../src/network/endpoint/mac_vendors.rs`) |
+| `--output <path>` | Output path for generated data file (default: `../../src/network/endpoint/mac_vendor_data.rs`) |
 | `--overrides <path>` | Path to `overrides.toml` (default: `overrides.toml`) |
 | `--verify` | Verify all override entries are preserved after generation |
 | `--verify-only` | Only verify existing output without regenerating |

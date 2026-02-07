@@ -7,7 +7,6 @@ mod db;
 mod detection;
 mod endpoint_ops;
 mod gateway;
-mod mac_vendors;
 mod model;
 mod patterns;
 mod types;

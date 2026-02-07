@@ -10,10 +10,10 @@ use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "oui-generator")]
-#[command(about = "Generate mac_vendors.rs from IEEE OUI database with local overrides")]
+#[command(about = "Generate mac_vendor_data.rs from IEEE OUI database with local overrides")]
 struct Cli {
-    /// Output path for generated mac_vendors.rs
-    #[arg(long, default_value = "../../src/network/endpoint/mac_vendors.rs")]
+    /// Output path for generated data file (included by mac_vendors.rs via include!())
+    #[arg(long, default_value = "../../src/network/endpoint/mac_vendor_data.rs")]
     output: PathBuf,
 
     /// Path to overrides.toml file
