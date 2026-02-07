@@ -1,5 +1,31 @@
 # Release Notes
 
+## [0.5.7]
+
+### Added
+- **Massively Expanded MAC Vendor Database** - Expanded from ~1,360 hand-curated entries to ~38,800+ entries by integrating the IEEE MA-L OUI database
+  - Covers virtually all registered MAC address prefixes worldwide
+  - Original hand-curated entries preserved as overrides for accurate vendor names
+  - Vendor names normalized through a 3-tier pipeline: exact overrides, organization name mapping, and corporate suffix stripping
+  - Binary search lookup replaces linear scan for O(log n) performance at scale
+
+- **OUI Generator Tool** - Standalone tool at `tools/oui-generator/` for regenerating the MAC vendor database
+  - Downloads official IEEE MA-L OUI CSV database (~30K+ entries)
+  - Merges with hand-curated overrides from `overrides.toml` (overrides always take priority)
+  - 3-tier vendor name normalization: exact OUI overrides, organization name mapping (60+ vendor rules), corporate suffix stripping
+  - Optional macaddress.io API enrichment with local caching and rate limiting
+  - Verification mode (`--verify`) confirms all original entries are preserved
+  - See [Updating the MAC Vendor Database](#updating-the-mac-vendor-database) in the README for usage
+
+### Changed
+- **Binary Search for MAC Vendor Lookup** - `get_mac_vendor()` now uses binary search instead of linear scan on the sorted vendor map
+- **LG Vendor Name Consistency** - Normalized "LG Electronics" to "LG" across the entire codebase
+
+### Added Tests
+- `test_mac_vendor_map_is_sorted` - Verifies the vendor map is sorted (required for binary search)
+- `test_vendor_names_exist_in_map` - Verifies all classification vendor lists (APPLIANCE_VENDORS, GAMING_VENDORS, TV_VENDORS, GATEWAY_VENDORS) have corresponding entries in the MAC vendor map
+- `test_binary_search_finds_known_vendors` - Verifies binary search correctly finds known vendors
+
 ## [0.5.6]
 
 ### Added

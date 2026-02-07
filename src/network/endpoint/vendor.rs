@@ -6,16 +6,15 @@ use super::mac_vendors::MAC_VENDOR_MAP;
 use super::patterns::LG_APPLIANCE_PREFIXES;
 use super::types::{Characterized, pick_best};
 
-/// Get vendor name from MAC address OUI
+/// Get vendor name from MAC address OUI (binary search on sorted map)
 pub fn get_mac_vendor(mac: &str) -> Option<&'static str> {
     let mac_lower = mac.to_lowercase();
     if mac_lower.len() >= 8 {
         let oui = &mac_lower[..8];
-        for (prefix, vendor) in MAC_VENDOR_MAP {
-            if oui == *prefix {
-                return Some(vendor);
-            }
-        }
+        return MAC_VENDOR_MAP
+            .binary_search_by_key(&oui, |(prefix, _)| prefix)
+            .ok()
+            .map(|idx| MAC_VENDOR_MAP[idx].1);
     }
     None
 }
@@ -251,5 +250,60 @@ mod tests {
         // Vendor detection from hostname
         assert_eq!(get_hostname_vendor("YN00NJ468680"), Some("TCL"));
         assert_eq!(get_hostname_vendor("yn00nj468680"), Some("TCL"));
+    }
+
+    #[test]
+    fn test_mac_vendor_map_is_sorted() {
+        for i in 1..MAC_VENDOR_MAP.len() {
+            assert!(
+                MAC_VENDOR_MAP[i - 1].0 < MAC_VENDOR_MAP[i].0,
+                "MAC_VENDOR_MAP is not sorted: {:?} >= {:?} at index {}",
+                MAC_VENDOR_MAP[i - 1],
+                MAC_VENDOR_MAP[i],
+                i
+            );
+        }
+    }
+
+    #[test]
+    fn test_vendor_names_exist_in_map() {
+        use super::super::patterns::{APPLIANCE_VENDORS, GAMING_VENDORS, TV_VENDORS, GATEWAY_VENDORS};
+
+        let map_vendors: std::collections::HashSet<&str> =
+            MAC_VENDOR_MAP.iter().map(|(_, v)| *v).collect();
+
+        let check_lists: &[(&str, &[&str])] = &[
+            ("APPLIANCE_VENDORS", APPLIANCE_VENDORS),
+            ("GAMING_VENDORS", GAMING_VENDORS),
+            ("TV_VENDORS", TV_VENDORS),
+            ("GATEWAY_VENDORS", GATEWAY_VENDORS),
+        ];
+
+        for (list_name, vendors) in check_lists {
+            for vendor in *vendors {
+                // Skip vendors that may only appear via hostname/model detection, not MAC OUI
+                let optional = [
+                    "Sonos", "Canon", "Epson", "Netgear", "Linksys", "MikroTik",
+                    "Juniper", "Fortinet", "pfSense", "Asus", "Hisense", "Vizio",
+                ];
+                if optional.contains(vendor) {
+                    continue;
+                }
+                assert!(
+                    map_vendors.contains(vendor),
+                    "Vendor {:?} from {} not found in MAC_VENDOR_MAP",
+                    vendor,
+                    list_name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_binary_search_finds_known_vendors() {
+        assert_eq!(get_mac_vendor("00:03:93:ab:cd:ef"), Some("Apple"));
+        assert_eq!(get_mac_vendor("00:02:78:11:22:33"), Some("Samsung"));
+        assert_eq!(get_mac_vendor("fc:f1:52:aa:bb:cc"), Some("Sony"));
+        assert_eq!(get_mac_vendor("ff:ff:ff:ff:ff:ff"), None);
     }
 }

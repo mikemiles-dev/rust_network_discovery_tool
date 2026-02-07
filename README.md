@@ -302,6 +302,43 @@ The web UI includes a **Settings** tab for configuring runtime options without r
 4. Click **Save Settings**
 5. Restart the application for timing changes to take effect
 
+## Updating the MAC Vendor Database
+
+The MAC vendor database (`src/network/endpoint/mac_vendors.rs`) is auto-generated from the IEEE OUI registry using a standalone tool. To regenerate it with the latest data:
+
+```bash
+# Build and run the generator
+cd tools/oui-generator
+cargo run --release -- --verify
+
+# Or with explicit output path
+cargo run --release -- --output ../../src/network/endpoint/mac_vendors.rs --verify
+```
+
+This downloads the official IEEE MA-L OUI CSV (~30K+ entries), merges with hand-curated overrides in `overrides.toml`, and generates a sorted Rust source file. The `--verify` flag confirms all original override entries are preserved.
+
+### Generator Options
+
+| Flag | Description |
+|------|-------------|
+| `--output <path>` | Output path for generated `mac_vendors.rs` (default: `../../src/network/endpoint/mac_vendors.rs`) |
+| `--overrides <path>` | Path to `overrides.toml` (default: `overrides.toml`) |
+| `--verify` | Verify all override entries are preserved after generation |
+| `--verify-only` | Only verify existing output without regenerating |
+| `--macaddress-io-key <KEY>` | Optional macaddress.io API key for enrichment (free tier: 1,000 req/day) |
+| `--max-queries <N>` | Max macaddress.io API queries per run (default: 100) |
+
+### Adding Custom Vendor Overrides
+
+To add or correct vendor names, edit `tools/oui-generator/overrides.toml`:
+
+```toml
+[overrides]
+"aa:bb:cc" = "My Vendor"
+```
+
+Then regenerate with `cargo run --release -- --verify`.
+
 ## How It Works
 
 1. **Captures packets** on selected network interfaces using libpnet
