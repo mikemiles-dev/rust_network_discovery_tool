@@ -325,6 +325,7 @@ pub(crate) const APPLIANCE_VENDORS: &[&str] = &[
     "Seeed",             // IoT devices
     "Texas Instruments", // IoT chips (used in Wyze, SmartThings)
     "Espressif",         // ESP32/ESP8266 IoT modules
+    "WiZ",               // Smart lighting (WiZ Connected)
 ];
 
 // Gaming vendors that should be classified as gaming devices
@@ -346,6 +347,7 @@ pub(crate) const GATEWAY_VENDORS: &[&str] = &[
     "Fortinet",  // Firewalls/routers
     "pfSense",   // Firewalls
     "Asus",      // Routers (among other things)
+    "eero",      // Mesh routers
 ];
 
 // Services that indicate a Mac (desktop/laptop) vs mobile device

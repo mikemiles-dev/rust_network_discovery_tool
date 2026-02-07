@@ -963,5 +963,27 @@ mod tests {
             ),
             Some("printer")
         );
+        // eero mesh router MAC = gateway
+        assert_eq!(
+            EndPoint::classify_device_type(
+                Some("eero-2b09"),
+                &[],
+                &[],
+                &["00:ab:48:12:34:56".to_string()],
+                None
+            ),
+            Some("gateway")
+        );
+        // WiZ smart lighting MAC = appliance
+        assert_eq!(
+            EndPoint::classify_device_type(
+                Some("unknown"),
+                &[],
+                &[],
+                &["d8:a0:11:12:34:56".to_string()],
+                None
+            ),
+            Some("appliance")
+        );
     }
 }
