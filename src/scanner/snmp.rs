@@ -281,6 +281,9 @@ impl SnmpScanner {
             pos += oid_len_bytes;
 
             // Decode OID
+            if pos + oid_len > data.len() {
+                break;
+            }
             let oid_data = &data[pos..pos + oid_len];
             let mut oid = Vec::new();
             if !oid_data.is_empty() {
@@ -307,6 +310,10 @@ impl SnmpScanner {
             pos += 1;
             let (val_len, val_len_bytes) = Self::decode_length(&data[pos..])?;
             pos += val_len_bytes;
+
+            if pos + val_len > data.len() {
+                break;
+            }
 
             let value_str = match value_type {
                 0x04 => {
@@ -337,12 +344,16 @@ impl SnmpScanner {
                     oid_parts.join(".")
                 }
                 0x02 => {
-                    // INTEGER
-                    let mut val = 0i64;
-                    for b in &data[pos..pos + val_len] {
-                        val = (val << 8) | *b as i64;
+                    // INTEGER - BER uses two's complement, so handle sign bit
+                    if val_len == 0 {
+                        "0".to_string()
+                    } else {
+                        let mut val = if data[pos] & 0x80 != 0 { -1i64 } else { 0i64 };
+                        for b in &data[pos..pos + val_len] {
+                            val = (val << 8) | *b as i64;
+                        }
+                        val.to_string()
                     }
-                    val.to_string()
                 }
                 0x40 => {
                     // IpAddress
@@ -408,7 +419,8 @@ impl SnmpScanner {
             }
 
             let mut buf = [0u8; 2048];
-            if let Ok((len, _)) = socket.recv_from(&mut buf)
+            if let Ok((len, src)) = socket.recv_from(&mut buf)
+                && src.ip() == IpAddr::V4(ip)
                 && let Some(varbinds) = Self::parse_response(&buf[..len])
             {
                 let mut sys_descr = None;

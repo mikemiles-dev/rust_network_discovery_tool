@@ -123,10 +123,11 @@ pub fn get_hostname_vendor(hostname: &str) -> Option<&'static str> {
 }
 
 /// Characterize vendor from all available sources, returning the best match with source info.
-/// Priority: custom_vendor (UserSet) > SSDP (DeviceReported) > hostname (PatternMatched) > MAC (NetworkInferred)
+/// Priority: custom_vendor (UserSet) > DeviceReported(SSDP, SNMP) > hostname (PatternMatched) > MAC (NetworkInferred)
 pub fn characterize_vendor(
     custom_vendor: Option<&str>,
     ssdp_friendly_name: Option<&str>,
+    snmp_vendor: Option<&str>,
     hostname: Option<&str>,
     macs: &[String],
     model: Option<&str>,
@@ -158,6 +159,11 @@ pub fn characterize_vendor(
         })
         .map(|v| Characterized::device_reported(v.to_string()));
 
+    // SNMP-reported vendor (device self-reports via sysDescr)
+    let from_snmp = snmp_vendor
+        .filter(|v| !v.is_empty())
+        .map(|v| Characterized::device_reported(v.to_string()));
+
     // Hostname pattern matching
     let from_hostname = hostname
         .filter(|h| !h.is_empty())
@@ -177,7 +183,7 @@ pub fn characterize_vendor(
         .map(|v| Characterized::network_inferred(v.to_string()));
 
     // Pick the best one (highest priority source)
-    pick_best(&[user, ssdp, from_hostname, from_model, from_mac])
+    pick_best(&[user, ssdp, from_snmp, from_hostname, from_model, from_mac])
 }
 
 pub fn get_vendor_from_model(model: &str) -> Option<&'static str> {

@@ -117,6 +117,30 @@ impl EndPoint {
             conn.execute("ALTER TABLE endpoints ADD COLUMN auto_device_type TEXT", [])?;
         }
 
+        // Migration: Add snmp_vendor column for SNMP-discovered vendor
+        let has_snmp_vendor: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_table_info('endpoints') WHERE name = 'snmp_vendor'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !has_snmp_vendor {
+            conn.execute("ALTER TABLE endpoints ADD COLUMN snmp_vendor TEXT", [])?;
+        }
+
+        // Migration: Add snmp_model column for SNMP-discovered model (separate from ssdp_model)
+        let has_snmp_model: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_table_info('endpoints') WHERE name = 'snmp_model'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !has_snmp_model {
+            conn.execute("ALTER TABLE endpoints ADD COLUMN snmp_model TEXT", [])?;
+        }
+
         // Migration: Add netbios_name column for NetBIOS discovered names
         let has_netbios_name: bool = conn
             .query_row(

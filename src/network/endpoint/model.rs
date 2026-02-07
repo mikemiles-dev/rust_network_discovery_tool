@@ -158,10 +158,11 @@ pub fn normalize_model_name(model: &str, vendor: Option<&str>) -> Option<String>
 }
 
 /// Characterize model from all available sources, returning the best match with source info.
-/// Priority: custom_model (UserSet) > SSDP model (DeviceReported) > hostname (PatternMatched) > MAC/vendor inference (NetworkInferred)
+/// Priority: custom_model (UserSet) > DeviceReported(SSDP, SNMP) > hostname (PatternMatched) > MAC/vendor inference (NetworkInferred)
 pub fn characterize_model(
     custom_model: Option<&str>,
     ssdp_model: Option<&str>,
+    snmp_model: Option<&str>,
     hostname: Option<&str>,
     macs: &[String],
     vendor: Option<&str>,
@@ -177,6 +178,11 @@ pub fn characterize_model(
         .filter(|m| !m.is_empty())
         .and_then(|m| normalize_model_name(m, vendor).or_else(|| Some(m.to_string())))
         .map(Characterized::device_reported);
+
+    // SNMP model - device self-reports via sysDescr
+    let from_snmp = snmp_model
+        .filter(|m| !m.is_empty())
+        .map(|m| Characterized::device_reported(m.to_string()));
 
     // Hostname-based model detection
     let from_hostname = hostname
@@ -201,7 +207,7 @@ pub fn characterize_model(
         .map(Characterized::pattern_matched);
 
     // Pick the best one (highest priority source)
-    pick_best(&[user, ssdp, from_hostname, from_mac, from_vendor_type])
+    pick_best(&[user, ssdp, from_snmp, from_hostname, from_mac, from_vendor_type])
 }
 
 /// Extract model name from hostname patterns

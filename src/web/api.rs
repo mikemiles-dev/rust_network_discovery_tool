@@ -1167,29 +1167,35 @@ pub async fn probe_endpoint(body: Json<ProbeEndpointRequest>) -> impl Responder 
                         if let Some(ref sys_descr) = result.sys_descr {
                             let (vendor, model) = parse_snmp_sys_descr(sys_descr);
                             if let Some(v) = &vendor {
-                                let rows = conn.execute(
-                                    "UPDATE endpoints SET vendor = ?1 WHERE id = ?2 AND (vendor IS NULL OR vendor = '')",
+                                match conn.execute(
+                                    "UPDATE endpoints SET snmp_vendor = ?1 WHERE id = ?2 AND (snmp_vendor IS NULL OR snmp_vendor = '')",
                                     params![v, eid],
-                                ).unwrap_or(0);
-                                if rows > 0 {
-                                    insert_notification_with_endpoint_id(
-                                        &conn, "vendor_identified",
-                                        &format!("Vendor identified: {}", v),
-                                        None, None, Some(eid),
-                                    );
+                                ) {
+                                    Ok(rows) if rows > 0 => {
+                                        insert_notification_with_endpoint_id(
+                                            &conn, "vendor_identified",
+                                            &format!("Vendor identified: {}", v),
+                                            None, None, Some(eid),
+                                        );
+                                    }
+                                    Err(e) => eprintln!("Failed to save SNMP vendor: {}", e),
+                                    _ => {}
                                 }
                             }
                             if let Some(m) = &model {
-                                let rows = conn.execute(
-                                    "UPDATE endpoints SET ssdp_model = ?1 WHERE id = ?2 AND (ssdp_model IS NULL OR ssdp_model = '')",
+                                match conn.execute(
+                                    "UPDATE endpoints SET snmp_model = ?1 WHERE id = ?2 AND (snmp_model IS NULL OR snmp_model = '')",
                                     params![m, eid],
-                                ).unwrap_or(0);
-                                if rows > 0 {
-                                    insert_notification_with_endpoint_id(
-                                        &conn, "model_identified",
-                                        &format!("Device model identified: {}", m),
-                                        None, None, Some(eid),
-                                    );
+                                ) {
+                                    Ok(rows) if rows > 0 => {
+                                        insert_notification_with_endpoint_id(
+                                            &conn, "model_identified",
+                                            &format!("Device model identified: {}", m),
+                                            None, None, Some(eid),
+                                        );
+                                    }
+                                    Err(e) => eprintln!("Failed to save SNMP model: {}", e),
+                                    _ => {}
                                 }
                             }
                         }
@@ -2224,31 +2230,37 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
 
                     // Update vendor if we found one and endpoint doesn't have one
                     if let Some(v) = &vendor {
-                        let rows = conn.execute(
-                            "UPDATE endpoints SET vendor = ?1 WHERE id = ?2 AND (vendor IS NULL OR vendor = '')",
+                        match conn.execute(
+                            "UPDATE endpoints SET snmp_vendor = ?1 WHERE id = ?2 AND (snmp_vendor IS NULL OR snmp_vendor = '')",
                             params![v, endpoint_id],
-                        ).unwrap_or(0);
-                        if rows > 0 {
-                            insert_notification_with_endpoint_id(
-                                &conn, "vendor_identified",
-                                &format!("Vendor identified: {}", v),
-                                None, None, Some(endpoint_id),
-                            );
+                        ) {
+                            Ok(rows) if rows > 0 => {
+                                insert_notification_with_endpoint_id(
+                                    &conn, "vendor_identified",
+                                    &format!("Vendor identified: {}", v),
+                                    None, None, Some(endpoint_id),
+                                );
+                            }
+                            Err(e) => eprintln!("Failed to save SNMP vendor: {}", e),
+                            _ => {}
                         }
                     }
 
                     // Update model if we found one and endpoint doesn't have one
                     if let Some(m) = &model {
-                        let rows = conn.execute(
-                            "UPDATE endpoints SET model = ?1 WHERE id = ?2 AND (model IS NULL OR model = '')",
+                        match conn.execute(
+                            "UPDATE endpoints SET snmp_model = ?1 WHERE id = ?2 AND (snmp_model IS NULL OR snmp_model = '')",
                             params![m, endpoint_id],
-                        ).unwrap_or(0);
-                        if rows > 0 {
-                            insert_notification_with_endpoint_id(
-                                &conn, "model_identified",
-                                &format!("Device model identified: {}", m),
-                                None, None, Some(endpoint_id),
-                            );
+                        ) {
+                            Ok(rows) if rows > 0 => {
+                                insert_notification_with_endpoint_id(
+                                    &conn, "model_identified",
+                                    &format!("Device model identified: {}", m),
+                                    None, None, Some(endpoint_id),
+                                );
+                            }
+                            Err(e) => eprintln!("Failed to save SNMP model: {}", e),
+                            _ => {}
                         }
                     }
                 }
@@ -2326,7 +2338,16 @@ fn parse_snmp_sys_descr(sys_descr: &str) -> (Option<String>, Option<String>) {
 
     let mut vendor: Option<String> = None;
     for (pattern, name) in vendor_patterns {
-        if descr_lower.contains(pattern) {
+        // "hp " needs word boundary check to avoid matching "chapter", "graph ", etc.
+        if *pattern == "hp " {
+            if descr_lower.starts_with("hp ")
+                || descr_lower.contains(" hp ")
+                || descr_lower.contains("\nhp ")
+            {
+                vendor = Some(name.to_string());
+                break;
+            }
+        } else if descr_lower.contains(pattern) {
             vendor = Some(name.to_string());
             break;
         }
@@ -2732,12 +2753,12 @@ pub async fn get_endpoints_table() -> impl Responder {
         .iter()
         .filter_map(|endpoint| {
             let endpoint_lower = endpoint.to_lowercase();
-            let (_custom_model, ssdp_model, ssdp_friendly, custom_vendor) = endpoint_ssdp_models
+            let (_custom_model, ssdp_model, ssdp_friendly, custom_vendor, snmp_vendor, _snmp_model) = endpoint_ssdp_models
                 .get(&endpoint_lower)
-                .map(|(cm, sm, sf, cv)| {
-                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
+                .map(|(cm, sm, sf, cv, sv, snm)| {
+                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref(), sv.as_deref(), snm.as_deref())
                 })
-                .unwrap_or((None, None, None, None));
+                .unwrap_or((None, None, None, None, None, None));
 
             let macs: Vec<String> = endpoint_ips_macs
                 .get(&endpoint_lower)
@@ -2754,6 +2775,7 @@ pub async fn get_endpoints_table() -> impl Responder {
             characterize_vendor(
                 custom_vendor,
                 ssdp_friendly,
+                snmp_vendor,
                 Some(endpoint.as_str()),
                 &macs,
                 ssdp_model,
@@ -2767,12 +2789,12 @@ pub async fn get_endpoints_table() -> impl Responder {
         .iter()
         .filter_map(|endpoint| {
             let endpoint_lower = endpoint.to_lowercase();
-            let (custom_model, ssdp_model, _, _) = endpoint_ssdp_models
+            let (custom_model, ssdp_model, _, _, _, snmp_model) = endpoint_ssdp_models
                 .get(&endpoint_lower)
-                .map(|(cm, sm, sf, cv)| {
-                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
+                .map(|(cm, sm, sf, cv, sv, snm)| {
+                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref(), sv.as_deref(), snm.as_deref())
                 })
-                .unwrap_or((None, None, None, None));
+                .unwrap_or((None, None, None, None, None, None));
 
             let macs: Vec<String> = endpoint_ips_macs
                 .get(&endpoint_lower)
@@ -2784,6 +2806,7 @@ pub async fn get_endpoints_table() -> impl Responder {
             characterize_model(
                 custom_model,
                 ssdp_model,
+                snmp_model,
                 Some(endpoint.as_str()),
                 &macs,
                 vendor,
@@ -2918,12 +2941,12 @@ pub async fn export_endpoints_xlsx() -> impl Responder {
         .iter()
         .filter_map(|endpoint| {
             let endpoint_lower = endpoint.to_lowercase();
-            let (_custom_model, ssdp_model, ssdp_friendly, custom_vendor) = endpoint_ssdp_models
+            let (_custom_model, ssdp_model, ssdp_friendly, custom_vendor, snmp_vendor, _snmp_model) = endpoint_ssdp_models
                 .get(&endpoint_lower)
-                .map(|(cm, sm, sf, cv)| {
-                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
+                .map(|(cm, sm, sf, cv, sv, snm)| {
+                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref(), sv.as_deref(), snm.as_deref())
                 })
-                .unwrap_or((None, None, None, None));
+                .unwrap_or((None, None, None, None, None, None));
 
             let macs: Vec<String> = endpoint_ips_macs
                 .get(&endpoint_lower)
@@ -2940,6 +2963,7 @@ pub async fn export_endpoints_xlsx() -> impl Responder {
             characterize_vendor(
                 custom_vendor,
                 ssdp_friendly,
+                snmp_vendor,
                 Some(endpoint.as_str()),
                 &macs,
                 ssdp_model,
@@ -2953,12 +2977,12 @@ pub async fn export_endpoints_xlsx() -> impl Responder {
         .iter()
         .filter_map(|endpoint| {
             let endpoint_lower = endpoint.to_lowercase();
-            let (custom_model, ssdp_model, _, _) = endpoint_ssdp_models
+            let (custom_model, ssdp_model, _, _, _, snmp_model) = endpoint_ssdp_models
                 .get(&endpoint_lower)
-                .map(|(cm, sm, sf, cv)| {
-                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref())
+                .map(|(cm, sm, sf, cv, sv, snm)| {
+                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref(), sv.as_deref(), snm.as_deref())
                 })
-                .unwrap_or((None, None, None, None));
+                .unwrap_or((None, None, None, None, None, None));
 
             let macs: Vec<String> = endpoint_ips_macs
                 .get(&endpoint_lower)
@@ -2970,6 +2994,7 @@ pub async fn export_endpoints_xlsx() -> impl Responder {
             characterize_model(
                 custom_model,
                 ssdp_model,
+                snmp_model,
                 Some(endpoint.as_str()),
                 &macs,
                 vendor,
