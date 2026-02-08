@@ -257,6 +257,10 @@ impl MDnsLookup {
                                                          AND custom_name IS NULL",
                                                         rusqlite::params![host, addr],
                                                     );
+
+                                                    // Try to merge: if this IP's endpoint has only randomized MACs,
+                                                    // and another endpoint already has this hostname, merge into it
+                                                    Self::try_merge_by_hostname_for_ip(conn, &addr, &host);
                                                 } else {
                                                     // Create new endpoint from mDNS discovery
                                                     let now = chrono::Utc::now().timestamp();
@@ -377,6 +381,96 @@ impl MDnsLookup {
         }
 
         None
+    }
+
+    /// Merge a bare-IP/randomized-MAC endpoint into an existing endpoint with the same hostname.
+    /// Called from mDNS discovery when a hostname is resolved for an IP.
+    fn try_merge_by_hostname_for_ip(conn: &rusqlite::Connection, ip: &str, hostname: &str) {
+        // Find the endpoint ID for this IP
+        let source_id: Option<i64> = conn
+            .query_row(
+                "SELECT endpoint_id FROM endpoint_attributes WHERE ip = ?1 LIMIT 1",
+                rusqlite::params![ip],
+                |row| row.get(0),
+            )
+            .ok();
+
+        let Some(source_id) = source_id else {
+            return;
+        };
+
+        // Check if this endpoint has any real (non-randomized) MAC
+        let has_real_mac: bool = conn
+            .query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM endpoint_attributes
+                    WHERE endpoint_id = ?1
+                    AND mac IS NOT NULL AND mac != ''
+                    AND UPPER(SUBSTR(mac, 2, 1)) NOT IN ('2', '6', 'A', 'E')
+                )",
+                rusqlite::params![source_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(true);
+
+        if has_real_mac {
+            return;
+        }
+
+        // Find another endpoint with the same name or custom_name
+        let target_id: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM endpoints
+                 WHERE id != ?1
+                 AND (LOWER(name) = LOWER(?2) OR LOWER(custom_name) = LOWER(?2))
+                 LIMIT 1",
+                rusqlite::params![source_id, hostname],
+                |row| row.get(0),
+            )
+            .ok();
+
+        let Some(target_id) = target_id else {
+            return;
+        };
+
+        // Merge source into target
+        let _ = conn.execute(
+            "UPDATE OR IGNORE endpoint_attributes SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+            rusqlite::params![target_id, source_id],
+        );
+        let _ = conn.execute(
+            "DELETE FROM endpoint_attributes WHERE endpoint_id = ?1",
+            [source_id],
+        );
+        let _ = conn.execute(
+            "UPDATE OR IGNORE communications SET src_endpoint_id = ?1 WHERE src_endpoint_id = ?2",
+            rusqlite::params![target_id, source_id],
+        );
+        let _ = conn.execute(
+            "UPDATE OR IGNORE communications SET dst_endpoint_id = ?1 WHERE dst_endpoint_id = ?2",
+            rusqlite::params![target_id, source_id],
+        );
+        let _ = conn.execute(
+            "DELETE FROM communications WHERE src_endpoint_id = ?1 OR dst_endpoint_id = ?1",
+            [source_id],
+        );
+        let _ = conn.execute(
+            "UPDATE OR IGNORE open_ports SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+            rusqlite::params![target_id, source_id],
+        );
+        let _ = conn.execute(
+            "DELETE FROM open_ports WHERE endpoint_id = ?1",
+            [source_id],
+        );
+        let _ = conn.execute(
+            "UPDATE scan_results SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+            rusqlite::params![target_id, source_id],
+        );
+        let _ = conn.execute("DELETE FROM endpoints WHERE id = ?1", [source_id]);
+        eprintln!(
+            "mDNS: Merged endpoint {} into {} (same hostname: {})",
+            source_id, target_id, hostname
+        );
     }
 
     /// Spawn a background task to probe for hostname and cache it

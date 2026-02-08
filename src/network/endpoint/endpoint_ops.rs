@@ -296,10 +296,11 @@ impl EndPoint {
 
                 if should_insert {
                     // Attempt to insert - will be ignored if duplicate due to UNIQUE constraint
+                    // Use original mac (not lookup_mac) so randomized MACs are stored for tracking
                     let _ = EndPointAttribute::insert_endpoint_attribute_with_dhcp(
                         conn,
                         id,
-                        lookup_mac,
+                        mac.clone(),
                         ip.clone(),
                         hostname.clone().unwrap_or(ip.clone().unwrap_or_default()),
                         dhcp_client_id.clone(),
@@ -317,9 +318,10 @@ impl EndPoint {
                 (id, false)
             }
             _ => {
+                // Use original mac (not lookup_mac) so randomized MACs are stored for tracking
                 let id = Self::insert_endpoint_with_dhcp(
                     conn,
-                    lookup_mac.clone(),
+                    mac.clone(),
                     ip.clone(),
                     hostname.clone(),
                     dhcp_client_id.clone(),
@@ -385,6 +387,8 @@ impl EndPoint {
             )?;
             // When updating to a valid hostname, try to merge other IPv6 endpoints on same prefix
             Self::merge_ipv6_siblings_into_endpoint(conn, endpoint_id);
+            // Try to merge this endpoint into an existing one with the same hostname
+            Self::try_merge_by_hostname(conn, endpoint_id, &hostname);
         }
 
         Ok(())
@@ -486,6 +490,84 @@ impl EndPoint {
                 );
             }
         }
+    }
+
+    /// Merge a bare-IP/randomized-MAC endpoint into an existing endpoint with the same hostname.
+    /// Only merges if the current endpoint has no real (non-locally-administered) MAC,
+    /// to avoid accidentally merging two well-identified devices.
+    fn try_merge_by_hostname(conn: &Connection, endpoint_id: i64, hostname: &str) {
+        // Check if this endpoint has any real (non-randomized) MAC
+        let has_real_mac: bool = conn
+            .query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM endpoint_attributes
+                    WHERE endpoint_id = ?1
+                    AND mac IS NOT NULL AND mac != ''
+                    AND UPPER(SUBSTR(mac, 2, 1)) NOT IN ('2', '6', 'A', 'E')
+                )",
+                params![endpoint_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(true); // Default to true (don't merge) on error
+
+        if has_real_mac {
+            return; // Only merge bare-IP or randomized-MAC endpoints
+        }
+
+        // Find another endpoint with the same name or custom_name (case-insensitive)
+        let target_id: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM endpoints
+                 WHERE id != ?1
+                 AND (LOWER(name) = LOWER(?2) OR LOWER(custom_name) = LOWER(?2))
+                 LIMIT 1",
+                params![endpoint_id, hostname],
+                |row| row.get(0),
+            )
+            .ok();
+
+        let Some(target_id) = target_id else {
+            return;
+        };
+
+        // Merge current endpoint INTO the target (keep the older, better-identified one)
+        let _ = conn.execute(
+            "UPDATE OR IGNORE endpoint_attributes SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+            params![target_id, endpoint_id],
+        );
+        let _ = conn.execute(
+            "DELETE FROM endpoint_attributes WHERE endpoint_id = ?1",
+            [endpoint_id],
+        );
+        let _ = conn.execute(
+            "UPDATE OR IGNORE communications SET src_endpoint_id = ?1 WHERE src_endpoint_id = ?2",
+            params![target_id, endpoint_id],
+        );
+        let _ = conn.execute(
+            "UPDATE OR IGNORE communications SET dst_endpoint_id = ?1 WHERE dst_endpoint_id = ?2",
+            params![target_id, endpoint_id],
+        );
+        let _ = conn.execute(
+            "DELETE FROM communications WHERE src_endpoint_id = ?1 OR dst_endpoint_id = ?1",
+            [endpoint_id],
+        );
+        let _ = conn.execute(
+            "UPDATE OR IGNORE open_ports SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+            params![target_id, endpoint_id],
+        );
+        let _ = conn.execute(
+            "DELETE FROM open_ports WHERE endpoint_id = ?1",
+            [endpoint_id],
+        );
+        let _ = conn.execute(
+            "UPDATE scan_results SET endpoint_id = ?1 WHERE endpoint_id = ?2",
+            params![target_id, endpoint_id],
+        );
+        let _ = conn.execute("DELETE FROM endpoints WHERE id = ?1", [endpoint_id]);
+        println!(
+            "Merged endpoint {} into {} (same hostname: {})",
+            endpoint_id, target_id, hostname
+        );
     }
 
     pub fn is_on_local_network(ip: &str) -> bool {

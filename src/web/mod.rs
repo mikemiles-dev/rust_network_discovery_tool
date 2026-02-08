@@ -338,18 +338,19 @@ pub(super) fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
                 EXISTS (
                     SELECT 1 FROM endpoint_attributes ea2
                     WHERE ea2.endpoint_id = e.id
-                    AND ea2.mac IS NOT NULL
-                    AND ea2.mac != ''
+                    AND ea2.mac IS NOT NULL AND ea2.mac != ''
                     AND UPPER(SUBSTR(ea2.mac, 2, 1)) NOT IN ('2', '6', 'A', 'E')
                 )
                 OR
-                -- Or has no MACs at all (allow IP-only endpoints)
-                NOT EXISTS (
-                    SELECT 1 FROM endpoint_attributes ea3
-                    WHERE ea3.endpoint_id = e.id
-                    AND ea3.mac IS NOT NULL
-                    AND ea3.mac != ''
-                )
+                -- Has a user-set custom name
+                e.custom_name IS NOT NULL
+                OR
+                -- Has a valid hostname (identified even without real MAC)
+                (e.name IS NOT NULL AND e.name != ''
+                 AND e.name NOT LIKE '%:%'
+                 AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'
+                 AND NOT (LENGTH(e.name) = 36 AND e.name GLOB
+                   '[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*'))
             )
         ",
         ) {
