@@ -842,6 +842,11 @@ pub fn get_model_from_hostname(hostname: &str) -> Option<String> {
         }
     }
 
+    // Hatch Rest+ baby sound machine
+    if lower.starts_with("restplus") {
+        return Some("Hatch Rest+".to_string());
+    }
+
     // Ecobee thermostats
     if lower.contains("ecobee") {
         if lower.contains("lite") {

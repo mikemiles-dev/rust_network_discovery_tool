@@ -272,6 +272,8 @@ pub(crate) const APPLIANCE_PATTERNS: &[&str] = &[
     "blink",      // Blink cameras
     // Wyze cameras (often use lcc- hostname prefix)
     "lcc-", // Wyze camera cloud prefix
+    // Baby sound machines
+    "restplus", // Hatch Rest+ baby sound machine
 ];
 pub(crate) const LG_APPLIANCE_PREFIXES: &[&str] =
     &["lma", "lmw", "ldf", "ldt", "ldp", "dle", "dlex", "lrmv"];

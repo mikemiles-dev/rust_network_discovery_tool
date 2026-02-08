@@ -82,6 +82,10 @@ pub fn get_hostname_vendor(hostname: &str) -> Option<&'static str> {
     if lower.contains("ecobee") {
         return Some("Ecobee");
     }
+    // Hatch Rest+ baby sound machine
+    if lower.starts_with("restplus") {
+        return Some("Hatch");
+    }
     // iRobot Roomba
     if lower.contains("irobot") || lower.contains("roomba") {
         return Some("iRobot");
