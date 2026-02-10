@@ -21,15 +21,14 @@ use crate::db::{
 };
 use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::endpoint::{
-    EndPoint, characterize_model, characterize_vendor, get_mac_vendor,
-    get_model_from_hostname, get_model_from_mac, get_model_from_vendor_and_type,
-    infer_model_with_context, is_valid_display_name, normalize_model_name,
-    strip_local_suffix,
+    EndPoint, characterize_model, characterize_vendor, get_mac_vendor, get_model_from_hostname,
+    get_model_from_mac, get_model_from_vendor_and_type, infer_model_with_context,
+    is_valid_display_name, normalize_model_name, strip_local_suffix,
 };
 use crate::network::mdns_lookup::MDnsLookup;
 use crate::network::protocol::ProtocolPort;
+use crate::scanner::ScanType;
 use rusqlite::{Connection, params};
-use crate::scanner::{ScanType};
 
 // Combined endpoint stats (bytes, last_seen, online) from single query
 #[derive(Clone)]
@@ -227,7 +226,11 @@ pub(super) fn is_hp_printer_model(model: &str) -> bool {
 }
 
 /// Extract text content between HTML tags (case-insensitive tag matching)
-pub(super) fn extract_tag_content<'a>(html: &'a str, html_lower: &str, tag: &str) -> Option<&'a str> {
+pub(super) fn extract_tag_content<'a>(
+    html: &'a str,
+    html_lower: &str,
+    tag: &str,
+) -> Option<&'a str> {
     let open_tag = format!("<{}>", tag);
     let close_tag = format!("</{}>", tag);
     let start = html_lower.find(&open_tag)?;
@@ -286,9 +289,12 @@ pub(super) fn probe_and_save_hp_printer_model_blocking(ip: &str, endpoint_id: i6
             ).unwrap_or(0);
             if rows > 0 {
                 insert_notification_with_endpoint_id(
-                    &conn, "model_identified",
+                    &conn,
+                    "model_identified",
                     &format!("Device model identified: {}", model),
-                    None, None, Some(endpoint_id),
+                    None,
+                    None,
+                    Some(endpoint_id),
                 );
             }
         }
@@ -569,7 +575,10 @@ pub(super) fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) ->
 /// Extract listening ports from communications data (already filtered for graph)
 /// Only shows destination ports where endpoint is the destination (ports it's listening on)
 /// Excludes ephemeral ports (49152-65535) which are just used for receiving responses
-pub(super) fn get_ports_from_communications(communications: &[Node], selected_endpoint: &str) -> Vec<String> {
+pub(super) fn get_ports_from_communications(
+    communications: &[Node],
+    selected_endpoint: &str,
+) -> Vec<String> {
     let mut ports: std::collections::HashSet<i64> = std::collections::HashSet::new();
 
     for node in communications {
@@ -593,7 +602,9 @@ pub(super) fn get_ports_from_communications(communications: &[Node], selected_en
     ports_vec.into_iter().map(|p| p.to_string()).collect()
 }
 
-pub(super) fn get_endpoint_ips_and_macs(endpoints: &[String]) -> HashMap<String, (Vec<String>, Vec<String>)> {
+pub(super) fn get_endpoint_ips_and_macs(
+    endpoints: &[String],
+) -> HashMap<String, (Vec<String>, Vec<String>)> {
     let conn = new_connection();
     let mut result: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
 
@@ -697,7 +708,9 @@ pub(super) type EndpointModelData = (
 
 /// Get model, vendor, and SNMP data for all endpoints
 /// Returns: (custom_model, ssdp_model, ssdp_friendly_name, custom_vendor, snmp_vendor, snmp_model)
-pub(super) fn get_endpoint_ssdp_models(_endpoints: &[String]) -> HashMap<String, EndpointModelData> {
+pub(super) fn get_endpoint_ssdp_models(
+    _endpoints: &[String],
+) -> HashMap<String, EndpointModelData> {
     let conn = match new_connection_result() {
         Ok(c) => c,
         Err(e) => {
@@ -720,29 +733,32 @@ pub(super) fn get_endpoint_ssdp_models(_endpoints: &[String]) -> HashMap<String,
     let mut stmt = match conn.prepare(&query) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("get_endpoint_ssdp_models: failed to prepare statement: {}", e);
+            eprintln!(
+                "get_endpoint_ssdp_models: failed to prepare statement: {}",
+                e
+            );
             return result;
         }
     };
 
     let rows = match stmt.query_map([], |row| {
-            let display_name: Option<String> = row.get(0)?;
-            let custom_model: Option<String> = row.get(1)?;
-            let ssdp_model: Option<String> = row.get(2)?;
-            let friendly_name: Option<String> = row.get(3)?;
-            let custom_vendor: Option<String> = row.get(4)?;
-            let snmp_vendor: Option<String> = row.get(5)?;
-            let snmp_model: Option<String> = row.get(6)?;
-            Ok((
-                display_name,
-                custom_model,
-                ssdp_model,
-                friendly_name,
-                custom_vendor,
-                snmp_vendor,
-                snmp_model,
-            ))
-        }) {
+        let display_name: Option<String> = row.get(0)?;
+        let custom_model: Option<String> = row.get(1)?;
+        let ssdp_model: Option<String> = row.get(2)?;
+        let friendly_name: Option<String> = row.get(3)?;
+        let custom_vendor: Option<String> = row.get(4)?;
+        let snmp_vendor: Option<String> = row.get(5)?;
+        let snmp_model: Option<String> = row.get(6)?;
+        Ok((
+            display_name,
+            custom_model,
+            ssdp_model,
+            friendly_name,
+            custom_vendor,
+            snmp_vendor,
+            snmp_model,
+        ))
+    }) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("get_endpoint_ssdp_models: failed to execute query: {}", e);
@@ -751,8 +767,23 @@ pub(super) fn get_endpoint_ssdp_models(_endpoints: &[String]) -> HashMap<String,
     };
 
     for row in rows.flatten() {
-        let (display_name, custom_model, ssdp_model, friendly_name, custom_vendor, snmp_vendor, snmp_model) = row;
-        let data = (custom_model, ssdp_model, friendly_name, custom_vendor, snmp_vendor, snmp_model);
+        let (
+            display_name,
+            custom_model,
+            ssdp_model,
+            friendly_name,
+            custom_vendor,
+            snmp_vendor,
+            snmp_model,
+        ) = row;
+        let data = (
+            custom_model,
+            ssdp_model,
+            friendly_name,
+            custom_vendor,
+            snmp_vendor,
+            snmp_model,
+        );
 
         // Store under the computed display name - this matches what dropdown_endpoints returns
         if let Some(ref dn) = display_name
@@ -875,12 +906,13 @@ pub(super) fn resolve_identifier_to_endpoint_ids(conn: &Connection, identifier: 
 
 /// Resolve an IP or MAC identifier to the current display name of the matching endpoint.
 /// Uses `resolve_identifier_to_endpoint_ids` to find the endpoint, then queries its display name.
-pub(super) fn resolve_identifier_to_display_name(conn: &Connection, identifier: &str) -> Option<String> {
+pub(super) fn resolve_identifier_to_display_name(
+    conn: &Connection,
+    identifier: &str,
+) -> Option<String> {
     let ids = resolve_identifier_to_endpoint_ids(conn, identifier);
     let first_id = ids.first()?;
-    let sql = format!(
-        "SELECT {DISPLAY_NAME_SQL} FROM endpoints e WHERE e.id = ?1"
-    );
+    let sql = format!("SELECT {DISPLAY_NAME_SQL} FROM endpoints e WHERE e.id = ?1");
     conn.query_row(&sql, [first_id], |row| row.get::<_, Option<String>>(0))
         .ok()
         .flatten()
@@ -1425,7 +1457,6 @@ pub(super) fn get_dns_entries() -> Vec<DnsEntryView> {
         .collect()
 }
 
-
 // API handlers have been moved to api.rs
 
 pub(super) fn get_bytes_for_endpoint(hostname: String, internal_minutes: u64) -> BytesStats {
@@ -1467,7 +1498,10 @@ pub(super) fn get_bytes_for_endpoint(hostname: String, internal_minutes: u64) ->
     }
 }
 
-pub(super) fn get_all_endpoints_bytes(endpoints: &[String], internal_minutes: u64) -> HashMap<String, i64> {
+pub(super) fn get_all_endpoints_bytes(
+    endpoints: &[String],
+    internal_minutes: u64,
+) -> HashMap<String, i64> {
     let conn = new_connection();
     let mut result: HashMap<String, i64> = HashMap::new();
 
@@ -1619,16 +1653,11 @@ fn detect_existing_instance(ports: &[u16]) -> Option<(u16, u32)> {
         if let Ok(resp) = client
             .get(format!("http://127.0.0.1:{}/api/instance", port))
             .send()
+            && let Ok(json) = resp.json::<serde_json::Value>()
+            && json.get("app").and_then(|v| v.as_str()) == Some("awareness")
         {
-            if let Ok(json) = resp.json::<serde_json::Value>() {
-                if json.get("app").and_then(|v| v.as_str()) == Some("awareness") {
-                    let pid = json
-                        .get("pid")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0) as u32;
-                    return Some((port, pid));
-                }
-            }
+            let pid = json.get("pid").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            return Some((port, pid));
         }
     }
     None
@@ -1935,44 +1964,59 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
         "AzureWave",
     ];
     // Build vendor lookup using characterize_vendor for clean priority handling
-    let endpoint_vendors: HashMap<String, String> = dropdown_endpoints
-        .iter()
-        .filter_map(|endpoint| {
-            let endpoint_lower = endpoint.to_lowercase();
+    let endpoint_vendors: HashMap<String, String> =
+        dropdown_endpoints
+            .iter()
+            .filter_map(|endpoint| {
+                let endpoint_lower = endpoint.to_lowercase();
 
-            // Get data from various sources
-            let (_custom_model, ssdp_model, ssdp_friendly, custom_vendor, snmp_vendor, _snmp_model) = endpoint_ssdp_models
-                .get(&endpoint_lower)
-                .map(|(cm, sm, sf, cv, sv, snm)| {
-                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref(), sv.as_deref(), snm.as_deref())
-                })
-                .unwrap_or((None, None, None, None, None, None));
+                // Get data from various sources
+                let (
+                    _custom_model,
+                    ssdp_model,
+                    ssdp_friendly,
+                    custom_vendor,
+                    snmp_vendor,
+                    _snmp_model,
+                ) = endpoint_ssdp_models
+                    .get(&endpoint_lower)
+                    .map(|(cm, sm, sf, cv, sv, snm)| {
+                        (
+                            cm.as_deref(),
+                            sm.as_deref(),
+                            sf.as_deref(),
+                            cv.as_deref(),
+                            sv.as_deref(),
+                            snm.as_deref(),
+                        )
+                    })
+                    .unwrap_or((None, None, None, None, None, None));
 
-            let macs: Vec<String> = endpoint_ips_macs
-                .get(&endpoint_lower)
-                .map(|(_, m)| m.clone())
-                .unwrap_or_default()
-                // Filter out component manufacturers
-                .into_iter()
-                .filter(|mac| {
-                    get_mac_vendor(mac)
-                        .map(|v| !component_vendors.contains(&v))
-                        .unwrap_or(true)
-                })
-                .collect();
+                let macs: Vec<String> = endpoint_ips_macs
+                    .get(&endpoint_lower)
+                    .map(|(_, m)| m.clone())
+                    .unwrap_or_default()
+                    // Filter out component manufacturers
+                    .into_iter()
+                    .filter(|mac| {
+                        get_mac_vendor(mac)
+                            .map(|v| !component_vendors.contains(&v))
+                            .unwrap_or(true)
+                    })
+                    .collect();
 
-            // Use characterize_vendor for clean priority-based selection
-            characterize_vendor(
-                custom_vendor,
-                ssdp_friendly,
-                snmp_vendor,
-                Some(endpoint.as_str()),
-                &macs,
-                ssdp_model,
-            )
-            .map(|c| (endpoint_lower, c.value))
-        })
-        .collect();
+                // Use characterize_vendor for clean priority-based selection
+                characterize_vendor(
+                    custom_vendor,
+                    ssdp_friendly,
+                    snmp_vendor,
+                    Some(endpoint.as_str()),
+                    &macs,
+                    ssdp_model,
+                )
+                .map(|c| (endpoint_lower, c.value))
+            })
+            .collect();
 
     // Extract unique vendor names for the vendor dropdown filter
     let mut unique_vendors: Vec<String> = endpoint_vendors
@@ -1993,7 +2037,14 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
             let (custom_model, ssdp_model, _, _, _, snmp_model) = endpoint_ssdp_models
                 .get(&endpoint_lower)
                 .map(|(cm, sm, sf, cv, sv, snm)| {
-                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref(), sv.as_deref(), snm.as_deref())
+                    (
+                        cm.as_deref(),
+                        sm.as_deref(),
+                        sf.as_deref(),
+                        cv.as_deref(),
+                        sv.as_deref(),
+                        snm.as_deref(),
+                    )
                 })
                 .unwrap_or((None, None, None, None, None, None));
 
@@ -2125,8 +2176,22 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     let selected_lower = selected_endpoint.to_lowercase();
     let models_data = endpoint_ssdp_models.get(&selected_lower);
 
-    let (detail_custom_vendor, detail_ssdp_friendly, detail_snmp_vendor, detail_ssdp_model, detail_snmp_model) = models_data
-        .map(|(_, sm, sf, cv, sv, snm)| (cv.as_deref(), sf.as_deref(), sv.as_deref(), sm.as_deref(), snm.as_deref()))
+    let (
+        detail_custom_vendor,
+        detail_ssdp_friendly,
+        detail_snmp_vendor,
+        detail_ssdp_model,
+        detail_snmp_model,
+    ) = models_data
+        .map(|(_, sm, sf, cv, sv, snm)| {
+            (
+                cv.as_deref(),
+                sf.as_deref(),
+                sv.as_deref(),
+                sm.as_deref(),
+                snm.as_deref(),
+            )
+        })
         .unwrap_or((None, None, None, None, None));
 
     // Filter out component manufacturers from MACs for vendor detection
@@ -2262,7 +2327,6 @@ pub(super) struct NodeQuery {
     pub(super) mac: Option<String>,
     pub(super) scan_interval: Option<u64>,
 }
-
 
 #[cfg(test)]
 mod tests {

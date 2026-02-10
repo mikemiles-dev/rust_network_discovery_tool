@@ -21,8 +21,7 @@ use crate::network::device_control::DeviceController;
 use crate::network::endpoint::{
     EndPoint, characterize_model, characterize_vendor, get_hostname_vendor, get_mac_vendor,
     get_model_from_hostname, get_model_from_mac, get_model_from_vendor_and_type,
-    get_vendor_from_model, infer_model_with_context, normalize_model_name,
-    strip_local_suffix,
+    get_vendor_from_model, infer_model_with_context, normalize_model_name, strip_local_suffix,
 };
 use crate::scanner::manager::{ScanConfig, ScanManager};
 use crate::scanner::{ScanResult, ScanType, check_scan_privileges};
@@ -31,16 +30,13 @@ use rust_xlsxwriter::{Format, Workbook};
 
 // Shared items from parent (mod.rs)
 use super::{
-    EndpointDetailsResponse, NodeQuery,
-    DISPLAY_NAME_SQL, dropdown_endpoints,
-    get_all_endpoint_types, get_all_endpoints_last_seen,
-    get_all_endpoints_online_status, get_all_ips_macs_and_hostnames_from_single_hostname,
-    get_bytes_for_endpoint, get_combined_endpoint_stats, get_dns_entries,
-    get_endpoint_ips_and_macs, get_endpoint_ssdp_models,
-    get_endpoints_for_protocol, get_all_protocols,
-    get_ports_for_endpoint, get_protocols_for_endpoint,
-    looks_like_ip,
-    probe_and_save_hp_printer_model_blocking, probe_hp_printer_model_blocking,
+    DISPLAY_NAME_SQL, EndpointDetailsResponse, NodeQuery, dropdown_endpoints,
+    get_all_endpoint_types, get_all_endpoints_last_seen, get_all_endpoints_online_status,
+    get_all_ips_macs_and_hostnames_from_single_hostname, get_all_protocols, get_bytes_for_endpoint,
+    get_combined_endpoint_stats, get_dns_entries, get_endpoint_ips_and_macs,
+    get_endpoint_ssdp_models, get_endpoints_for_protocol, get_ports_for_endpoint,
+    get_protocols_for_endpoint, looks_like_ip, probe_and_save_hp_printer_model_blocking,
+    probe_hp_printer_model_blocking,
 };
 
 // ============================================================================
@@ -983,13 +979,17 @@ pub async fn set_endpoint_model(body: Json<SetModelRequest>) -> impl Responder {
         Ok(rows_updated) => {
             if rows_updated > 0 {
                 let (event, title) = if let Some(m) = model {
-                    ("model_changed", format!("Model set to '{}' for {}", m, body.endpoint_name))
+                    (
+                        "model_changed",
+                        format!("Model set to '{}' for {}", m, body.endpoint_name),
+                    )
                 } else {
-                    ("model_changed", format!("Model cleared for {}", body.endpoint_name))
+                    (
+                        "model_changed",
+                        format!("Model cleared for {}", body.endpoint_name),
+                    )
                 };
-                insert_notification(
-                    &conn, event, &title, None, Some(&body.endpoint_name),
-                );
+                insert_notification(&conn, event, &title, None, Some(&body.endpoint_name));
                 HttpResponse::Ok().json(SetModelResponse {
                     success: true,
                     message: format!(
@@ -1041,13 +1041,17 @@ pub async fn set_endpoint_vendor(body: Json<SetVendorRequest>) -> impl Responder
         Ok(rows_updated) => {
             if rows_updated > 0 {
                 let (event, title) = if let Some(v) = vendor {
-                    ("vendor_changed", format!("Vendor set to '{}' for {}", v, body.endpoint_name))
+                    (
+                        "vendor_changed",
+                        format!("Vendor set to '{}' for {}", v, body.endpoint_name),
+                    )
                 } else {
-                    ("vendor_changed", format!("Vendor cleared for {}", body.endpoint_name))
+                    (
+                        "vendor_changed",
+                        format!("Vendor cleared for {}", body.endpoint_name),
+                    )
                 };
-                insert_notification(
-                    &conn, event, &title, None, Some(&body.endpoint_name),
-                );
+                insert_notification(&conn, event, &title, None, Some(&body.endpoint_name));
                 HttpResponse::Ok().json(SetVendorResponse {
                     success: true,
                     message: format!(
@@ -1627,14 +1631,20 @@ pub async fn probe_endpoint_model(body: Json<ProbeModelRequest>) -> impl Respond
         match update_result {
             Ok(rows) => {
                 if rows > 0 {
-                    let eid: Option<i64> = conn.query_row(
-                        "SELECT endpoint_id FROM endpoint_attributes WHERE ip = ?1 LIMIT 1",
-                        params![ip], |row| row.get(0),
-                    ).ok();
+                    let eid: Option<i64> = conn
+                        .query_row(
+                            "SELECT endpoint_id FROM endpoint_attributes WHERE ip = ?1 LIMIT 1",
+                            params![ip],
+                            |row| row.get(0),
+                        )
+                        .ok();
                     insert_notification_with_endpoint_id(
-                        &conn, "model_identified",
+                        &conn,
+                        "model_identified",
                         &format!("Device model identified: {}", model),
-                        None, None, eid,
+                        None,
+                        None,
+                        eid,
                     );
                 }
                 HttpResponse::Ok().json(ProbeModelResponse {
@@ -2113,7 +2123,8 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
                                 &conn,
                                 "model_identified",
                                 &format!("Device model identified: {}", model),
-                                None, None,
+                                None,
+                                None,
                                 Some(endpoint_id),
                             );
                         } else if let Some(ref old) = current_model {
@@ -2158,9 +2169,13 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
         ScanResult::Ndp(ndp) => {
             let ip_str = ndp.ip.to_string();
             let mac_str = ndp.mac.to_string();
-            if let Ok((endpoint_id, is_new)) =
-                EndPoint::get_or_insert_endpoint(&conn, Some(mac_str.clone()), Some(ip_str.clone()), None, &[])
-            {
+            if let Ok((endpoint_id, is_new)) = EndPoint::get_or_insert_endpoint(
+                &conn,
+                Some(mac_str.clone()),
+                Some(ip_str.clone()),
+                None,
+                &[],
+            ) {
                 if is_new {
                     insert_notification_with_endpoint_id(
                         &conn,
@@ -2749,40 +2764,55 @@ pub async fn get_endpoints_table() -> impl Responder {
         "AzureWave",
     ];
 
-    let endpoint_vendors: HashMap<String, String> = dropdown_endpoints_list
-        .iter()
-        .filter_map(|endpoint| {
-            let endpoint_lower = endpoint.to_lowercase();
-            let (_custom_model, ssdp_model, ssdp_friendly, custom_vendor, snmp_vendor, _snmp_model) = endpoint_ssdp_models
-                .get(&endpoint_lower)
-                .map(|(cm, sm, sf, cv, sv, snm)| {
-                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref(), sv.as_deref(), snm.as_deref())
-                })
-                .unwrap_or((None, None, None, None, None, None));
+    let endpoint_vendors: HashMap<String, String> =
+        dropdown_endpoints_list
+            .iter()
+            .filter_map(|endpoint| {
+                let endpoint_lower = endpoint.to_lowercase();
+                let (
+                    _custom_model,
+                    ssdp_model,
+                    ssdp_friendly,
+                    custom_vendor,
+                    snmp_vendor,
+                    _snmp_model,
+                ) = endpoint_ssdp_models
+                    .get(&endpoint_lower)
+                    .map(|(cm, sm, sf, cv, sv, snm)| {
+                        (
+                            cm.as_deref(),
+                            sm.as_deref(),
+                            sf.as_deref(),
+                            cv.as_deref(),
+                            sv.as_deref(),
+                            snm.as_deref(),
+                        )
+                    })
+                    .unwrap_or((None, None, None, None, None, None));
 
-            let macs: Vec<String> = endpoint_ips_macs
-                .get(&endpoint_lower)
-                .map(|(_, m)| m.clone())
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|mac| {
-                    get_mac_vendor(mac)
-                        .map(|v| !component_vendors.contains(&v))
-                        .unwrap_or(true)
-                })
-                .collect();
+                let macs: Vec<String> = endpoint_ips_macs
+                    .get(&endpoint_lower)
+                    .map(|(_, m)| m.clone())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|mac| {
+                        get_mac_vendor(mac)
+                            .map(|v| !component_vendors.contains(&v))
+                            .unwrap_or(true)
+                    })
+                    .collect();
 
-            characterize_vendor(
-                custom_vendor,
-                ssdp_friendly,
-                snmp_vendor,
-                Some(endpoint.as_str()),
-                &macs,
-                ssdp_model,
-            )
-            .map(|c| (endpoint_lower, c.value))
-        })
-        .collect();
+                characterize_vendor(
+                    custom_vendor,
+                    ssdp_friendly,
+                    snmp_vendor,
+                    Some(endpoint.as_str()),
+                    &macs,
+                    ssdp_model,
+                )
+                .map(|c| (endpoint_lower, c.value))
+            })
+            .collect();
 
     // Build model lookup (first pass without device_type)
     let mut endpoint_models: HashMap<String, String> = dropdown_endpoints_list
@@ -2792,7 +2822,14 @@ pub async fn get_endpoints_table() -> impl Responder {
             let (custom_model, ssdp_model, _, _, _, snmp_model) = endpoint_ssdp_models
                 .get(&endpoint_lower)
                 .map(|(cm, sm, sf, cv, sv, snm)| {
-                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref(), sv.as_deref(), snm.as_deref())
+                    (
+                        cm.as_deref(),
+                        sm.as_deref(),
+                        sf.as_deref(),
+                        cv.as_deref(),
+                        sv.as_deref(),
+                        snm.as_deref(),
+                    )
                 })
                 .unwrap_or((None, None, None, None, None, None));
 
@@ -2937,40 +2974,55 @@ pub async fn export_endpoints_xlsx() -> impl Responder {
         "AzureWave",
     ];
 
-    let endpoint_vendors: HashMap<String, String> = dropdown_endpoints_list
-        .iter()
-        .filter_map(|endpoint| {
-            let endpoint_lower = endpoint.to_lowercase();
-            let (_custom_model, ssdp_model, ssdp_friendly, custom_vendor, snmp_vendor, _snmp_model) = endpoint_ssdp_models
-                .get(&endpoint_lower)
-                .map(|(cm, sm, sf, cv, sv, snm)| {
-                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref(), sv.as_deref(), snm.as_deref())
-                })
-                .unwrap_or((None, None, None, None, None, None));
+    let endpoint_vendors: HashMap<String, String> =
+        dropdown_endpoints_list
+            .iter()
+            .filter_map(|endpoint| {
+                let endpoint_lower = endpoint.to_lowercase();
+                let (
+                    _custom_model,
+                    ssdp_model,
+                    ssdp_friendly,
+                    custom_vendor,
+                    snmp_vendor,
+                    _snmp_model,
+                ) = endpoint_ssdp_models
+                    .get(&endpoint_lower)
+                    .map(|(cm, sm, sf, cv, sv, snm)| {
+                        (
+                            cm.as_deref(),
+                            sm.as_deref(),
+                            sf.as_deref(),
+                            cv.as_deref(),
+                            sv.as_deref(),
+                            snm.as_deref(),
+                        )
+                    })
+                    .unwrap_or((None, None, None, None, None, None));
 
-            let macs: Vec<String> = endpoint_ips_macs
-                .get(&endpoint_lower)
-                .map(|(_, m)| m.clone())
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|mac| {
-                    get_mac_vendor(mac)
-                        .map(|v| !component_vendors.contains(&v))
-                        .unwrap_or(true)
-                })
-                .collect();
+                let macs: Vec<String> = endpoint_ips_macs
+                    .get(&endpoint_lower)
+                    .map(|(_, m)| m.clone())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|mac| {
+                        get_mac_vendor(mac)
+                            .map(|v| !component_vendors.contains(&v))
+                            .unwrap_or(true)
+                    })
+                    .collect();
 
-            characterize_vendor(
-                custom_vendor,
-                ssdp_friendly,
-                snmp_vendor,
-                Some(endpoint.as_str()),
-                &macs,
-                ssdp_model,
-            )
-            .map(|c| (endpoint_lower, c.value))
-        })
-        .collect();
+                characterize_vendor(
+                    custom_vendor,
+                    ssdp_friendly,
+                    snmp_vendor,
+                    Some(endpoint.as_str()),
+                    &macs,
+                    ssdp_model,
+                )
+                .map(|c| (endpoint_lower, c.value))
+            })
+            .collect();
 
     // Build model lookup
     let endpoint_models: HashMap<String, String> = dropdown_endpoints_list
@@ -2980,7 +3032,14 @@ pub async fn export_endpoints_xlsx() -> impl Responder {
             let (custom_model, ssdp_model, _, _, _, snmp_model) = endpoint_ssdp_models
                 .get(&endpoint_lower)
                 .map(|(cm, sm, sf, cv, sv, snm)| {
-                    (cm.as_deref(), sm.as_deref(), sf.as_deref(), cv.as_deref(), sv.as_deref(), snm.as_deref())
+                    (
+                        cm.as_deref(),
+                        sm.as_deref(),
+                        sf.as_deref(),
+                        cv.as_deref(),
+                        sv.as_deref(),
+                        snm.as_deref(),
+                    )
                 })
                 .unwrap_or((None, None, None, None, None, None));
 
@@ -3466,8 +3525,7 @@ pub async fn get_notifications(query: Query<NotificationsQuery>) -> impl Respond
         // Resolve current endpoint display name via LEFT JOIN when endpoint_id is available.
         // This fixes stale names (e.g. "unknown" or bare IPs) in notifications created before
         // the endpoint received a proper name via mDNS, DHCP, SNMP, etc.
-        let resolve_name_sql = format!(
-            "COALESCE(
+        let resolve_name_sql = "COALESCE(
                 e.custom_name,
                 CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%'
                      AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' THEN e.name END,
@@ -3478,7 +3536,7 @@ pub async fn get_notifications(query: Query<NotificationsQuery>) -> impl Respond
                  AND ip IS NOT NULL AND ip != ''),
                 n.endpoint_name
             )"
-        );
+        .to_string();
 
         // Get page of results with resolved endpoint names
         let sql = format!(
@@ -3541,7 +3599,10 @@ pub async fn get_notifications(query: Query<NotificationsQuery>) -> impl Respond
     .await;
 
     match result {
-        Ok(Ok((notifications, total))) => HttpResponse::Ok().json(NotificationsResponse { notifications, total }),
+        Ok(Ok((notifications, total))) => HttpResponse::Ok().json(NotificationsResponse {
+            notifications,
+            total,
+        }),
         _ => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": "Failed to fetch notifications"
         })),
@@ -3558,15 +3619,22 @@ pub async fn dismiss_notifications(body: Json<DismissRequest>) -> impl Responder
     let ids = body.ids.clone();
     let result = tokio::task::spawn_blocking(move || {
         let conn = new_connection();
-        let placeholders: Vec<String> = ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 1)).collect();
+        let placeholders: Vec<String> = ids
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect();
         let sql = format!(
             "UPDATE notifications SET dismissed = 1 WHERE id IN ({})",
             placeholders.join(",")
         );
-        let params: Vec<Box<dyn rusqlite::ToSql>> =
-            ids.iter().map(|id| Box::new(*id) as Box<dyn rusqlite::ToSql>).collect();
+        let params: Vec<Box<dyn rusqlite::ToSql>> = ids
+            .iter()
+            .map(|id| Box::new(*id) as Box<dyn rusqlite::ToSql>)
+            .collect();
         let refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-        conn.execute(&sql, refs.as_slice()).map_err(|e| e.to_string())
+        conn.execute(&sql, refs.as_slice())
+            .map_err(|e| e.to_string())
     })
     .await;
 
@@ -3586,8 +3654,11 @@ pub async fn dismiss_notifications(body: Json<DismissRequest>) -> impl Responder
 pub async fn clear_notifications() -> impl Responder {
     let result = tokio::task::spawn_blocking(move || {
         let conn = new_connection();
-        conn.execute("UPDATE notifications SET dismissed = 1 WHERE dismissed = 0", [])
-            .map_err(|e| e.to_string())
+        conn.execute(
+            "UPDATE notifications SET dismissed = 1 WHERE dismissed = 0",
+            [],
+        )
+        .map_err(|e| e.to_string())
     })
     .await;
 

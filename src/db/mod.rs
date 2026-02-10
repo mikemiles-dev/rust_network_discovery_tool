@@ -643,13 +643,17 @@ impl SQLWriter {
             );
         }
 
-        // Clean up orphaned endpoint attributes
+        // Clean up orphaned endpoint attributes (but preserve user-identified endpoints)
         conn.execute(
             "DELETE FROM endpoint_attributes WHERE created_at < (strftime('%s', 'now') - ?1)
              AND endpoint_id NOT IN (
                  SELECT DISTINCT src_endpoint_id FROM communications
                  UNION
                  SELECT DISTINCT dst_endpoint_id FROM communications
+             )
+             AND endpoint_id NOT IN (
+                 SELECT id FROM endpoints
+                 WHERE custom_name IS NOT NULL OR custom_vendor IS NOT NULL OR manual_device_type IS NOT NULL
              )",
             [retention_seconds],
         )?;
@@ -706,7 +710,10 @@ impl SQLWriter {
         ).unwrap_or(0);
 
         if dismissed_cleaned > 0 {
-            println!("Cleaned up {} old dismissed notifications", dismissed_cleaned);
+            println!(
+                "Cleaned up {} old dismissed notifications",
+                dismissed_cleaned
+            );
         }
 
         // Vacuum database occasionally to reclaim space
@@ -818,6 +825,7 @@ impl SQLWriter {
         let mut merged_count = 0;
 
         // Find hostnames that have multiple endpoint IDs (case-insensitive duplicates)
+        // Also fetch user-identification fields to prefer user-identified endpoints as survivors
         let mut stmt = conn.prepare(
             "SELECT LOWER(name) as lower_name, GROUP_CONCAT(id) as ids, COUNT(*) as cnt
              FROM endpoints
@@ -840,11 +848,27 @@ impl SQLWriter {
                 continue;
             }
 
-            // Keep the first (lowest) ID, merge others into it
-            let keep_id = ids[0];
-            let merge_ids: Vec<i64> = ids[1..].to_vec();
+            // Prefer a user-identified endpoint as the survivor, then fall back to lowest ID
+            let keep_id = ids
+                .iter()
+                .find(|&&id| {
+                    conn.query_row(
+                        "SELECT EXISTS(SELECT 1 FROM endpoints WHERE id = ?1
+                         AND (custom_name IS NOT NULL OR custom_vendor IS NOT NULL OR manual_device_type IS NOT NULL))",
+                        [id],
+                        |row| row.get::<_, bool>(0),
+                    )
+                    .unwrap_or(false)
+                })
+                .copied()
+                .unwrap_or(ids[0]);
+
+            let merge_ids: Vec<i64> = ids.iter().copied().filter(|&id| id != keep_id).collect();
 
             for merge_id in merge_ids {
+                // Preserve user fields before deleting the source
+                Self::preserve_user_fields(conn, keep_id, merge_id);
+
                 // Move endpoint_attributes (ignore duplicates)
                 conn.execute(
                     "UPDATE OR IGNORE endpoint_attributes SET endpoint_id = ?1 WHERE endpoint_id = ?2",
@@ -940,17 +964,32 @@ impl SQLWriter {
 
             // Find which endpoint has a proper hostname (not just an IP)
             // Prefer endpoints with hostnames over those with just IPv6 addresses as names
+            // Also prefer user-identified endpoints as the survivor
             let mut best_id: Option<i64> = None;
             let mut ipv6_only_ids: Vec<i64> = Vec::new();
 
             for &id in &ids {
+                let is_user_identified: bool = conn
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM endpoints WHERE id = ?1
+                         AND (custom_name IS NOT NULL OR custom_vendor IS NOT NULL OR manual_device_type IS NOT NULL))",
+                        [id],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(false);
+
                 let name: Option<String> = conn
                     .query_row("SELECT name FROM endpoints WHERE id = ?1", [id], |row| {
                         row.get(0)
                     })
                     .ok();
 
-                if let Some(ref n) = name {
+                if is_user_identified {
+                    // User-identified endpoints always become best_id
+                    if best_id.is_none() {
+                        best_id = Some(id);
+                    }
+                } else if let Some(ref n) = name {
                     // If name contains colons, it's likely an IPv6 address
                     if n.contains(':') {
                         ipv6_only_ids.push(id);
@@ -963,6 +1002,22 @@ impl SQLWriter {
             // If we found a hostname-based endpoint and IPv6-only endpoints, merge them
             if let Some(keep_id) = best_id {
                 for merge_id in ipv6_only_ids {
+                    // Skip deleting user-identified endpoints
+                    let is_user_identified: bool = conn
+                        .query_row(
+                            "SELECT EXISTS(SELECT 1 FROM endpoints WHERE id = ?1
+                             AND (custom_name IS NOT NULL OR custom_vendor IS NOT NULL OR manual_device_type IS NOT NULL))",
+                            [merge_id],
+                            |row| row.get(0),
+                        )
+                        .unwrap_or(false);
+                    if is_user_identified {
+                        continue;
+                    }
+
+                    // Preserve user fields before deleting the source
+                    Self::preserve_user_fields(conn, keep_id, merge_id);
+
                     // Move endpoint_attributes
                     conn.execute(
                         "UPDATE OR IGNORE endpoint_attributes SET endpoint_id = ?1 WHERE endpoint_id = ?2",
@@ -1104,7 +1159,10 @@ impl SQLWriter {
                  WHERE (e.name IS NULL OR e.name = '' OR e.name LIKE '%:%')
                    AND ea.ip LIKE '%:%:%:%:%'
                    AND ea.ip NOT LIKE 'fe80:%'
-                   AND (ea.mac IS NULL OR ea.mac = '')",
+                   AND (ea.mac IS NULL OR ea.mac = '')
+                   AND e.custom_name IS NULL
+                   AND e.custom_vendor IS NULL
+                   AND e.manual_device_type IS NULL",
             )?
             .query_map([], |row| row.get(0))?
             .filter_map(|r| r.ok())
@@ -1120,6 +1178,9 @@ impl SQLWriter {
             let Some(phone_id) = Self::find_phone_for_hotspot_gateway(conn, gateway_id) else {
                 continue;
             };
+
+            // Preserve user fields before deleting the gateway
+            Self::preserve_user_fields(conn, phone_id, gateway_id);
 
             // Perform the merge (same pattern as other merge functions)
             // Move endpoint_attributes
@@ -1182,5 +1243,20 @@ impl SQLWriter {
         }
 
         Ok(merged_count)
+    }
+
+    /// After merging endpoint `source_id` into `target_id`, copy any user-set
+    /// fields (custom_name, custom_vendor, manual_device_type) from source to
+    /// target if the target doesn't already have them.
+    fn preserve_user_fields(conn: &Connection, target_id: i64, source_id: i64) {
+        conn.execute(
+            "UPDATE endpoints SET
+                custom_name = COALESCE(custom_name, (SELECT custom_name FROM endpoints WHERE id = ?2)),
+                custom_vendor = COALESCE(custom_vendor, (SELECT custom_vendor FROM endpoints WHERE id = ?2)),
+                manual_device_type = COALESCE(manual_device_type, (SELECT manual_device_type FROM endpoints WHERE id = ?2))
+             WHERE id = ?1",
+            rusqlite::params![target_id, source_id],
+        )
+        .ok();
     }
 }

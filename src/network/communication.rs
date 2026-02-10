@@ -7,10 +7,7 @@ use rusqlite::{Connection, Result, params};
 
 use crate::db::insert_notification_with_endpoint_id;
 use crate::network::{
-    endpoint::{
-        EndPoint, EndpointData, InsertEndpointError,
-        get_mac_vendor, get_model_from_mac,
-    },
+    endpoint::{EndPoint, EndpointData, InsertEndpointError, get_mac_vendor, get_model_from_mac},
     packet_wrapper::PacketWrapper,
 };
 
@@ -204,7 +201,9 @@ fn emit_mac_vendor_model_notifications(conn: &Connection, mac: Option<&str>, end
             conn,
             "vendor_identified",
             &format!("Vendor identified: {}", vendor),
-            Some(&details), None, Some(endpoint_id),
+            Some(&details),
+            None,
+            Some(endpoint_id),
         );
     }
     if let Some(model) = get_model_from_mac(mac) {
@@ -212,7 +211,9 @@ fn emit_mac_vendor_model_notifications(conn: &Connection, mac: Option<&str>, end
             conn,
             "model_identified",
             &format!("Device model identified: {}", model),
-            Some(&details), None, Some(endpoint_id),
+            Some(&details),
+            None,
+            Some(endpoint_id),
         );
     }
 }
@@ -381,11 +382,12 @@ impl Communication {
         ) {
             Ok((id, is_new)) => {
                 if is_new {
-                    let name = self.dhcp_hostname.as_deref()
+                    let name = self
+                        .dhcp_hostname
+                        .as_deref()
                         .or(self.source_ip.as_deref())
                         .unwrap_or("unknown");
-                    let details = self.source_mac.as_deref()
-                        .map(|m| format!("MAC: {}", m));
+                    let details = self.source_mac.as_deref().map(|m| format!("MAC: {}", m));
                     insert_notification_with_endpoint_id(
                         conn,
                         "endpoint_discovered",
@@ -426,7 +428,9 @@ impl Communication {
             Ok((id, is_new)) => {
                 if is_new {
                     let name = self.destination_ip.as_deref().unwrap_or("unknown");
-                    let details = self.destination_mac.as_deref()
+                    let details = self
+                        .destination_mac
+                        .as_deref()
                         .map(|m| format!("MAC: {}", m));
                     insert_notification_with_endpoint_id(
                         conn,

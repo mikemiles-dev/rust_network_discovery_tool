@@ -20406,7 +20406,7 @@
     ("48:b9:c2", "Teletics"),
     ("48:ba:4e", "HP"),
     ("48:bc:0e", "Sichuan AI-Link"),
-    ("48:bc:a6", "​ASUNG TECHNO CO.,Ltd"),
+    ("48:bc:a6", "\u{200B}ASUNG TECHNO CO.,Ltd"),
     ("48:bc:e1", "Samsung"),
     ("48:bd:0e", "Quanta"),
     ("48:bd:3d", "New H3C"),

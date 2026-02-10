@@ -2,7 +2,10 @@
 //! and infers models from hostnames, MAC addresses, and vendor context.
 
 use super::detection::{is_roku_serial_number, is_roku_tv_model};
-use super::patterns::{LG_TV_SERIES, SAMSUNG_TV_SERIES, SONY_TV_SERIES};
+use super::patterns::{
+    HOSTNAME_MODEL_RULES, LG_TV_SERIES, MAC_VENDOR_MODEL_RULES, SAMSUNG_TV_SERIES, SONY_TV_SERIES,
+    VENDOR_TYPE_MODEL_RULES,
+};
 use super::types::{Characterized, pick_best};
 use super::vendor::get_mac_vendor;
 
@@ -207,12 +210,31 @@ pub fn characterize_model(
         .map(Characterized::pattern_matched);
 
     // Pick the best one (highest priority source)
-    pick_best(&[user, ssdp, from_snmp, from_hostname, from_mac, from_vendor_type])
+    pick_best(&[
+        user,
+        ssdp,
+        from_snmp,
+        from_hostname,
+        from_mac,
+        from_vendor_type,
+    ])
 }
 
 /// Extract model name from hostname patterns
 pub fn get_model_from_hostname(hostname: &str) -> Option<String> {
     let lower = hostname.to_lowercase();
+
+    // Simple rules from generated TOML data (fast path)
+    for &(match_type, pattern, model) in HOSTNAME_MODEL_RULES {
+        let matched = match match_type {
+            "c" => lower.contains(pattern),
+            "s" => lower.starts_with(pattern),
+            _ => false,
+        };
+        if matched {
+            return Some(model.to_string());
+        }
+    }
 
     // Roku devices: Roku-Ultra-XXXXX, Roku-Express-XXXXX, etc.
     if lower.starts_with("roku-") || lower.starts_with("roku_") {
@@ -581,8 +603,8 @@ pub fn get_model_from_hostname(hostname: &str) -> Option<String> {
         }
     }
 
-    // LG ThinQ appliances: LMA749755 (dishwasher), WM3600HWA (washer), etc.
-    if lower.starts_with("lma") || lower.starts_with("ldp") || lower.starts_with("ldf") {
+    // LG ThinQ dishwashers: LDP/LDF prefixes
+    if lower.starts_with("ldp") || lower.starts_with("ldf") {
         return Some("Dishwasher".to_string());
     }
     if lower.starts_with("wm")
@@ -842,11 +864,6 @@ pub fn get_model_from_hostname(hostname: &str) -> Option<String> {
         }
     }
 
-    // Hatch Rest+ baby sound machine
-    if lower.starts_with("restplus") {
-        return Some("Hatch Rest+".to_string());
-    }
-
     // Ecobee thermostats
     if lower.contains("ecobee") {
         if lower.contains("lite") {
@@ -1060,195 +1077,20 @@ pub fn get_model_from_mac(mac: &str) -> Option<String> {
 
     let vendor = get_mac_vendor(mac)?;
 
-    match vendor {
-        "Nintendo" => Some("Nintendo Switch".to_string()),
-        "Sony" => Some("PlayStation".to_string()),
-        "Samsung" => Some("Samsung Device".to_string()),
-        "LG" => Some("LG Device".to_string()),
-        "Apple" => Some("Apple Device".to_string()),
-        "Google" => Some("Google Device".to_string()),
-        "Amazon" => Some("Amazon Device".to_string()),
-        "Microsoft" => Some("Xbox".to_string()),
-        "HP" => Some("HP Device".to_string()),
-        "iRobot" => Some("Roomba".to_string()),
-        "Ecobee" => Some("Ecobee Thermostat".to_string()),
-        "Ring" => Some("Ring Device".to_string()),
-        "Sonos" => Some("Sonos Speaker".to_string()),
-        "Roku" => Some("Roku".to_string()),
-        "Philips Hue" => Some("Hue Device".to_string()),
-        "Wyze" => Some("Wyze Device".to_string()),
-        "eero" => Some("eero Router".to_string()),
-        "Nest" => Some("Nest Device".to_string()),
-        "TP-Link" => Some("TP-Link Device".to_string()),
-        "Ubiquiti" => Some("Ubiquiti Device".to_string()),
-        "Vizio" => Some("Vizio TV".to_string()),
-        "TCL" => Some("Roku TV".to_string()),
-        "Hisense" => Some("Hisense TV".to_string()),
-        "Texas Instruments" => Some("TI IoT Device".to_string()),
-        "Samjin" => Some("SmartThings Sensor".to_string()),
-        "Wisol" => Some("SmartThings Sensor".to_string()),
-        "Synology" => Some("Synology NAS".to_string()),
-        "ASUS" => Some("ASUS Device".to_string()),
-        "Logitech" => Some("Logitech Device".to_string()),
-        "LiteON" => Some("LiteON Device".to_string()),
-        "FN-Link" => Some("Smart TV".to_string()),
-        _ => None,
+    for &(v, model) in MAC_VENDOR_MODEL_RULES {
+        if v == vendor {
+            return Some(model.to_string());
+        }
     }
-}
 
-/// (vendor, device_type_or_empty_for_wildcard, label, is_literal)
-/// When is_literal is true, return label as-is instead of "{vendor} {label}"
-const VENDOR_TYPE_MODELS: &[(&str, &str, &str, bool)] = &[
-    // Samsung
-    ("Samsung", "tv", "Smart TV", false),
-    ("Samsung", "phone", "Galaxy", false),
-    ("Samsung", "computer", "Computer", false),
-    ("Samsung", "appliance", "Appliance", false),
-    ("Samsung", "soundbar", "Soundbar", false),
-    ("Samsung", "", "Device", false),
-    // LG
-    ("LG", "tv", "Smart TV", false),
-    ("LG", "phone", "Phone", false),
-    ("LG", "computer", "Computer", false),
-    ("LG", "appliance", "ThinQ Appliance", false),
-    ("LG", "soundbar", "Soundbar", false),
-    ("LG", "", "Device", false),
-    // Sony
-    ("Sony", "tv", "Bravia TV", false),
-    ("Sony", "gaming", "PlayStation", true),
-    ("Sony", "computer", "VAIO", false),
-    ("Sony", "soundbar", "Soundbar", false),
-    ("Sony", "", "Device", false),
-    // Apple
-    ("Apple", "phone", "iPhone", true),
-    ("Apple", "tv", "Apple TV", true),
-    ("Apple", "computer", "Mac", true),
-    ("Apple", "local", "Mac", true),
-    ("Apple", "", "Apple Device", true),
-    // Microsoft
-    ("Microsoft", "gaming", "Xbox", true),
-    ("Microsoft", "computer", "Surface", true),
-    ("Microsoft", "", "Device", false),
-    // Nintendo
-    ("Nintendo", "gaming", "Switch", false),
-    ("Nintendo", "", "Device", false),
-    // Google
-    ("Google", "tv", "Chromecast", true),
-    ("Google", "phone", "Pixel", false),
-    ("Google", "", "Device", false),
-    // Huawei
-    ("Huawei", "phone", "Phone", false),
-    ("Huawei", "gateway", "Router", false),
-    ("Huawei", "tv", "Smart Screen", false),
-    ("Huawei", "", "Device", false),
-    // Amazon
-    ("Amazon", "tv", "Fire TV", true),
-    ("Amazon", "", "Device", false),
-    // HP
-    ("HP", "printer", "Printer", false),
-    ("HP", "computer", "Computer", false),
-    ("HP", "local", "Computer", false),
-    ("HP", "", "Device", false),
-    // Belkin/WeMo
-    ("Belkin", "appliance", "WeMo Smart Plug", true),
-    ("Belkin", "gateway", "Router", false),
-    ("Belkin", "", "WeMo Device", true),
-    // Wisol IoT devices
-    ("Wisol", "appliance", "Sensor", false),
-    ("Wisol", "", "IoT Device", false),
-    // USI (contract manufacturer)
-    ("USI", "phone", "Mobile Device", false),
-    ("USI", "appliance", "IoT Device", false),
-    ("USI", "", "Device", false),
-    // TCL TVs (often running Roku OS)
-    ("TCL", "tv", "Roku TV", true),
-    ("TCL", "", "Device", false),
-    // Hisense
-    ("Hisense", "tv", "Smart TV", false),
-    ("Hisense", "", "Device", false),
-    // Vizio
-    ("Vizio", "tv", "Smart TV", false),
-    ("Vizio", "soundbar", "Soundbar", false),
-    ("Vizio", "", "Device", false),
-    // Roku
-    ("Roku", "tv", "TV", false),
-    ("Roku", "", "Roku", true),
-    // Single-wildcard vendors
-    ("Sonos", "", "Speaker", false),
-    ("iRobot", "", "Roomba", true),
-    ("Ecobee", "", "Thermostat", false),
-    ("Ring", "", "Device", false),
-    ("Philips Hue", "", "Hue Device", true),
-    ("Wyze", "", "Device", false),
-    ("eero", "gateway", "Router", false),
-    ("eero", "", "eero", true),
-    ("Nest", "", "Device", false),
-    ("TP-Link", "appliance", "Kasa Smart Plug", true),
-    ("TP-Link", "gateway", "Router", false),
-    ("TP-Link", "", "Device", false),
-    ("Tuya", "", "Smart Device", false),
-    ("Dyson", "", "Air Purifier", false),
-    // Networking equipment
-    ("Commscope", "gateway", "ARRIS Modem/Router", true),
-    ("Commscope", "", "ARRIS Device", true),
-    ("ARRIS", "gateway", "Modem/Router", false),
-    ("ARRIS", "", "Device", false),
-    ("Netgear", "gateway", "Router", false),
-    ("Netgear", "", "Device", false),
-    ("Linksys", "gateway", "Router", false),
-    ("Linksys", "", "Device", false),
-    ("Ubiquiti", "gateway", "UniFi Gateway", true),
-    ("Ubiquiti", "", "UniFi Device", true),
-    ("MikroTik", "gateway", "Router", false),
-    ("MikroTik", "", "Device", false),
-    ("Cisco", "gateway", "Router", false),
-    ("Cisco", "", "Device", false),
-    // AV equipment
-    ("Denon", "soundbar", "AV Receiver", false),
-    ("Denon", "", "AV Receiver", false),
-    ("Yamaha", "soundbar", "AV Receiver", false),
-    ("Yamaha", "", "Audio Device", false),
-    ("Logitech", "appliance", "Harmony Hub", true),
-    ("Logitech", "", "Device", false),
-    // Printers
-    ("Brother", "printer", "Printer", false),
-    ("Brother", "", "Device", false),
-    // IoT module vendors
-    ("Espressif", "appliance", "ESP Smart Device", true),
-    ("Espressif", "", "ESP Device", true),
-    // Robot vacuums
-    ("Roborock", "", "Vacuum", false),
-    // Security devices
-    ("SimpliSafe", "", "Security", false),
-    ("Dahua", "", "Camera", false),
-    // Smart home appliances
-    ("Bosch", "appliance", "Appliance", false),
-    ("Bosch", "", "Device", false),
-    ("Seeed", "", "IoT Device", false),
-    ("Texas Instruments", "", "IoT Device", true),
-    // Virtualization
-    ("Proxmox", "virtualization", "Server", false),
-    ("Proxmox", "", "VM", false),
-    // Computers
-    ("ASRock", "", "PC", false),
-    ("ASUS", "gateway", "Router", false),
-    ("ASUS", "computer", "Computer", false),
-    ("ASUS", "local", "Computer", false),
-    ("ASUS", "", "Device", false),
-    ("LiteON", "computer", "Network Card", false),
-    ("LiteON", "", "Device", false),
-    // NAS devices
-    ("Synology", "", "NAS", false),
-    // WiFi module vendors
-    ("FN-Link", "tv", "Smart TV", true),
-    ("FN-Link", "", "WiFi Device", false),
-];
+    None
+}
 
 /// Get a more specific model using both vendor and device classification
 /// Called after device type classification is complete for better accuracy
 pub fn get_model_from_vendor_and_type(vendor: &str, device_type: &str) -> Option<String> {
     let mut wildcard: Option<(&str, bool)> = None;
-    for &(v, dt, label, literal) in VENDOR_TYPE_MODELS {
+    for &(v, dt, label, literal) in VENDOR_TYPE_MODEL_RULES {
         if v != vendor {
             continue;
         }

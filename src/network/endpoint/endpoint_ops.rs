@@ -530,6 +530,16 @@ impl EndPoint {
             return;
         };
 
+        // Preserve user fields (custom_name, custom_vendor, manual_device_type) before merge
+        let _ = conn.execute(
+            "UPDATE endpoints SET
+                custom_name = COALESCE(custom_name, (SELECT custom_name FROM endpoints WHERE id = ?2)),
+                custom_vendor = COALESCE(custom_vendor, (SELECT custom_vendor FROM endpoints WHERE id = ?2)),
+                manual_device_type = COALESCE(manual_device_type, (SELECT manual_device_type FROM endpoints WHERE id = ?2))
+             WHERE id = ?1",
+            params![target_id, endpoint_id],
+        );
+
         // Merge current endpoint INTO the target (keep the older, better-identified one)
         let _ = conn.execute(
             "UPDATE OR IGNORE endpoint_attributes SET endpoint_id = ?1 WHERE endpoint_id = ?2",

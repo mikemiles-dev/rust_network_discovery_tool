@@ -260,7 +260,9 @@ impl MDnsLookup {
 
                                                     // Try to merge: if this IP's endpoint has only randomized MACs,
                                                     // and another endpoint already has this hostname, merge into it
-                                                    Self::try_merge_by_hostname_for_ip(conn, &addr, &host);
+                                                    Self::try_merge_by_hostname_for_ip(
+                                                        conn, &addr, &host,
+                                                    );
                                                 } else {
                                                     // Create new endpoint from mDNS discovery
                                                     let now = chrono::Utc::now().timestamp();
@@ -433,6 +435,16 @@ impl MDnsLookup {
             return;
         };
 
+        // Preserve user fields (custom_name, custom_vendor, manual_device_type) before merge
+        let _ = conn.execute(
+            "UPDATE endpoints SET
+                custom_name = COALESCE(custom_name, (SELECT custom_name FROM endpoints WHERE id = ?2)),
+                custom_vendor = COALESCE(custom_vendor, (SELECT custom_vendor FROM endpoints WHERE id = ?2)),
+                manual_device_type = COALESCE(manual_device_type, (SELECT manual_device_type FROM endpoints WHERE id = ?2))
+             WHERE id = ?1",
+            rusqlite::params![target_id, source_id],
+        );
+
         // Merge source into target
         let _ = conn.execute(
             "UPDATE OR IGNORE endpoint_attributes SET endpoint_id = ?1 WHERE endpoint_id = ?2",
@@ -458,10 +470,7 @@ impl MDnsLookup {
             "UPDATE OR IGNORE open_ports SET endpoint_id = ?1 WHERE endpoint_id = ?2",
             rusqlite::params![target_id, source_id],
         );
-        let _ = conn.execute(
-            "DELETE FROM open_ports WHERE endpoint_id = ?1",
-            [source_id],
-        );
+        let _ = conn.execute("DELETE FROM open_ports WHERE endpoint_id = ?1", [source_id]);
         let _ = conn.execute(
             "UPDATE scan_results SET endpoint_id = ?1 WHERE endpoint_id = ?2",
             rusqlite::params![target_id, source_id],
