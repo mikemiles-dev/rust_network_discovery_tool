@@ -17,8 +17,21 @@ use tera::{Context, Tera};
 use tokio::task;
 
 use crate::db::{
-    get_setting_i64, insert_notification_with_endpoint_id, new_connection, new_connection_result,
+    get_setting_i64, insert_notification_with_endpoint_id, new_connection_result,
 };
+
+/// Try a fallible database operation; on error log and return the given default.
+macro_rules! try_db {
+    ($expr:expr, $default:expr) => {
+        match $expr {
+            Ok(val) => val,
+            Err(e) => {
+                eprintln!("database error: {e}");
+                return $default;
+            }
+        }
+    };
+}
 use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::endpoint::{
     EndPoint, characterize_model, characterize_vendor, get_mac_vendor, get_model_from_hostname,
@@ -44,7 +57,6 @@ pub(super) fn get_combined_endpoint_stats(
     scan_interval: u64,
     active_threshold: u64,
 ) -> HashMap<String, EndpointStats> {
-    let conn = new_connection();
     let mut result: HashMap<String, EndpointStats> = HashMap::new();
 
     // Initialize all endpoints with defaults
@@ -59,9 +71,11 @@ pub(super) fn get_combined_endpoint_stats(
         );
     }
 
+    let conn = try_db!(new_connection_result(), result);
+
     // Single query to get bytes, last_seen for all endpoints
-    let mut stmt = conn
-        .prepare(&format!(
+    let mut stmt = try_db!(
+        conn.prepare(&format!(
             "SELECT
                 {DISPLAY_NAME_SQL} AS display_name,
                 COALESCE(SUM(c.bytes), 0) as total_bytes,
@@ -70,20 +84,22 @@ pub(super) fn get_combined_endpoint_stats(
              INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
              WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
              GROUP BY e.id"
-        ))
-        .expect("Failed to prepare combined stats statement");
+        )),
+        result
+    );
 
     let now = chrono::Utc::now().timestamp();
     let online_threshold = now - active_threshold as i64;
 
-    let rows = stmt
-        .query_map([scan_interval], |row| {
+    let rows = try_db!(
+        stmt.query_map([scan_interval], |row| {
             let name: String = row.get(0)?;
             let bytes: i64 = row.get(1)?;
             let last_seen: i64 = row.get(2)?;
             Ok((name, bytes, last_seen))
-        })
-        .expect("Failed to execute combined stats query");
+        }),
+        result
+    );
 
     for row in rows.flatten() {
         let (name, bytes, last_seen_ts) = row;
@@ -406,7 +422,7 @@ pub(super) fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
 }
 
 pub(super) fn get_protocols_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String> {
-    let conn = new_connection();
+    let conn = try_db!(new_connection_result(), Vec::new());
 
     let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, &hostname);
     if endpoint_ids.is_empty() {
@@ -424,18 +440,19 @@ pub(super) fn get_protocols_for_endpoint(hostname: String, internal_minutes: u64
         placeholders
     );
 
-    let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
+    let mut stmt = try_db!(conn.prepare(&query), Vec::new());
 
     // Build parameters: internal_minutes + endpoint_ids (2 times for src and dst)
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(internal_minutes)];
     params.extend(box_i64_params(&endpoint_ids));
     params.extend(box_i64_params(&endpoint_ids));
 
-    let rows = stmt
-        .query_map(params_to_refs(&params).as_slice(), |row| {
+    let rows = try_db!(
+        stmt.query_map(params_to_refs(&params).as_slice(), |row| {
             row.get::<_, String>(0)
-        })
-        .expect("Failed to execute query");
+        }),
+        Vec::new()
+    );
 
     rows.filter_map(|row| row.ok()).collect()
 }
@@ -446,7 +463,7 @@ pub(super) fn get_endpoints_for_protocol(
     internal_minutes: u64,
     from_endpoint: Option<&str>,
 ) -> Vec<String> {
-    let conn = new_connection();
+    let conn = try_db!(new_connection_result(), Vec::new());
 
     match from_endpoint {
         Some(endpoint) => {
@@ -472,18 +489,19 @@ pub(super) fn get_endpoints_for_protocol(
                 placeholders
             );
 
-            let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
+            let mut stmt = try_db!(conn.prepare(&query), Vec::new());
 
             let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> =
                 vec![Box::new(internal_minutes), Box::new(protocol.to_string())];
             params_vec.extend(box_i64_params(&endpoint_ids));
             params_vec.extend(box_i64_params(&endpoint_ids));
 
-            let rows = stmt
-                .query_map(params_to_refs(&params_vec).as_slice(), |row| {
+            let rows = try_db!(
+                stmt.query_map(params_to_refs(&params_vec).as_slice(), |row| {
                     row.get::<_, String>(0)
-                })
-                .expect("Failed to execute query");
+                }),
+                Vec::new()
+            );
 
             rows.filter_map(|row| row.ok()).collect()
         }
@@ -497,13 +515,14 @@ pub(super) fn get_endpoints_for_protocol(
                     AND e.name IS NOT NULL AND e.name != ''
                 ORDER BY e.name";
 
-            let mut stmt = conn.prepare(query).expect("Failed to prepare statement");
+            let mut stmt = try_db!(conn.prepare(query), Vec::new());
 
-            let rows = stmt
-                .query_map(params![internal_minutes, protocol], |row| {
+            let rows = try_db!(
+                stmt.query_map(params![internal_minutes, protocol], |row| {
                     row.get::<_, String>(0)
-                })
-                .expect("Failed to execute query");
+                }),
+                Vec::new()
+            );
 
             rows.filter_map(|row| row.ok()).collect()
         }
@@ -512,7 +531,7 @@ pub(super) fn get_endpoints_for_protocol(
 
 /// Get all protocols seen across all endpoints
 pub(super) fn get_all_protocols(internal_minutes: u64) -> Vec<String> {
-    let conn = new_connection();
+    let conn = try_db!(new_connection_result(), Vec::new());
 
     let query =
         "SELECT DISTINCT COALESCE(NULLIF(c.sub_protocol, ''), c.ip_header_protocol) as protocol
@@ -520,17 +539,18 @@ pub(super) fn get_all_protocols(internal_minutes: u64) -> Vec<String> {
         WHERE c.last_seen_at >= (strftime('%s', 'now') - (? * 60))
         ORDER BY protocol";
 
-    let mut stmt = conn.prepare(query).expect("Failed to prepare statement");
+    let mut stmt = try_db!(conn.prepare(query), Vec::new());
 
-    let rows = stmt
-        .query_map(params![internal_minutes], |row| row.get::<_, String>(0))
-        .expect("Failed to execute query");
+    let rows = try_db!(
+        stmt.query_map(params![internal_minutes], |row| row.get::<_, String>(0)),
+        Vec::new()
+    );
 
     rows.filter_map(|row| row.ok()).collect()
 }
 
 pub(super) fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String> {
-    let conn = new_connection();
+    let conn = try_db!(new_connection_result(), Vec::new());
 
     let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, &hostname);
     if endpoint_ids.is_empty() {
@@ -555,17 +575,18 @@ pub(super) fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) ->
         placeholders
     );
 
-    let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
+    let mut stmt = try_db!(conn.prepare(&query), Vec::new());
 
     // Build parameters: internal_minutes + endpoint_ids (1 time for the IN clause)
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(internal_minutes)];
     params.extend(box_i64_params(&endpoint_ids));
 
-    let rows = stmt
-        .query_map(params_to_refs(&params).as_slice(), |row| {
+    let rows = try_db!(
+        stmt.query_map(params_to_refs(&params).as_slice(), |row| {
             row.get::<_, i64>(0)
-        })
-        .expect("Failed to execute query");
+        }),
+        Vec::new()
+    );
 
     rows.filter_map(|row| row.ok())
         .map(|port| port.to_string())
@@ -605,7 +626,6 @@ pub(super) fn get_ports_from_communications(
 pub(super) fn get_endpoint_ips_and_macs(
     endpoints: &[String],
 ) -> HashMap<String, (Vec<String>, Vec<String>)> {
-    let conn = new_connection();
     let mut result: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
 
     // Initialize all endpoints with empty vectors (use lowercase keys for case-insensitive matching)
@@ -613,23 +633,27 @@ pub(super) fn get_endpoint_ips_and_macs(
         result.insert(endpoint.to_lowercase(), (Vec::new(), Vec::new()));
     }
 
+    let conn = try_db!(new_connection_result(), result);
+
     // Single batch query to get all IPs and MACs with their display names
-    let mut stmt = conn
-        .prepare(&format!(
+    let mut stmt = try_db!(
+        conn.prepare(&format!(
             "SELECT {DISPLAY_NAME_SQL} AS display_name, ea.ip, ea.mac
              FROM endpoints e
              INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id"
-        ))
-        .expect("Failed to prepare batch IPs/MACs statement");
+        )),
+        result
+    );
 
-    let rows = stmt
-        .query_map([], |row| {
+    let rows = try_db!(
+        stmt.query_map([], |row| {
             let name: String = row.get(0)?;
             let ip: Option<String> = row.get(1)?;
             let mac: Option<String> = row.get(2)?;
             Ok((name, ip, mac))
-        })
-        .expect("Failed to execute batch IPs/MACs query");
+        }),
+        result
+    );
 
     for row in rows.flatten() {
         let (name, ip, mac) = row;
@@ -661,28 +685,31 @@ pub(super) fn get_endpoint_ips_and_macs(
 
 /// Get DHCP vendor class for all endpoints (for model identification)
 pub(super) fn get_endpoint_vendor_classes(endpoints: &[String]) -> HashMap<String, String> {
-    let conn = new_connection();
     let mut result: HashMap<String, String> = HashMap::new();
 
     // Build lowercase set for case-insensitive matching
     let endpoints_lower: HashSet<String> = endpoints.iter().map(|e| e.to_lowercase()).collect();
 
-    let mut stmt = conn
-        .prepare(&format!(
+    let conn = try_db!(new_connection_result(), result);
+
+    let mut stmt = try_db!(
+        conn.prepare(&format!(
             "SELECT {DISPLAY_NAME_SQL} AS display_name, ea.dhcp_vendor_class
              FROM endpoints e
              INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
              WHERE ea.dhcp_vendor_class IS NOT NULL AND ea.dhcp_vendor_class != ''"
-        ))
-        .expect("Failed to prepare vendor class statement");
+        )),
+        result
+    );
 
-    let rows = stmt
-        .query_map([], |row| {
+    let rows = try_db!(
+        stmt.query_map([], |row| {
             let name: String = row.get(0)?;
             let vendor_class: String = row.get(1)?;
             Ok((name, vendor_class))
-        })
-        .expect("Failed to execute vendor class query");
+        }),
+        result
+    );
 
     for row in rows.flatten() {
         let (name, vendor_class) = row;
@@ -800,7 +827,7 @@ pub(super) fn get_all_ips_macs_and_hostnames_from_single_hostname(
     hostname: String,
     internal_minutes: u64,
 ) -> (Vec<String>, Vec<String>, Vec<String>) {
-    let conn = new_connection();
+    let conn = try_db!(new_connection_result(), (Vec::new(), Vec::new(), Vec::new()));
 
     let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, &hostname);
     if endpoint_ids.is_empty() {
@@ -823,20 +850,21 @@ pub(super) fn get_all_ips_macs_and_hostnames_from_single_hostname(
         placeholders
     );
 
-    let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
+    let mut stmt = try_db!(conn.prepare(&query), (Vec::new(), Vec::new(), Vec::new()));
 
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(internal_minutes)];
     params.extend(box_i64_params(&endpoint_ids));
 
-    let rows = stmt
-        .query_map(params_to_refs(&params).as_slice(), |row| {
+    let rows = try_db!(
+        stmt.query_map(params_to_refs(&params).as_slice(), |row| {
             Ok((
                 row.get::<_, Option<String>>(0)?,
                 row.get::<_, Option<String>>(1)?,
                 row.get::<_, Option<String>>(2)?,
             ))
-        })
-        .expect("Failed to execute query");
+        }),
+        (Vec::new(), Vec::new(), Vec::new())
+    );
 
     let mut ips = HashSet::new();
     let mut macs = HashSet::new();
@@ -919,7 +947,7 @@ pub(super) fn resolve_identifier_to_display_name(
 }
 
 fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
-    let conn = new_connection();
+    let conn = try_db!(new_connection_result(), Vec::new());
 
     // If no node specified, show all communications (overall network view)
     // If node is specified, filter to only that endpoint's communications
@@ -1023,10 +1051,10 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
         }
     };
 
-    let mut stmt = conn.prepare(&query).expect("Failed to prepare statement");
+    let mut stmt = try_db!(conn.prepare(&query), Vec::new());
 
-    let rows = stmt
-        .query_map(params_to_refs(&params).as_slice(), |row| {
+    let rows = try_db!(
+        stmt.query_map(params_to_refs(&params).as_slice(), |row| {
             let header_protocol = row.get::<_, String>("header_protocol")?;
             let sub_protocol = row
                 .get::<_, Option<String>>("sub_protocol")?
@@ -1042,8 +1070,9 @@ fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
                 src_port: row.get::<_, Option<u16>>("src_port").ok().flatten(),
                 dst_port: row.get::<_, Option<u16>>("dst_port").ok().flatten(),
             })
-        })
-        .expect("Failed to execute query");
+        }),
+        Vec::new()
+    );
 
     // Group by source and destination, collecting all protocols and ports
     type CommKey = (String, String);
@@ -1167,7 +1196,7 @@ pub(super) fn get_all_endpoint_types(
     std::collections::HashMap<String, &'static str>,
     std::collections::HashSet<String>,
 ) {
-    let conn = new_connection();
+    let conn = try_db!(new_connection_result(), (std::collections::HashMap::new(), std::collections::HashSet::new()));
     let mut types = std::collections::HashMap::new();
     let mut manual_overrides = std::collections::HashSet::new();
 
@@ -1189,24 +1218,16 @@ pub(super) fn get_all_endpoint_types(
 
     // Batch fetch all IPs for all endpoints in one query
     let mut all_ips: HashMap<String, Vec<String>> = HashMap::new();
-    {
-        let mut stmt = conn
-            .prepare(&format!(
-                "SELECT {DISPLAY_NAME_SQL} AS display_name, ea.ip
-                 FROM endpoints e
-                 INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
-                 WHERE ea.ip IS NOT NULL"
-            ))
-            .expect("Failed to prepare IP batch statement");
-
-        let rows = stmt
-            .query_map([], |row| {
-                let name: String = row.get(0)?;
-                let ip: String = row.get(1)?;
-                Ok((name, ip))
-            })
-            .expect("Failed to execute IP batch query");
-
+    if let Ok(mut stmt) = conn.prepare(&format!(
+        "SELECT {DISPLAY_NAME_SQL} AS display_name, ea.ip
+         FROM endpoints e
+         INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
+         WHERE ea.ip IS NOT NULL"
+    )) && let Ok(rows) = stmt.query_map([], |row| {
+        let name: String = row.get(0)?;
+        let ip: String = row.get(1)?;
+        Ok((name, ip))
+    }) {
         for row in rows.flatten() {
             // Use lowercase keys for case-insensitive lookups
             all_ips.entry(row.0.to_lowercase()).or_default().push(row.1);
@@ -1215,24 +1236,16 @@ pub(super) fn get_all_endpoint_types(
 
     // Batch fetch all MACs for all endpoints in one query
     let mut all_macs: HashMap<String, Vec<String>> = HashMap::new();
-    {
-        let mut stmt = conn
-            .prepare(&format!(
-                "SELECT {DISPLAY_NAME_SQL} AS display_name, ea.mac
-                 FROM endpoints e
-                 INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
-                 WHERE ea.mac IS NOT NULL"
-            ))
-            .expect("Failed to prepare MAC batch statement");
-
-        let rows = stmt
-            .query_map([], |row| {
-                let name: String = row.get(0)?;
-                let mac: String = row.get(1)?;
-                Ok((name, mac))
-            })
-            .expect("Failed to execute MAC batch query");
-
+    if let Ok(mut stmt) = conn.prepare(&format!(
+        "SELECT {DISPLAY_NAME_SQL} AS display_name, ea.mac
+         FROM endpoints e
+         INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
+         WHERE ea.mac IS NOT NULL"
+    )) && let Ok(rows) = stmt.query_map([], |row| {
+        let name: String = row.get(0)?;
+        let mac: String = row.get(1)?;
+        Ok((name, mac))
+    }) {
         for row in rows.flatten() {
             // Use lowercase keys for case-insensitive lookups
             all_macs
@@ -1247,24 +1260,16 @@ pub(super) fn get_all_endpoint_types(
     // NOT communication ports, which would include traffic the device initiates
     // (e.g., a computer sending to port 9100 would incorrectly be classified as a printer)
     let mut all_ports: HashMap<String, Vec<u16>> = HashMap::new();
-    {
-        let mut stmt = conn
-            .prepare(&format!(
-                "SELECT {DISPLAY_NAME_SQL} AS display_name, op.port
-                 FROM endpoints e
-                 INNER JOIN open_ports op ON e.id = op.endpoint_id
-                 GROUP BY e.id, op.port"
-            ))
-            .expect("Failed to prepare port batch statement");
-
-        let rows = stmt
-            .query_map([], |row| {
-                let name: String = row.get(0)?;
-                let port: i64 = row.get(1)?;
-                Ok((name, port))
-            })
-            .expect("Failed to execute port batch query");
-
+    if let Ok(mut stmt) = conn.prepare(&format!(
+        "SELECT {DISPLAY_NAME_SQL} AS display_name, op.port
+         FROM endpoints e
+         INNER JOIN open_ports op ON e.id = op.endpoint_id
+         GROUP BY e.id, op.port"
+    )) && let Ok(rows) = stmt.query_map([], |row| {
+        let name: String = row.get(0)?;
+        let port: i64 = row.get(1)?;
+        Ok((name, port))
+    }) {
         for row in rows.flatten() {
             if let Ok(port) = u16::try_from(row.1) {
                 // Use lowercase keys for case-insensitive lookups
@@ -1278,23 +1283,15 @@ pub(super) fn get_all_endpoint_types(
 
     // Batch fetch all SSDP models for all endpoints (for soundbar/TV classification)
     let mut all_ssdp_models: HashMap<String, String> = HashMap::new();
-    {
-        let mut stmt = conn
-            .prepare(&format!(
-                "SELECT {DISPLAY_NAME_SQL} AS display_name, e.ssdp_model
-                 FROM endpoints e
-                 WHERE e.ssdp_model IS NOT NULL AND e.ssdp_model != ''"
-            ))
-            .expect("Failed to prepare SSDP model batch statement");
-
-        let rows = stmt
-            .query_map([], |row| {
-                let name: String = row.get(0)?;
-                let model: String = row.get(1)?;
-                Ok((name, model))
-            })
-            .expect("Failed to execute SSDP model batch query");
-
+    if let Ok(mut stmt) = conn.prepare(&format!(
+        "SELECT {DISPLAY_NAME_SQL} AS display_name, e.ssdp_model
+         FROM endpoints e
+         WHERE e.ssdp_model IS NOT NULL AND e.ssdp_model != ''"
+    )) && let Ok(rows) = stmt.query_map([], |row| {
+        let name: String = row.get(0)?;
+        let model: String = row.get(1)?;
+        Ok((name, model))
+    }) {
         for row in rows.flatten() {
             // Use lowercase keys for case-insensitive lookups
             all_ssdp_models.insert(row.0.to_lowercase(), row.1);
@@ -1460,7 +1457,7 @@ pub(super) fn get_dns_entries() -> Vec<DnsEntryView> {
 // API handlers have been moved to api.rs
 
 pub(super) fn get_bytes_for_endpoint(hostname: String, internal_minutes: u64) -> BytesStats {
-    let conn = new_connection();
+    let conn = try_db!(new_connection_result(), BytesStats::default());
 
     // Bytes received (where this endpoint is the destination)
     let bytes_in: i64 = conn
@@ -1502,7 +1499,6 @@ pub(super) fn get_all_endpoints_bytes(
     endpoints: &[String],
     internal_minutes: u64,
 ) -> HashMap<String, i64> {
-    let conn = new_connection();
     let mut result: HashMap<String, i64> = HashMap::new();
 
     // Initialize all endpoints with 0 bytes (use lowercase keys for case-insensitive matching)
@@ -1510,24 +1506,28 @@ pub(super) fn get_all_endpoints_bytes(
         result.insert(endpoint.to_lowercase(), 0);
     }
 
+    let conn = try_db!(new_connection_result(), result);
+
     // Single query to get all bytes data at once
-    let mut stmt = conn
-        .prepare(&format!(
+    let mut stmt = try_db!(
+        conn.prepare(&format!(
             "SELECT {DISPLAY_NAME_SQL} AS display_name, COALESCE(SUM(c.bytes), 0) as total_bytes
              FROM endpoints e
              INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
              WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
              GROUP BY e.id"
-        ))
-        .expect("Failed to prepare statement");
+        )),
+        result
+    );
 
-    let rows = stmt
-        .query_map([internal_minutes], |row| {
+    let rows = try_db!(
+        stmt.query_map([internal_minutes], |row| {
             let name: String = row.get(0)?;
             let bytes: i64 = row.get(1)?;
             Ok((name, bytes))
-        })
-        .expect("Failed to execute query");
+        }),
+        result
+    );
 
     for row in rows.flatten() {
         let (name, bytes) = row;
@@ -1544,7 +1544,6 @@ pub(super) fn get_all_endpoints_last_seen(
     endpoints: &[String],
     internal_minutes: u64,
 ) -> HashMap<String, String> {
-    let conn = new_connection();
     let mut result: HashMap<String, String> = HashMap::new();
 
     // Initialize all endpoints with empty string (use lowercase keys for case-insensitive matching)
@@ -1552,10 +1551,12 @@ pub(super) fn get_all_endpoints_last_seen(
         result.insert(endpoint.to_lowercase(), String::new());
     }
 
+    let conn = try_db!(new_connection_result(), result);
+
     // Single query to get last_seen_at for each endpoint
     // Uses DISPLAY_NAME_SQL constant for consistency with other queries
-    let mut stmt = conn
-        .prepare(&format!(
+    let mut stmt = try_db!(
+        conn.prepare(&format!(
             "SELECT
                 {DISPLAY_NAME_SQL} AS display_name,
                 MAX(c.last_seen_at) as last_seen
@@ -1563,16 +1564,18 @@ pub(super) fn get_all_endpoints_last_seen(
              INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
              WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
              GROUP BY e.id"
-        ))
-        .expect("Failed to prepare statement");
+        )),
+        result
+    );
 
-    let rows = stmt
-        .query_map([internal_minutes], |row| {
+    let rows = try_db!(
+        stmt.query_map([internal_minutes], |row| {
             let name: String = row.get(0)?;
             let last_seen: i64 = row.get(1)?;
             Ok((name, last_seen))
-        })
-        .expect("Failed to execute query");
+        }),
+        result
+    );
 
     let now = chrono::Utc::now().timestamp();
 
@@ -1604,7 +1607,6 @@ pub(super) fn get_all_endpoints_online_status(
     endpoints: &[String],
     threshold_seconds: u64,
 ) -> HashMap<String, bool> {
-    let conn = new_connection();
     let mut result: HashMap<String, bool> = HashMap::new();
 
     // Initialize all endpoints as offline (use lowercase keys for case-insensitive matching)
@@ -1612,24 +1614,28 @@ pub(super) fn get_all_endpoints_online_status(
         result.insert(endpoint.to_lowercase(), false);
     }
 
+    let conn = try_db!(new_connection_result(), result);
+
     // Single query to get endpoints with recent traffic within threshold
-    let mut stmt = conn
-        .prepare(&format!(
+    let mut stmt = try_db!(
+        conn.prepare(&format!(
             "SELECT
                 {DISPLAY_NAME_SQL} AS display_name
              FROM endpoints e
              INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
              WHERE c.last_seen_at >= (strftime('%s', 'now') - ?1)
              GROUP BY e.id"
-        ))
-        .expect("Failed to prepare statement");
+        )),
+        result
+    );
 
-    let rows = stmt
-        .query_map([threshold_seconds], |row| {
+    let rows = try_db!(
+        stmt.query_map([threshold_seconds], |row| {
             let name: String = row.get(0)?;
             Ok(name)
-        })
-        .expect("Failed to execute query");
+        }),
+        result
+    );
 
     for row in rows.flatten() {
         // Use lowercase for case-insensitive matching
@@ -1839,7 +1845,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     } else if let Some(ref ip) = query.ip {
         let ip_clone = ip.clone();
         let resolved = task::spawn_blocking(move || {
-            let conn = new_connection();
+            let conn = new_connection_result().ok()?;
             resolve_identifier_to_display_name(&conn, &ip_clone)
         })
         .await
@@ -1849,7 +1855,7 @@ async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Responder {
     } else if let Some(ref mac) = query.mac {
         let mac_clone = mac.clone();
         let resolved = task::spawn_blocking(move || {
-            let conn = new_connection();
+            let conn = new_connection_result().ok()?;
             resolve_identifier_to_display_name(&conn, &mac_clone)
         })
         .await

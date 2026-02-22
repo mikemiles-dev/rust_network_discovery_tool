@@ -1,0 +1,1110 @@
+# Device classification rules — canonical source of truth.
+# Generated into src/network/endpoint/device_rules_data.rs by device-rules-generator.
+# To regenerate: cd tools/device-rules-generator && cargo run --release
+
+# --- Hostname classification patterns (contains match) ---
+[patterns]
+printer = [
+    "printer", "print", "hp-", "canon", "epson", "brother", "lexmark", "xerox",
+    "ricoh", "laserjet", "officejet", "pixma", "mfc-", "dcp-", "hpcolor",
+    "hplaserjet", "designjet", "colorjet", "scanjet",
+]
+tv = [
+    "tv", "bravia", "vizio", "roku", "chromecast", "appletv", "apple-tv",
+    "firetv", "fire-tv", "shield", "androidtv", "the-frame", "theframe",
+    "the-serif", "the-sero", "lgwebostv", "webostv",
+]
+gaming = [
+    "xbox", "playstation", "ps4", "ps5", "nintendo", "switch", "steamdeck", "steam-deck",
+]
+phone = [
+    "iphone", "ipad", "ipod", "oneplus", "motorola", "oppo", "vivo", "realme", "redmi", "poco",
+]
+vm = [
+    "vmware", "esxi", "vcenter", "proxmox", "hyper-v", "hyperv", "virtualbox",
+    "vbox", "kvm", "qemu", "xen", "docker", "container", "k8s", "kubernetes",
+    "rancher", "portainer",
+]
+soundbar = [
+    "soundbar", "sound-bar", "sonos", "bose", "playbar", "playbase", "beam",
+    "denon-avr", "denon-", "yamaha-rx", "rx-v", "marantz", "onkyo", "pioneer-vsx",
+]
+appliance = [
+    "dishwasher", "washer", "dryer", "washing", "laundry", "refrigerator", "fridge",
+    "oven", "range", "microwave", "maytag", "miele", "electrolux", "kenmore",
+    "kitchenaid", "echo", "alexa", "amazon-", "ring-", "nest-", "google-home",
+    "homepod",
+    # Smart home hubs
+    "smartthings", "hubv2", "hubv3", "hue-bridge", "homebridge", "home-assistant", "homeassistant",
+    # Garage door openers
+    "ratgdo", "myq", "garagedoor", "garage-door",
+    # Smart lighting
+    "wled", "hue", "lifx", "nanoleaf",
+    # Smart plugs/switches
+    "wemo", "kasa", "tasmota", "shelly", "meross",
+    # Other IoT
+    "ecobee", "roomba", "dyson",
+    # NAS devices
+    "truenas", "synology", "qnap", "freenas", "unraid", "paperless",
+    # Security cameras
+    "dahua", "hikvision", "simplisafe", "arlo", "blink",
+    # Wyze cameras
+    "lcc-",
+    # Baby sound machines
+    "restplus",
+]
+
+# --- Hostname classification prefixes (starts_with match) ---
+[prefixes]
+printer = ["hp", "npi", "np", "brn", "brw", "epson"]
+tv = []
+phone = ["sm-", "moto"]
+
+# --- Conditional patterns (contains X but not Y) ---
+[[conditionals]]
+pattern = "galaxy"
+exclude = "tv"
+classification = "phone"
+
+[[conditionals]]
+pattern = "pixel"
+exclude = "tv"
+classification = "phone"
+
+[[conditionals]]
+pattern = "xiaomi"
+exclude = "tv"
+classification = "phone"
+
+[[conditionals]]
+pattern = "huawei"
+exclude = "tv"
+classification = "phone"
+
+[[conditionals]]
+pattern = "nokia"
+exclude = "tv"
+classification = "phone"
+
+# --- MAC vendor -> device type ---
+[vendor_classes]
+appliance = [
+    "Amazon", "Google", "Ring", "Philips Hue", "Ecobee", "TP-Link", "Belkin",
+    "Wyze", "iRobot", "Tuya", "Dyson", "Roborock", "SimpliSafe", "Dahua",
+    "Nest", "Bosch", "Seeed", "Texas Instruments", "Espressif", "WiZ",
+]
+gaming = ["Nintendo", "Sony"]
+tv = ["Roku", "TCL", "Hisense", "Vizio", "FN-Link"]
+gateway = [
+    "Commscope", "ARRIS", "Netgear", "Linksys", "Ubiquiti", "MikroTik",
+    "Cisco", "Juniper", "Fortinet", "pfSense", "Asus", "eero",
+]
+
+# --- mDNS service -> device type ---
+[services]
+tv = ["_googlecast._tcp", "_roku._tcp", "_webos._tcp"]
+printer = ["_ipp._tcp", "_printer._tcp", "_pdl-datastream._tcp"]
+phone = ["_apple-mobdev2._tcp", "_companion-link._tcp", "_rdlink._tcp"]
+appliance = ["_lge._tcp", "_xbcs._tcp", "_dyson_mqtt._tcp"]
+soundbar = ["_sonos._tcp"]
+
+# --- Standalone lists ---
+[standalone]
+mac_desktop_services = ["_afpovertcp._tcp", "_smb._tcp", "_ssh._tcp", "_sftp-ssh._tcp"]
+soundbar_model_prefixes = [
+    "hw-", "spk-", "wam", "sl", "sn", "sp", "sc9", "bar-",
+    "avr-", "rx-v", "rx-a", "sr", "nr", "tx-nr", "tx-rz", "vsx-",
+]
+lg_appliance_prefixes = ["lma", "lmw", "ldf", "ldt", "ldp", "dle", "dlex", "lrmv"]
+
+# --- TV series lookup tables ---
+[[tv_series]]
+vendor = "samsung"
+entries = [
+    { pattern = "ls03", name = "The Frame" },
+    { pattern = "ls01", name = "The Serif" },
+    { pattern = "ls05", name = "The Sero" },
+    { pattern = "lst7", name = "The Terrace" },
+    { pattern = "s95", name = "OLED S95" },
+    { pattern = "s90", name = "OLED S90" },
+    { pattern = "s85", name = "OLED S85" },
+    { pattern = "qn9", name = "Neo QLED QN9" },
+    { pattern = "qn8", name = "Neo QLED QN8" },
+    { pattern = "qn7", name = "Neo QLED QN7" },
+    { pattern = "q8", name = "QLED Q8" },
+    { pattern = "q7", name = "QLED Q7" },
+    { pattern = "q6", name = "QLED Q6" },
+    { pattern = "cu8", name = "Crystal UHD CU8" },
+    { pattern = "cu7", name = "Crystal UHD CU7" },
+    { pattern = "bu8", name = "Crystal UHD BU8" },
+    { pattern = "au8", name = "Crystal UHD AU8" },
+    { pattern = "tu8", name = "Crystal UHD TU8" },
+    { pattern = "tu7", name = "Crystal UHD TU7" },
+]
+
+[[tv_series]]
+vendor = "lg"
+entries = [
+    { pattern = "oled", name = "OLED" },
+    { pattern = "g3", name = "OLED G3" },
+    { pattern = "g2", name = "OLED G2" },
+    { pattern = "c3", name = "OLED C3" },
+    { pattern = "c2", name = "OLED C2" },
+    { pattern = "c1", name = "OLED C1" },
+    { pattern = "b3", name = "OLED B3" },
+    { pattern = "b2", name = "OLED B2" },
+    { pattern = "qned", name = "QNED" },
+    { pattern = "nano", name = "NanoCell" },
+    { pattern = "uq", name = "UHD" },
+    { pattern = "up", name = "UHD" },
+]
+
+[[tv_series]]
+vendor = "sony"
+entries = [
+    { pattern = "a95", name = "Bravia XR A95" },
+    { pattern = "a90", name = "Bravia XR A90" },
+    { pattern = "a80", name = "Bravia XR A80" },
+    { pattern = "x95", name = "Bravia XR X95" },
+    { pattern = "x90", name = "Bravia XR X90" },
+    { pattern = "x85", name = "Bravia X85" },
+    { pattern = "x80", name = "Bravia X80" },
+]
+
+# --- Hostname -> vendor (simple rules, order matters) ---
+# match_type: "contains" or "starts_with"
+[[hostname_vendors]]
+match_type = "contains"
+patterns = ["samsung", "smartthings", "galaxy"]
+vendor = "Samsung"
+
+[[hostname_vendors]]
+match_type = "contains"
+patterns = ["echo", "alexa", "amazon"]
+vendor = "Amazon"
+
+[[hostname_vendors]]
+match_type = "contains"
+patterns = ["google", "nest-", "chromecast"]
+vendor = "Google"
+
+[[hostname_vendors]]
+match_type = "contains"
+patterns = ["apple", "homepod", "macbook", "iphone", "ipad"]
+vendor = "Apple"
+
+[[hostname_vendors]]
+match_type = "contains"
+patterns = ["roku"]
+vendor = "Roku"
+
+[[hostname_vendors]]
+match_type = "contains"
+patterns = ["sonos"]
+vendor = "Sonos"
+
+[[hostname_vendors]]
+match_type = "contains"
+patterns = ["philips", "hue"]
+vendor = "Philips Hue"
+
+[[hostname_vendors]]
+match_type = "contains"
+patterns = ["ring-"]
+vendor = "Ring"
+
+[[hostname_vendors]]
+match_type = "starts_with"
+patterns = ["ring"]
+vendor = "Ring"
+
+[[hostname_vendors]]
+match_type = "contains"
+patterns = ["ecobee"]
+vendor = "Ecobee"
+
+[[hostname_vendors]]
+match_type = "starts_with"
+patterns = ["restplus"]
+vendor = "Hatch"
+
+[[hostname_vendors]]
+match_type = "contains"
+patterns = ["irobot", "roomba"]
+vendor = "iRobot"
+
+[[hostname_vendors]]
+match_type = "contains"
+patterns = ["wyze"]
+vendor = "Wyze"
+
+[[hostname_vendors]]
+match_type = "contains"
+patterns = ["eero"]
+vendor = "eero"
+
+[[hostname_vendors]]
+match_type = "starts_with"
+patterns = ["ps4", "ps5"]
+vendor = "Sony"
+
+[[hostname_vendors]]
+match_type = "contains"
+patterns = ["playstation"]
+vendor = "Sony"
+
+[[hostname_vendors]]
+match_type = "starts_with"
+patterns = ["xbox"]
+vendor = "Microsoft"
+
+[[hostname_vendors]]
+match_type = "starts_with"
+patterns = ["hp", "npi"]
+vendor = "HP"
+
+[[hostname_vendors]]
+match_type = "contains"
+patterns = ["canon"]
+vendor = "Canon"
+
+[[hostname_vendors]]
+match_type = "contains"
+patterns = ["epson"]
+vendor = "Epson"
+
+[[hostname_vendors]]
+match_type = "starts_with"
+patterns = ["brn", "brw"]
+vendor = "Brother"
+
+[[hostname_vendors]]
+match_type = "contains"
+patterns = ["brother"]
+vendor = "Brother"
+
+# --- Hostname -> model (simple fixed-output rules) ---
+[[hostname_models]]
+match_type = "starts_with"
+pattern = "restplus"
+model = "Hatch Rest+"
+
+[[hostname_models]]
+match_type = "starts_with"
+pattern = "ps4"
+model = "PlayStation 4"
+
+[[hostname_models]]
+match_type = "starts_with"
+pattern = "ps5"
+model = "PlayStation 5"
+
+# --- Vendor+Type -> model fallback ---
+[[vendor_type_models]]
+vendor = "Samsung"
+device_type = "tv"
+label = "Smart TV"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Samsung"
+device_type = "phone"
+label = "Galaxy"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Samsung"
+device_type = "computer"
+label = "Computer"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Samsung"
+device_type = "appliance"
+label = "Appliance"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Samsung"
+device_type = "soundbar"
+label = "Soundbar"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Samsung"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "LG"
+device_type = "tv"
+label = "Smart TV"
+literal = false
+
+[[vendor_type_models]]
+vendor = "LG"
+device_type = "phone"
+label = "Phone"
+literal = false
+
+[[vendor_type_models]]
+vendor = "LG"
+device_type = "computer"
+label = "Computer"
+literal = false
+
+[[vendor_type_models]]
+vendor = "LG"
+device_type = "appliance"
+label = "ThinQ Appliance"
+literal = false
+
+[[vendor_type_models]]
+vendor = "LG"
+device_type = "soundbar"
+label = "Soundbar"
+literal = false
+
+[[vendor_type_models]]
+vendor = "LG"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Sony"
+device_type = "tv"
+label = "Bravia TV"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Sony"
+device_type = "gaming"
+label = "PlayStation"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Sony"
+device_type = "computer"
+label = "VAIO"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Sony"
+device_type = "soundbar"
+label = "Soundbar"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Sony"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Apple"
+device_type = "phone"
+label = "iPhone"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Apple"
+device_type = "tv"
+label = "Apple TV"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Apple"
+device_type = "computer"
+label = "Mac"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Apple"
+device_type = "local"
+label = "Mac"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Apple"
+device_type = ""
+label = "Apple Device"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Microsoft"
+device_type = "gaming"
+label = "Xbox"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Microsoft"
+device_type = "computer"
+label = "Surface"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Microsoft"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Nintendo"
+device_type = "gaming"
+label = "Switch"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Nintendo"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Google"
+device_type = "tv"
+label = "Chromecast"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Google"
+device_type = "phone"
+label = "Pixel"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Google"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Huawei"
+device_type = "phone"
+label = "Phone"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Huawei"
+device_type = "gateway"
+label = "Router"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Huawei"
+device_type = "tv"
+label = "Smart Screen"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Huawei"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Amazon"
+device_type = "tv"
+label = "Fire TV"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Amazon"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "HP"
+device_type = "printer"
+label = "Printer"
+literal = false
+
+[[vendor_type_models]]
+vendor = "HP"
+device_type = "computer"
+label = "Computer"
+literal = false
+
+[[vendor_type_models]]
+vendor = "HP"
+device_type = "local"
+label = "Computer"
+literal = false
+
+[[vendor_type_models]]
+vendor = "HP"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Belkin"
+device_type = "appliance"
+label = "WeMo Smart Plug"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Belkin"
+device_type = "gateway"
+label = "Router"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Belkin"
+device_type = ""
+label = "WeMo Device"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Wisol"
+device_type = "appliance"
+label = "Sensor"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Wisol"
+device_type = ""
+label = "IoT Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "USI"
+device_type = "phone"
+label = "Mobile Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "USI"
+device_type = "appliance"
+label = "IoT Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "USI"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "TCL"
+device_type = "tv"
+label = "Roku TV"
+literal = true
+
+[[vendor_type_models]]
+vendor = "TCL"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Hisense"
+device_type = "tv"
+label = "Smart TV"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Hisense"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Vizio"
+device_type = "tv"
+label = "Smart TV"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Vizio"
+device_type = "soundbar"
+label = "Soundbar"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Vizio"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Roku"
+device_type = "tv"
+label = "TV"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Roku"
+device_type = ""
+label = "Roku"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Sonos"
+device_type = ""
+label = "Speaker"
+literal = false
+
+[[vendor_type_models]]
+vendor = "iRobot"
+device_type = ""
+label = "Roomba"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Ecobee"
+device_type = ""
+label = "Thermostat"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Ring"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Philips Hue"
+device_type = ""
+label = "Hue Device"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Wyze"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "eero"
+device_type = "gateway"
+label = "Router"
+literal = false
+
+[[vendor_type_models]]
+vendor = "eero"
+device_type = ""
+label = "eero"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Nest"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "TP-Link"
+device_type = "appliance"
+label = "Kasa Smart Plug"
+literal = true
+
+[[vendor_type_models]]
+vendor = "TP-Link"
+device_type = "gateway"
+label = "Router"
+literal = false
+
+[[vendor_type_models]]
+vendor = "TP-Link"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Tuya"
+device_type = ""
+label = "Smart Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Dyson"
+device_type = ""
+label = "Air Purifier"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Commscope"
+device_type = "gateway"
+label = "ARRIS Modem/Router"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Commscope"
+device_type = ""
+label = "ARRIS Device"
+literal = true
+
+[[vendor_type_models]]
+vendor = "ARRIS"
+device_type = "gateway"
+label = "Modem/Router"
+literal = false
+
+[[vendor_type_models]]
+vendor = "ARRIS"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Netgear"
+device_type = "gateway"
+label = "Router"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Netgear"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Linksys"
+device_type = "gateway"
+label = "Router"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Linksys"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Ubiquiti"
+device_type = "gateway"
+label = "UniFi Gateway"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Ubiquiti"
+device_type = ""
+label = "UniFi Device"
+literal = true
+
+[[vendor_type_models]]
+vendor = "MikroTik"
+device_type = "gateway"
+label = "Router"
+literal = false
+
+[[vendor_type_models]]
+vendor = "MikroTik"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Cisco"
+device_type = "gateway"
+label = "Router"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Cisco"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Denon"
+device_type = "soundbar"
+label = "AV Receiver"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Denon"
+device_type = ""
+label = "AV Receiver"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Yamaha"
+device_type = "soundbar"
+label = "AV Receiver"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Yamaha"
+device_type = ""
+label = "Audio Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Logitech"
+device_type = "appliance"
+label = "Harmony Hub"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Logitech"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Brother"
+device_type = "printer"
+label = "Printer"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Brother"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Espressif"
+device_type = "appliance"
+label = "ESP Smart Device"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Espressif"
+device_type = ""
+label = "ESP Device"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Roborock"
+device_type = ""
+label = "Vacuum"
+literal = false
+
+[[vendor_type_models]]
+vendor = "SimpliSafe"
+device_type = ""
+label = "Security"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Dahua"
+device_type = ""
+label = "Camera"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Bosch"
+device_type = "appliance"
+label = "Appliance"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Bosch"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Seeed"
+device_type = ""
+label = "IoT Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Texas Instruments"
+device_type = ""
+label = "IoT Device"
+literal = true
+
+[[vendor_type_models]]
+vendor = "Proxmox"
+device_type = "virtualization"
+label = "Server"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Proxmox"
+device_type = ""
+label = "VM"
+literal = false
+
+[[vendor_type_models]]
+vendor = "ASRock"
+device_type = ""
+label = "PC"
+literal = false
+
+[[vendor_type_models]]
+vendor = "ASUS"
+device_type = "gateway"
+label = "Router"
+literal = false
+
+[[vendor_type_models]]
+vendor = "ASUS"
+device_type = "computer"
+label = "Computer"
+literal = false
+
+[[vendor_type_models]]
+vendor = "ASUS"
+device_type = "local"
+label = "Computer"
+literal = false
+
+[[vendor_type_models]]
+vendor = "ASUS"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "LiteON"
+device_type = "computer"
+label = "Network Card"
+literal = false
+
+[[vendor_type_models]]
+vendor = "LiteON"
+device_type = ""
+label = "Device"
+literal = false
+
+[[vendor_type_models]]
+vendor = "Synology"
+device_type = ""
+label = "NAS"
+literal = false
+
+[[vendor_type_models]]
+vendor = "FN-Link"
+device_type = "tv"
+label = "Smart TV"
+literal = true
+
+[[vendor_type_models]]
+vendor = "FN-Link"
+device_type = ""
+label = "WiFi Device"
+literal = false
+
+# --- MAC vendor -> default model fallback ---
+[[mac_vendor_models]]
+vendor = "Nintendo"
+model = "Nintendo Switch"
+
+[[mac_vendor_models]]
+vendor = "Sony"
+model = "PlayStation"
+
+[[mac_vendor_models]]
+vendor = "Samsung"
+model = "Samsung Device"
+
+[[mac_vendor_models]]
+vendor = "LG"
+model = "LG Device"
+
+[[mac_vendor_models]]
+vendor = "Apple"
+model = "Apple Device"
+
+[[mac_vendor_models]]
+vendor = "Google"
+model = "Google Device"
+
+[[mac_vendor_models]]
+vendor = "Amazon"
+model = "Amazon Device"
+
+[[mac_vendor_models]]
+vendor = "Microsoft"
+model = "Xbox"
+
+[[mac_vendor_models]]
+vendor = "HP"
+model = "HP Device"
+
+[[mac_vendor_models]]
+vendor = "iRobot"
+model = "Roomba"
+
+[[mac_vendor_models]]
+vendor = "Ecobee"
+model = "Ecobee Thermostat"
+
+[[mac_vendor_models]]
+vendor = "Ring"
+model = "Ring Device"
+
+[[mac_vendor_models]]
+vendor = "Sonos"
+model = "Sonos Speaker"
+
+[[mac_vendor_models]]
+vendor = "Roku"
+model = "Roku"
+
+[[mac_vendor_models]]
+vendor = "Philips Hue"
+model = "Hue Device"
+
+[[mac_vendor_models]]
+vendor = "Wyze"
+model = "Wyze Device"
+
+[[mac_vendor_models]]
+vendor = "eero"
+model = "eero Router"
+
+[[mac_vendor_models]]
+vendor = "Nest"
+model = "Nest Device"
+
+[[mac_vendor_models]]
+vendor = "TP-Link"
+model = "TP-Link Device"
+
+[[mac_vendor_models]]
+vendor = "Ubiquiti"
+model = "Ubiquiti Device"
+
+[[mac_vendor_models]]
+vendor = "Vizio"
+model = "Vizio TV"
+
+[[mac_vendor_models]]
+vendor = "TCL"
+model = "Roku TV"
+
+[[mac_vendor_models]]
+vendor = "Hisense"
+model = "Hisense TV"
+
+[[mac_vendor_models]]
+vendor = "Texas Instruments"
+model = "TI IoT Device"
+
+[[mac_vendor_models]]
+vendor = "Samjin"
+model = "SmartThings Sensor"
+
+[[mac_vendor_models]]
+vendor = "Wisol"
+model = "SmartThings Sensor"
+
+[[mac_vendor_models]]
+vendor = "Synology"
+model = "Synology NAS"
+
+[[mac_vendor_models]]
+vendor = "ASUS"
+model = "ASUS Device"
+
+[[mac_vendor_models]]
+vendor = "Logitech"
+model = "Logitech Device"
+
+[[mac_vendor_models]]
+vendor = "LiteON"
+model = "LiteON Device"
+
+[[mac_vendor_models]]
+vendor = "FN-Link"
+model = "Smart TV"
