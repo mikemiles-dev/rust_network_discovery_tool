@@ -21,7 +21,8 @@ use crate::network::device_control::DeviceController;
 use crate::network::endpoint::{
     EndPoint, characterize_model, characterize_vendor, get_hostname_vendor, get_mac_vendor,
     get_model_from_hostname, get_model_from_mac, get_model_from_vendor_and_type,
-    get_vendor_from_model, infer_model_with_context, normalize_model_name, strip_local_suffix,
+    get_vendor_from_model, infer_model_with_context, is_valid_display_name, normalize_model_name,
+    strip_local_suffix,
 };
 use crate::scanner::manager::{ScanConfig, ScanManager};
 use crate::scanner::{ScanResult, ScanType, check_scan_privileges};
@@ -2164,6 +2165,10 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
                         );
                     }
                 }
+
+                // If endpoint still has no valid name, set it from SSDP friendly name or model
+                try_set_endpoint_name_from_discovery(&conn, endpoint_id,
+                    ssdp.friendly_name.as_deref().or(ssdp.model_name.as_deref()));
             }
         }
         ScanResult::Ndp(ndp) => {
@@ -2289,11 +2294,44 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
                         params![sys_name, endpoint_id, ip_str],
                     );
                 }
+
+                // If name still not set, try vendor+model from SNMP sysDescr
+                if let Some(ref sys_descr) = snmp.sys_descr {
+                    let (vendor, model) = parse_snmp_sys_descr(sys_descr);
+                    let name = model.or(vendor);
+                    try_set_endpoint_name_from_discovery(&conn, endpoint_id, name.as_deref());
+                }
             }
         }
     }
 
     Ok(())
+}
+
+/// Try to set endpoint name from a discovered name (SSDP friendly name, SNMP model, etc.)
+/// Only updates if the endpoint currently has no valid display name.
+/// Appends (2), (3), etc. if another endpoint already has the same name.
+fn try_set_endpoint_name_from_discovery(conn: &Connection, endpoint_id: i64, name: Option<&str>) {
+    let name = match name {
+        Some(n) if !n.is_empty() && is_valid_display_name(n) => n,
+        _ => return,
+    };
+
+    let current_name: String = conn
+        .query_row(
+            "SELECT COALESCE(name, '') FROM endpoints WHERE id = ?",
+            params![endpoint_id],
+            |row| row.get(0),
+        )
+        .unwrap_or_default();
+
+    if !is_valid_display_name(&current_name) {
+        let unique = EndPoint::make_unique_endpoint_name(conn, name, endpoint_id);
+        let _ = conn.execute(
+            "UPDATE endpoints SET name = ?1 WHERE id = ?2",
+            params![unique, endpoint_id],
+        );
+    }
 }
 
 /// Find an existing endpoint by IP address (must have a MAC to be considered valid)

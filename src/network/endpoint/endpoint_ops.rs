@@ -19,6 +19,7 @@ use super::constants::{
     DNS_CACHE, DNS_CACHE_TTL, extract_mac_from_ipv6_eui64, get_local_networks, is_ipv6_link_local,
     is_locally_administered_mac, is_valid_display_name, strip_local_suffix,
 };
+use super::model::get_model_from_mac;
 use super::detection::{
     is_appliance_hostname, is_gaming_hostname, is_phone_hostname, is_printer_hostname,
     is_soundbar_hostname, is_soundbar_model, is_tv_hostname, is_tv_model, is_vm_hostname,
@@ -336,6 +337,12 @@ impl EndPoint {
             hostname.clone().unwrap_or_default(),
         )?;
 
+        // If endpoint still has no valid name, try to derive one from MAC vendor/model rules
+        // e.g. a Nintendo Switch gets named "Nintendo Switch" instead of showing its IP
+        if let Some(ref mac_addr) = mac {
+            Self::try_set_name_from_mac_model(conn, endpoint_id, mac_addr);
+        }
+
         // If we have an IP but no hostname, spawn a background task to probe for the hostname
         // This is non-blocking and will update the endpoint if a hostname is found
         let hostname_is_ip = hostname
@@ -392,6 +399,72 @@ impl EndPoint {
         }
 
         Ok(())
+    }
+
+    /// Try to set endpoint name from MAC vendor/model when no hostname is available.
+    /// Gives devices like "Nintendo Switch" a proper name instead of showing their IP.
+    /// Appends (2), (3), etc. when another endpoint already has the same model name.
+    /// Does NOT trigger hostname-based merging (model names aren't unique identifiers).
+    fn try_set_name_from_mac_model(conn: &Connection, endpoint_id: i64, mac: &str) {
+        let current_name: String = conn
+            .query_row(
+                "SELECT COALESCE(name, '') FROM endpoints WHERE id = ?",
+                params![endpoint_id],
+                |row| row.get(0),
+            )
+            .unwrap_or_default();
+
+        if is_valid_display_name(&current_name) {
+            return; // Already has a good name
+        }
+
+        if let Some(model) = get_model_from_mac(mac) {
+            let unique = Self::make_unique_endpoint_name(conn, &model, endpoint_id);
+            let _ = conn.execute(
+                "UPDATE endpoints SET name = ? WHERE id = ?",
+                params![unique, endpoint_id],
+            );
+        }
+    }
+
+    /// Generate a unique endpoint name by appending (2), (3), etc. if the base name
+    /// is already taken by another endpoint. Used for model-derived names where
+    /// multiple devices may share the same model (e.g. two Nintendo Switches).
+    pub fn make_unique_endpoint_name(
+        conn: &Connection,
+        base_name: &str,
+        endpoint_id: i64,
+    ) -> String {
+        // Check if the base name is already taken by another endpoint
+        let taken: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM endpoints WHERE LOWER(name) = LOWER(?1) AND id != ?2)",
+                params![base_name, endpoint_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+
+        if !taken {
+            return base_name.to_string();
+        }
+
+        // Find the next available number
+        for n in 2..=99 {
+            let candidate = format!("{} ({})", base_name, n);
+            let exists: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM endpoints WHERE LOWER(name) = LOWER(?1) AND id != ?2)",
+                    params![candidate, endpoint_id],
+                    |row| row.get(0),
+                )
+                .unwrap_or(false);
+
+            if !exists {
+                return candidate;
+            }
+        }
+
+        format!("{} ({})", base_name, endpoint_id)
     }
 
     /// Merge other endpoints on the same IPv6 /64 prefix into this endpoint
