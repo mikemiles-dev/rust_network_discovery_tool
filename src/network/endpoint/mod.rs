@@ -1,13 +1,13 @@
 //! Endpoint module. Re-exports public APIs for endpoint classification,
 //! vendor characterization, and model identification.
 
-mod classification;
+mod classify;
 mod constants;
 mod db;
-mod detection;
 mod endpoint_ops;
 mod gateway;
 mod model;
+mod model_data;
 mod patterns;
 mod types;
 mod vendor;
