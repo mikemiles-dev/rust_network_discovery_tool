@@ -2,8 +2,11 @@
 //! to retrieve system description, name, location, and object ID.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
+
+use tokio::sync::Semaphore;
 
 use super::SnmpResult;
 
@@ -469,12 +472,16 @@ impl SnmpScanner {
             })
             .collect();
 
+        let semaphore = Arc::new(Semaphore::new(50));
         let mut handles = Vec::new();
 
         for ip in ips {
             let timeout = timeout_ms;
             let comms = communities.clone();
+            let sem = semaphore.clone();
             handles.push(tokio::task::spawn_blocking(move || {
+                let rt = tokio::runtime::Handle::current();
+                let _permit = rt.block_on(sem.acquire());
                 let scanner = SnmpScanner {
                     timeout_ms: timeout,
                     communities: comms,

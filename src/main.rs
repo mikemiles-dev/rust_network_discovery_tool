@@ -370,10 +370,11 @@ async fn main() -> io::Result<()> {
         println!("Using database: {}", env::var("DATABASE_URL").unwrap());
     }
 
+    // Start mDNS discovery early (uses its own lazy DB connection)
+    MDnsLookup::start_daemon();
+
     // Now create SQLWriter with the correct database name
     let sql_writer = SQLWriter::new().await;
-
-    MDnsLookup::start_daemon();
 
     // Check for port from CLI args, then env variable, then default
     let web_port = if args.port != 8080 {

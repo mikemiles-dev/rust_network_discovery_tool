@@ -38,22 +38,33 @@ fn get_interfaces() -> Vec<String> {
 /// candidate ports. Returns `Some((port, pid))` if a running instance is found.
 fn detect_existing_instance(ports: &[u16]) -> Option<(u16, u32)> {
     let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_millis(500))
+        .timeout(std::time::Duration::from_millis(200))
         .build()
         .ok()?;
 
-    for &port in ports {
-        if let Ok(resp) = client
-            .get(format!("http://127.0.0.1:{}/api/instance", port))
-            .send()
-            && let Ok(json) = resp.json::<serde_json::Value>()
-            && json.get("app").and_then(|v| v.as_str()) == Some("awareness")
-        {
-            let pid = json.get("pid").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-            return Some((port, pid));
+    // Check all ports concurrently using scoped threads
+    let result = std::sync::Mutex::new(None);
+    std::thread::scope(|s| {
+        for &port in ports {
+            let client = &client;
+            let result = &result;
+            s.spawn(move || {
+                if let Ok(resp) = client
+                    .get(format!("http://127.0.0.1:{}/api/instance", port))
+                    .send()
+                    && let Ok(json) = resp.json::<serde_json::Value>()
+                    && json.get("app").and_then(|v| v.as_str()) == Some("awareness")
+                {
+                    let pid = json.get("pid").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                    let mut r = result.lock().unwrap();
+                    if r.is_none() {
+                        *r = Some((port, pid));
+                    }
+                }
+            });
         }
-    }
-    None
+    });
+    result.into_inner().unwrap()
 }
 
 pub fn start(preferred_port: u16) {
@@ -223,6 +234,7 @@ async fn static_files(path: actix_web::web::Path<String>) -> impl Responder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::{HashMap, HashSet};
 
     #[test]
     fn test_looks_like_ip_ipv4() {

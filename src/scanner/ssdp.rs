@@ -3,9 +3,12 @@
 
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use futures::StreamExt;
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
 use super::SsdpResult;
 
@@ -97,11 +100,26 @@ impl SsdpScanner {
         results.sort_by(|a, b| a.ip.cmp(&b.ip));
         results.dedup_by(|a, b| a.ip == b.ip);
 
-        // Fetch device descriptions to get friendly names and models
-        for result in &mut results {
-            if let Some(location) = location_map.get(&result.ip)
-                && let Some((friendly_name, model_name)) = Self::fetch_device_info(location).await
-            {
+        // Fetch device descriptions concurrently (max 10 simultaneous)
+        let semaphore = Arc::new(Semaphore::new(10));
+        let mut fetch_set = JoinSet::new();
+
+        for (idx, result) in results.iter().enumerate() {
+            if let Some(location) = location_map.get(&result.ip) {
+                let sem = semaphore.clone();
+                let location = location.clone();
+                fetch_set.spawn(async move {
+                    let _permit = sem.acquire().await;
+                    let info = Self::fetch_device_info(&location).await;
+                    (idx, info)
+                });
+            }
+        }
+
+        while let Some(Ok((idx, Some((friendly_name, model_name))))) =
+            fetch_set.join_next().await
+        {
+            if let Some(result) = results.get_mut(idx) {
                 result.friendly_name = friendly_name;
                 result.model_name = model_name;
             }
