@@ -262,11 +262,7 @@ pub(super) fn merge_endpoints_by_ipv6_prefix(conn: &Connection) -> rusqlite::Res
 /// After merging endpoint `source_id` into `target_id`, copy any user-set
 /// fields (custom_name, custom_vendor, manual_device_type) from source to
 /// target if the target doesn't already have them.
-fn preserve_user_fields(
-    conn: &Connection,
-    target_id: i64,
-    source_id: i64,
-) -> rusqlite::Result<()> {
+fn preserve_user_fields(conn: &Connection, target_id: i64, source_id: i64) -> rusqlite::Result<()> {
     conn.execute(
         "UPDATE endpoints SET
             custom_name = COALESCE(custom_name, (SELECT custom_name FROM endpoints WHERE id = ?2)),
@@ -323,10 +319,7 @@ pub(super) fn merge_endpoint_into(
         "UPDATE OR IGNORE open_ports SET endpoint_id = ?1 WHERE endpoint_id = ?2",
         rusqlite::params![keep_id, remove_id],
     )?;
-    conn.execute(
-        "DELETE FROM open_ports WHERE endpoint_id = ?1",
-        [remove_id],
-    )?;
+    conn.execute("DELETE FROM open_ports WHERE endpoint_id = ?1", [remove_id])?;
 
     // Move scan_results
     conn.execute(

@@ -13,7 +13,9 @@ pub use table::*;
 use actix_web::{HttpResponse, Responder, get};
 use serde::{Deserialize, Serialize};
 
-use crate::web::{DEFAULT_SCAN_INTERVAL_MINUTES, NodeQuery, get_all_protocols, get_endpoints_for_protocol};
+use crate::web::{
+    DEFAULT_SCAN_INTERVAL_MINUTES, NodeQuery, get_all_protocols, get_endpoints_for_protocol,
+};
 
 // ============================================================================
 // Protocol API Endpoints

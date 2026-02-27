@@ -3,7 +3,7 @@
 
 use super::lg_commands;
 use super::lg_pairing;
-use super::types::{AppInfo, CommandInfo, CommandResult, DeviceCapabilities, DeviceInfo};
+use super::types::{AppInfo, CommandResult, DeviceCapabilities, DeviceInfo};
 use std::net::TcpStream;
 use std::time::Duration;
 use tungstenite::{Message, connect};

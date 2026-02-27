@@ -16,7 +16,6 @@ use actix_web::{App, HttpServer, web::Data};
 use actix_web::{HttpResponse, Responder, get};
 use pnet::datalink;
 use rust_embed::RustEmbed;
-use std::collections::{HashMap, HashSet};
 use tera::Tera;
 use tokio::task;
 

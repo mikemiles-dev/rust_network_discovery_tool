@@ -34,12 +34,12 @@ pub(crate) const JBL_SOUNDBAR_PREFIXES: &[&str] = &["bar-", "bar "];
 /// Fields: (lowercase_prefix, format_label, skip_chars)
 /// Result: "{format_label}{model_upper[skip_chars..]}"
 pub(crate) const AV_RECEIVER_RULES: &[(&str, &str, usize)] = &[
-    ("avr-", "Denon AVR ", 4),               // AVR-S940H -> "Denon AVR S940H"
-    ("rx-v", "Yamaha RX-V", 4),              // RX-V479 -> "Yamaha RX-V479"
-    ("rx-a", "Yamaha Aventage RX-A", 4),     // RX-A3080 -> "Yamaha Aventage RX-A3080"
-    ("tx-nr", "Onkyo ", 0),                  // TX-NR686 -> "Onkyo TX-NR686"
-    ("tx-rz", "Onkyo ", 0),                  // TX-RZ830 -> "Onkyo TX-RZ830"
-    ("vsx-", "Pioneer ", 0),                 // VSX-LX504 -> "Pioneer VSX-LX504"
+    ("avr-", "Denon AVR ", 4),           // AVR-S940H -> "Denon AVR S940H"
+    ("rx-v", "Yamaha RX-V", 4),          // RX-V479 -> "Yamaha RX-V479"
+    ("rx-a", "Yamaha Aventage RX-A", 4), // RX-A3080 -> "Yamaha Aventage RX-A3080"
+    ("tx-nr", "Onkyo ", 0),              // TX-NR686 -> "Onkyo TX-NR686"
+    ("tx-rz", "Onkyo ", 0),              // TX-RZ830 -> "Onkyo TX-RZ830"
+    ("vsx-", "Pioneer ", 0),             // VSX-LX504 -> "Pioneer VSX-LX504"
 ];
 
 /// Marantz SR/NR prefix (starts with "sr" or "nr" followed by digit)
@@ -74,8 +74,8 @@ pub(crate) const SONY_TV_MODEL_PREFIXES: &[&str] = &["XR", "KD"];
 /// Fields: (sm_prefix, model_name_or_format)
 /// "literal" entries return the string as-is; "format" entries use the 2 chars after prefix.
 pub(crate) const GALAXY_SM_PREFIX_RULES: &[(&str, &str)] = &[
-    ("SM-S9", "Galaxy S"),  // + chars 4..6
-    ("SM-S8", "Galaxy S"),  // + chars 4..6
+    ("SM-S9", "Galaxy S"), // + chars 4..6
+    ("SM-S8", "Galaxy S"), // + chars 4..6
 ];
 
 /// Samsung Galaxy phone model number to fixed name mappings.
@@ -198,9 +198,7 @@ pub(crate) const CHROMECAST_VARIANTS: &[(&str, &str)] = &[
 // ---------------------------------------------------------------------------
 
 /// Nest Hub variant detection: (substring, model_name)
-pub(crate) const NEST_HUB_VARIANTS: &[(&str, &str)] = &[
-    ("max", "Nest Hub Max"),
-];
+pub(crate) const NEST_HUB_VARIANTS: &[(&str, &str)] = &[("max", "Nest Hub Max")];
 
 /// Nest Mini detection patterns
 pub(crate) const NEST_MINI_PATTERNS: &[&str] = &["nest-mini", "google-home-mini"];
@@ -254,13 +252,8 @@ pub(crate) const RING_VARIANTS: &[(&str, &str)] = &[
 // ---------------------------------------------------------------------------
 
 /// HP printer model name keywords to look for in hostname parts
-pub(crate) const HP_PRINTER_KEYWORDS: &[&str] = &[
-    "LASERJET",
-    "OFFICEJET",
-    "DESKJET",
-    "ENVY",
-    "PHOTOSMART",
-];
+pub(crate) const HP_PRINTER_KEYWORDS: &[&str] =
+    &["LASERJET", "OFFICEJET", "DESKJET", "ENVY", "PHOTOSMART"];
 
 // ---------------------------------------------------------------------------
 // Canon printer model prefixes
@@ -381,10 +374,8 @@ pub(crate) const ECOBEE_VARIANTS: &[(&str, &str)] = &[
 // ---------------------------------------------------------------------------
 
 /// Apple Watch variant detection: (substring, model_name)
-pub(crate) const APPLE_WATCH_VARIANTS: &[(&str, &str)] = &[
-    ("ultra", "Apple Watch Ultra"),
-    ("se", "Apple Watch SE"),
-];
+pub(crate) const APPLE_WATCH_VARIANTS: &[(&str, &str)] =
+    &[("ultra", "Apple Watch Ultra"), ("se", "Apple Watch SE")];
 
 /// Maximum Apple Watch series number to check
 pub(crate) const APPLE_WATCH_MAX_SERIES: u32 = 10;
@@ -395,10 +386,7 @@ pub(crate) const APPLE_WATCH_MAX_SERIES: u32 = 10;
 
 /// MAC address prefixes that identify SmartThings sensors
 /// (Wisol and Samjin manufacture sensors for Samsung SmartThings)
-pub(crate) const SMARTTHINGS_SENSOR_MAC_PREFIXES: &[&str] = &[
-    "70:2c:1f",
-    "28:6d:97",
-];
+pub(crate) const SMARTTHINGS_SENSOR_MAC_PREFIXES: &[&str] = &["70:2c:1f", "28:6d:97"];
 
 // ---------------------------------------------------------------------------
 // Amazon device port-based inference rules

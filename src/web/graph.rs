@@ -291,7 +291,9 @@ pub(super) fn get_endpoints(communications: &[Node]) -> Vec<String> {
     })
 }
 
-pub(super) fn get_endpoint_types(communications: &[Node]) -> std::collections::HashMap<String, &'static str> {
+pub(super) fn get_endpoint_types(
+    communications: &[Node],
+) -> std::collections::HashMap<String, &'static str> {
     let mut types = std::collections::HashMap::new();
     for comm in communications {
         if let Some(src_type) = comm.src_type {

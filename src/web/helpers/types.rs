@@ -69,8 +69,17 @@ pub(crate) struct EndpointNameRequest {
 
 /// Vendors that manufacture WiFi/BT chipsets (not consumer-facing brands)
 pub(crate) const COMPONENT_VENDORS: &[&str] = &[
-    "AzureWave", "Broadcom", "Espressif", "Marvell", "MediaTek",
-    "Murata", "Qualcomm", "Realtek", "Tuya", "USI", "Wisol",
+    "AzureWave",
+    "Broadcom",
+    "Espressif",
+    "Marvell",
+    "MediaTek",
+    "Murata",
+    "Qualcomm",
+    "Realtek",
+    "Tuya",
+    "USI",
+    "Wisol",
 ];
 
 /// Default scan interval in minutes (1 year)

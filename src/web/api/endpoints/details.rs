@@ -11,10 +11,9 @@ use crate::network::endpoint::{
 };
 
 use crate::web::{
-    COMPONENT_VENDORS, DEFAULT_SCAN_INTERVAL_MINUTES, DISPLAY_NAME_SQL,
-    EndpointDetailsResponse, NodeQuery, get_all_ips_macs_and_hostnames_from_single_hostname,
-    get_bytes_for_endpoint, get_ports_for_endpoint, get_protocols_for_endpoint,
-    probe_and_save_hp_printer_model_blocking,
+    COMPONENT_VENDORS, DEFAULT_SCAN_INTERVAL_MINUTES, DISPLAY_NAME_SQL, EndpointDetailsResponse,
+    NodeQuery, get_all_ips_macs_and_hostnames_from_single_hostname, get_bytes_for_endpoint,
+    get_ports_for_endpoint, get_protocols_for_endpoint, probe_and_save_hp_printer_model_blocking,
 };
 
 use super::super::devices::get_probing_endpoints;

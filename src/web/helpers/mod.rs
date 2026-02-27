@@ -1,25 +1,21 @@
 //! Database query helpers, shared types, and SQL constants for the web module.
 
-mod types;
 mod endpoint_queries;
-mod protocol_queries;
 mod model_queries;
+mod protocol_queries;
+mod types;
 
-pub(crate) use types::*;
 pub(crate) use endpoint_queries::*;
-pub(crate) use protocol_queries::*;
 pub(crate) use model_queries::*;
+pub(crate) use protocol_queries::*;
+pub(crate) use types::*;
 
 use std::collections::HashMap;
 
 use rusqlite::params;
 
-use crate::db::{
-    insert_notification_with_endpoint_id, new_connection_result,
-};
-use crate::network::endpoint::{
-    is_valid_display_name, strip_local_suffix,
-};
+use crate::db::{insert_notification_with_endpoint_id, new_connection_result};
+use crate::network::endpoint::{is_valid_display_name, strip_local_suffix};
 use crate::network::mdns_lookup::MDnsLookup;
 
 /// Try a fallible database operation; on error log and return the given default.

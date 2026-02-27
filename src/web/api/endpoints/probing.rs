@@ -5,13 +5,9 @@ use actix_web::{HttpResponse, Responder, post};
 use rusqlite::params;
 use serde::Serialize;
 
-use crate::db::{
-    insert_notification_with_endpoint_id, new_connection, new_connection_result,
-};
-use crate::web::{
-    DISPLAY_NAME_SQL, looks_like_ip, probe_hp_printer_model_blocking,
-};
-use crate::web::helpers::{IpRequest, EndpointNameRequest};
+use crate::db::{insert_notification_with_endpoint_id, new_connection, new_connection_result};
+use crate::web::helpers::{EndpointNameRequest, IpRequest};
+use crate::web::{DISPLAY_NAME_SQL, looks_like_ip, probe_hp_printer_model_blocking};
 
 use super::super::scanning::parse_snmp_sys_descr;
 

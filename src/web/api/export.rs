@@ -9,9 +9,7 @@ use std::collections::HashMap;
 use std::io::Write;
 
 use crate::db::{SQLWriter, get_setting_i64};
-use crate::network::endpoint::{
-    characterize_model, characterize_vendor, get_mac_vendor,
-};
+use crate::network::endpoint::{characterize_model, characterize_vendor, get_mac_vendor};
 
 use crate::web::{
     COMPONENT_VENDORS, DEFAULT_ACTIVE_THRESHOLD_SECONDS, DEFAULT_SCAN_INTERVAL_MINUTES,
@@ -54,7 +52,8 @@ pub async fn export_endpoints_xlsx() -> impl Responder {
         get_all_endpoints_last_seen(&dropdown_for_seen, scan_interval)
     });
     let online_status_future = tokio::task::spawn_blocking(move || {
-        let active_threshold = get_setting_i64("active_threshold_seconds", DEFAULT_ACTIVE_THRESHOLD_SECONDS) as u64;
+        let active_threshold =
+            get_setting_i64("active_threshold_seconds", DEFAULT_ACTIVE_THRESHOLD_SECONDS) as u64;
         get_all_endpoints_online_status(&dropdown_for_online, active_threshold)
     });
     let all_types_future =

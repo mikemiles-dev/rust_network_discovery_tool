@@ -96,7 +96,8 @@ pub async fn get_endpoints_table() -> impl Responder {
     }
 
     let scan_interval: u64 = DEFAULT_SCAN_INTERVAL_MINUTES; // Same default as index route
-    let active_threshold = get_setting_i64("active_threshold_seconds", DEFAULT_ACTIVE_THRESHOLD_SECONDS) as u64;
+    let active_threshold =
+        get_setting_i64("active_threshold_seconds", DEFAULT_ACTIVE_THRESHOLD_SECONDS) as u64;
 
     // Get endpoint list
     let dropdown_future = tokio::task::spawn_blocking(move || dropdown_endpoints(scan_interval));

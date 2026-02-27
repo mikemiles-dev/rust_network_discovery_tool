@@ -2,7 +2,9 @@
 //! gaming consoles, phones, soundbars, appliances, VMs) by matching hostname
 //! strings against known patterns, prefixes, and conditional rules.
 
-use super::classify::{is_roku_serial_number, matches_conditional, matches_pattern, matches_prefix};
+use super::classify::{
+    is_roku_serial_number, matches_conditional, matches_pattern, matches_prefix,
+};
 use super::patterns::{
     APPLIANCE_PATTERNS, GAMING_PATTERNS, PHONE_CONDITIONAL, PHONE_PATTERNS, PHONE_PREFIXES,
     PRINTER_PATTERNS, PRINTER_PREFIXES, SOUNDBAR_PATTERNS, TV_PATTERNS, TV_PREFIXES, VM_PATTERNS,

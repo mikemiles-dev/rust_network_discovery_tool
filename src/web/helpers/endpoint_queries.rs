@@ -10,9 +10,9 @@ use crate::network::endpoint::{EndPoint, strip_local_suffix};
 use crate::network::mdns_lookup::MDnsLookup;
 
 use super::DISPLAY_NAME_SQL;
+use super::resolve_from_mdns_cache;
 use super::try_db;
 use super::types::DnsEntryView;
-use super::resolve_from_mdns_cache;
 use super::{box_i64_params, build_in_placeholders, params_to_refs};
 
 pub(crate) fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
@@ -125,7 +125,13 @@ pub(crate) fn get_all_endpoint_types(
     std::collections::HashMap<String, &'static str>,
     std::collections::HashSet<String>,
 ) {
-    let conn = try_db!(new_connection_result(), (std::collections::HashMap::new(), std::collections::HashSet::new()));
+    let conn = try_db!(
+        new_connection_result(),
+        (
+            std::collections::HashMap::new(),
+            std::collections::HashSet::new()
+        )
+    );
     let mut types = std::collections::HashMap::new();
     let mut manual_overrides = std::collections::HashSet::new();
 
@@ -491,7 +497,10 @@ pub(crate) fn get_all_ips_macs_and_hostnames_from_single_hostname(
     hostname: String,
     internal_minutes: u64,
 ) -> (Vec<String>, Vec<String>, Vec<String>) {
-    let conn = try_db!(new_connection_result(), (Vec::new(), Vec::new(), Vec::new()));
+    let conn = try_db!(
+        new_connection_result(),
+        (Vec::new(), Vec::new(), Vec::new())
+    );
 
     let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, &hostname);
     if endpoint_ids.is_empty() {

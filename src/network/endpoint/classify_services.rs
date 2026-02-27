@@ -88,10 +88,10 @@ pub(crate) fn classify_by_port(port: u16) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::patterns::{
         CLASSIFICATION_PRINTER, CLASSIFICATION_TV, CLASSIFICATION_VIRTUALIZATION,
     };
+    use super::*;
 
     #[test]
     fn test_classify_by_port() {

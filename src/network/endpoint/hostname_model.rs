@@ -324,10 +324,7 @@ pub fn get_model_from_hostname(hostname: &str) -> Option<String> {
     }
 
     // LG ThinQ dishwashers: LDP/LDF prefixes
-    if LG_DISHWASHER_PREFIXES
-        .iter()
-        .any(|p| lower.starts_with(p))
-    {
+    if LG_DISHWASHER_PREFIXES.iter().any(|p| lower.starts_with(p)) {
         return Some("Dishwasher".to_string());
     }
     if lower.starts_with(LG_WASHER_PREFIX)
@@ -484,9 +481,7 @@ pub fn get_model_from_hostname(hostname: &str) -> Option<String> {
         let parts: Vec<&str> = hostname.split(['-', '_']).collect();
         for part in &parts {
             let p = part.to_lowercase();
-            if ROOMBA_MODEL_PREFIXES
-                .iter()
-                .any(|&c| p.starts_with(c))
+            if ROOMBA_MODEL_PREFIXES.iter().any(|&c| p.starts_with(c))
                 && p.len() >= 2
                 && p.chars()
                     .nth(1)
@@ -527,10 +522,7 @@ pub fn get_model_from_hostname(hostname: &str) -> Option<String> {
         let parts: Vec<&str> = hostname.split(['-', '_']).collect();
         for part in &parts {
             let upper = part.to_uppercase();
-            if CANON_PRINTER_PREFIXES
-                .iter()
-                .any(|p| upper.starts_with(p))
-            {
+            if CANON_PRINTER_PREFIXES.iter().any(|p| upper.starts_with(p)) {
                 return Some(upper);
             }
         }
@@ -541,9 +533,7 @@ pub fn get_model_from_hostname(hostname: &str) -> Option<String> {
         let parts: Vec<&str> = hostname.split(['-', '_']).collect();
         for part in &parts {
             let upper = part.to_uppercase();
-            if EPSON_PRINTER_PREFIXES
-                .iter()
-                .any(|p| upper.starts_with(p))
+            if EPSON_PRINTER_PREFIXES.iter().any(|p| upper.starts_with(p))
                 || EPSON_PRINTER_KEYWORDS.iter().any(|k| upper.contains(k))
             {
                 return Some(upper);

@@ -8,7 +8,9 @@ use crate::scanner::ScanResult;
 
 use crate::web::probe_and_save_hp_printer_model_blocking;
 
-use super::scan_models::{is_more_specific_model, is_ssdp_model_consistent_with_endpoint, parse_snmp_sys_descr};
+use super::scan_models::{
+    is_more_specific_model, is_ssdp_model_consistent_with_endpoint, parse_snmp_sys_descr,
+};
 
 /// Process a scan result and store in database with retry logic
 pub(super) fn process_scan_result(result: &ScanResult) -> Result<(), String> {
@@ -190,8 +192,11 @@ fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
                 }
 
                 // If endpoint still has no valid name, set it from SSDP friendly name or model
-                try_set_endpoint_name_from_discovery(&conn, endpoint_id,
-                    ssdp.friendly_name.as_deref().or(ssdp.model_name.as_deref()));
+                try_set_endpoint_name_from_discovery(
+                    &conn,
+                    endpoint_id,
+                    ssdp.friendly_name.as_deref().or(ssdp.model_name.as_deref()),
+                );
             }
         }
         ScanResult::Ndp(ndp) => {

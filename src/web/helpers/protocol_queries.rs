@@ -4,9 +4,9 @@ use rusqlite::params;
 
 use crate::db::new_connection_result;
 
+use super::endpoint_queries::resolve_identifier_to_endpoint_ids;
 use super::try_db;
 use super::{box_i64_params, build_in_placeholders, params_to_refs};
-use super::endpoint_queries::resolve_identifier_to_endpoint_ids;
 
 pub(crate) fn get_protocols_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String> {
     let conn = try_db!(new_connection_result(), Vec::new());

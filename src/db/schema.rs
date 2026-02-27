@@ -15,8 +15,7 @@ pub(crate) fn initialize_schema(conn: &Connection) {
     EndPoint::create_table_if_not_exists(conn).expect("Failed to create endpoints table");
     EndPointAttribute::create_table_if_not_exists(conn)
         .expect("Failed to create endpoint_attributes table");
-    Communication::create_table_if_not_exists(conn)
-        .expect("Failed to create communications table");
+    Communication::create_table_if_not_exists(conn).expect("Failed to create communications table");
 
     // Create scanner-related tables at startup to avoid schema locks during scanning
     conn.execute(

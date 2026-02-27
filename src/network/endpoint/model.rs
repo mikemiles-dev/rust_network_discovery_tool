@@ -81,9 +81,7 @@ pub fn normalize_model_name(model: &str, vendor: Option<&str>) -> Option<String>
         .iter()
         .any(|p| model_upper.starts_with(p))
         || vendor.is_some_and(|v| v.to_lowercase().contains("samsung"));
-    let is_lg = LG_TV_MODEL_KEYWORDS
-        .iter()
-        .any(|k| model_upper.contains(k))
+    let is_lg = LG_TV_MODEL_KEYWORDS.iter().any(|k| model_upper.contains(k))
         || vendor.is_some_and(|v| v.to_lowercase().contains("lg"));
     let is_sony = SONY_TV_MODEL_PREFIXES
         .iter()
@@ -220,10 +218,7 @@ pub fn infer_model_with_context(
     match vendor {
         "Amazon" => {
             // Fire TV: typically has ADB port 5555 when developer mode enabled, or port 8008/8443
-            if AMAZON_FIRE_TV_PORTS
-                .iter()
-                .any(|p| open_ports.contains(p))
-            {
+            if AMAZON_FIRE_TV_PORTS.iter().any(|p| open_ports.contains(p)) {
                 return Some("Amazon Fire TV".to_string());
             }
             // Ring devices: usually have SSDP or mDNS
