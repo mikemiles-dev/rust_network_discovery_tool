@@ -3,12 +3,14 @@
 
 use std::collections::HashSet;
 use std::net::IpAddr;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::{Arc, Mutex};
 
 use ipnetwork::Ipv4Network;
 use pnet::datalink;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{RwLock, mpsc};
+use tokio::task::JoinSet;
 
 use super::arp::ArpScanner;
 use super::icmp::IcmpScanner;
@@ -150,140 +152,182 @@ impl ScanManager {
             let subnets = Self::get_local_subnets();
             let capabilities = check_scan_privileges();
 
-            let total_phases: usize = scan_types.len();
-            let mut completed_phases: usize = 0;
-            let mut discovered_ips: HashSet<IpAddr> = HashSet::new();
+            // Filter to only scan types that can actually run
+            let runnable_types: Vec<ScanType> = scan_types
+                .into_iter()
+                .filter(|t| match t {
+                    ScanType::Arp => capabilities.can_arp,
+                    ScanType::Icmp => capabilities.can_icmp,
+                    ScanType::Ndp => capabilities.can_ndp,
+                    ScanType::NetBios => capabilities.can_netbios,
+                    ScanType::Snmp => capabilities.can_snmp,
+                    ScanType::Port | ScanType::Ssdp => true,
+                })
+                .collect();
 
-            for scan_type in &scan_types {
-                // Check stop signal
+            let total_phases = runnable_types.len().max(1);
+            let completed_phases = Arc::new(AtomicU8::new(0));
+            let discovered_ips = Arc::new(Mutex::new(HashSet::<IpAddr>::new()));
+
+            // Show all active scan types
+            {
+                let phase_names: Vec<String> =
+                    runnable_types.iter().map(|t| t.to_string()).collect();
+                let mut s = status.write().await;
+                s.current_phase = Some(format!("{} scan", phase_names.join(", ")));
+            }
+
+            let mut join_set = JoinSet::new();
+
+            for scan_type in runnable_types {
+                // Check stop signal before spawning each phase
                 if *stop_signal.read().await {
                     break;
                 }
 
-                // Update phase
-                {
-                    let mut s = status.write().await;
-                    s.current_phase = Some(format!("{} scan", scan_type));
-                }
+                let result_tx = result_tx.clone();
+                let cfg = cfg.clone();
+                let subnets = subnets.clone();
+                let status = status.clone();
+                let completed_phases = completed_phases.clone();
+                let discovered_ips = discovered_ips.clone();
 
-                let results: Vec<ScanResult> = match scan_type {
-                    ScanType::Arp if capabilities.can_arp => {
-                        let mut all_results = Vec::new();
-                        for subnet in &subnets {
-                            if *stop_signal.read().await {
-                                break;
+                join_set.spawn(async move {
+                    let results: Vec<ScanResult> = match scan_type {
+                        ScanType::Arp => {
+                            // Scan all subnets concurrently
+                            let mut subnet_set = JoinSet::new();
+                            for subnet in &subnets {
+                                let timeout_ms = cfg.timeout_ms;
+                                let subnet = *subnet;
+                                subnet_set.spawn(async move {
+                                    let scanner =
+                                        ArpScanner::new().with_timeout(timeout_ms);
+                                    scanner
+                                        .scan_subnet(subnet)
+                                        .await
+                                        .into_iter()
+                                        .map(ScanResult::Arp)
+                                        .collect::<Vec<_>>()
+                                });
                             }
-                            let scanner = ArpScanner::new().with_timeout(cfg.timeout_ms);
-                            let results = scanner.scan_subnet(*subnet).await;
-                            all_results.extend(results.into_iter().map(ScanResult::Arp));
+                            let mut all_results = Vec::new();
+                            while let Some(Ok(results)) = subnet_set.join_next().await {
+                                all_results.extend(results);
+                            }
+                            all_results
                         }
-                        all_results
-                    }
-                    ScanType::Icmp if capabilities.can_icmp => {
-                        let mut all_ips = Vec::new();
-                        for subnet in &subnets {
-                            all_ips.extend(subnet.iter().map(IpAddr::V4));
+                        ScanType::Icmp => {
+                            let all_ips: Vec<IpAddr> = subnets
+                                .iter()
+                                .flat_map(|s| s.iter().map(IpAddr::V4))
+                                .collect();
+                            let scanner = IcmpScanner::new().with_timeout(cfg.timeout_ms);
+                            scanner
+                                .ping_sweep(all_ips)
+                                .await
+                                .into_iter()
+                                .map(ScanResult::Icmp)
+                                .collect()
                         }
-                        let scanner = IcmpScanner::new().with_timeout(cfg.timeout_ms);
-                        scanner
-                            .ping_sweep(all_ips)
-                            .await
-                            .into_iter()
-                            .map(ScanResult::Icmp)
-                            .collect()
-                    }
-                    ScanType::Port => {
-                        // Port scan known IPs from previous scans
-                        // For now, scan subnet
-                        let mut all_ips = Vec::new();
-                        for subnet in &subnets {
-                            all_ips.extend(subnet.iter().map(IpAddr::V4));
+                        ScanType::Port => {
+                            let all_ips: Vec<IpAddr> = subnets
+                                .iter()
+                                .flat_map(|s| s.iter().map(IpAddr::V4))
+                                .collect();
+                            let scanner = PortScanner::new().with_timeout(cfg.timeout_ms);
+                            scanner
+                                .scan_ips(&all_ips, &cfg.ports)
+                                .await
+                                .into_iter()
+                                .map(ScanResult::Port)
+                                .collect()
                         }
-                        let scanner = PortScanner::new().with_timeout(cfg.timeout_ms);
-                        scanner
-                            .scan_ips(&all_ips, &cfg.ports)
-                            .await
-                            .into_iter()
-                            .map(ScanResult::Port)
-                            .collect()
-                    }
-                    ScanType::Ndp if capabilities.can_ndp => {
-                        let scanner = NdpScanner::new().with_timeout(cfg.timeout_ms);
-                        scanner
-                            .scan()
-                            .await
-                            .into_iter()
-                            .map(ScanResult::Ndp)
-                            .collect()
-                    }
-                    ScanType::Ssdp => {
-                        let scanner = SsdpScanner::new();
-                        scanner
-                            .discover()
-                            .await
-                            .into_iter()
-                            .map(ScanResult::Ssdp)
-                            .collect()
-                    }
-                    ScanType::NetBios if capabilities.can_netbios => {
-                        let mut all_ips = Vec::new();
-                        for subnet in &subnets {
-                            all_ips.extend(subnet.iter().map(IpAddr::V4));
+                        ScanType::Ndp => {
+                            let scanner = NdpScanner::new().with_timeout(cfg.timeout_ms);
+                            scanner
+                                .scan()
+                                .await
+                                .into_iter()
+                                .map(ScanResult::Ndp)
+                                .collect()
                         }
-                        let scanner = NetBiosScanner::new().with_timeout(cfg.timeout_ms);
-                        scanner
-                            .scan_ips(&all_ips)
-                            .await
-                            .into_iter()
-                            .map(ScanResult::NetBios)
-                            .collect()
-                    }
-                    ScanType::Snmp if capabilities.can_snmp => {
-                        let mut all_ips = Vec::new();
-                        for subnet in &subnets {
-                            all_ips.extend(subnet.iter().map(IpAddr::V4));
+                        ScanType::Ssdp => {
+                            let scanner = SsdpScanner::new();
+                            scanner
+                                .discover()
+                                .await
+                                .into_iter()
+                                .map(ScanResult::Ssdp)
+                                .collect()
                         }
-                        let scanner = SnmpScanner::new().with_timeout(cfg.timeout_ms);
-                        scanner
-                            .scan_ips(&all_ips)
-                            .await
-                            .into_iter()
-                            .map(ScanResult::Snmp)
-                            .collect()
-                    }
-                    _ => Vec::new(), // Skip if no privilege
-                };
-
-                // Send results and track unique IPs
-                for result in &results {
-                    let _ = result_tx.send(result.clone()).await;
-                    // Extract IP from result for unique device counting
-                    let ip = match result {
-                        ScanResult::Arp(r) => r.ip,
-                        ScanResult::Icmp(r) => r.ip,
-                        ScanResult::Ndp(r) => r.ip,
-                        ScanResult::NetBios(r) => r.ip,
-                        ScanResult::Port(r) => r.ip,
-                        ScanResult::Snmp(r) => r.ip,
-                        ScanResult::Ssdp(r) => r.ip,
+                        ScanType::NetBios => {
+                            let all_ips: Vec<IpAddr> = subnets
+                                .iter()
+                                .flat_map(|s| s.iter().map(IpAddr::V4))
+                                .collect();
+                            let scanner =
+                                NetBiosScanner::new().with_timeout(cfg.timeout_ms);
+                            scanner
+                                .scan_ips(&all_ips)
+                                .await
+                                .into_iter()
+                                .map(ScanResult::NetBios)
+                                .collect()
+                        }
+                        ScanType::Snmp => {
+                            let all_ips: Vec<IpAddr> = subnets
+                                .iter()
+                                .flat_map(|s| s.iter().map(IpAddr::V4))
+                                .collect();
+                            let scanner =
+                                SnmpScanner::new().with_timeout(cfg.timeout_ms);
+                            scanner
+                                .scan_ips(&all_ips)
+                                .await
+                                .into_iter()
+                                .map(ScanResult::Snmp)
+                                .collect()
+                        }
                     };
-                    discovered_ips.insert(ip);
-                }
 
-                completed_phases += 1;
+                    // Send results and track unique IPs
+                    for result in &results {
+                        let _ = result_tx.send(result.clone()).await;
+                        let ip = match result {
+                            ScanResult::Arp(r) => r.ip,
+                            ScanResult::Icmp(r) => r.ip,
+                            ScanResult::Ndp(r) => r.ip,
+                            ScanResult::NetBios(r) => r.ip,
+                            ScanResult::Port(r) => r.ip,
+                            ScanResult::Snmp(r) => r.ip,
+                            ScanResult::Ssdp(r) => r.ip,
+                        };
+                        discovered_ips.lock().unwrap().insert(ip);
+                    }
 
-                // Update progress (using saturating arithmetic to prevent overflow)
-                {
-                    let mut s = status.write().await;
-                    let percent = completed_phases
-                        .saturating_mul(100)
-                        .checked_div(total_phases.max(1))
-                        .unwrap_or(0)
-                        .min(100);
-                    s.progress_percent = percent as u8;
-                    s.discovered_count = discovered_ips.len().min(u32::MAX as usize) as u32;
-                }
+                    // Update progress
+                    let completed = completed_phases.fetch_add(1, Ordering::Relaxed) + 1;
+                    {
+                        let mut s = status.write().await;
+                        let percent = (completed as usize)
+                            .saturating_mul(100)
+                            .checked_div(total_phases)
+                            .unwrap_or(0)
+                            .min(100);
+                        s.progress_percent = percent as u8;
+                        s.discovered_count = discovered_ips
+                            .lock()
+                            .unwrap()
+                            .len()
+                            .min(u32::MAX as usize)
+                            as u32;
+                    }
+                });
             }
+
+            // Wait for all phases to complete
+            while join_set.join_next().await.is_some() {}
 
             // Mark as complete
             {
