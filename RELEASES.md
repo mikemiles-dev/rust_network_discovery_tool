@@ -1,5 +1,12 @@
 # Release Notes
 
+## [0.5.8]
+
+### Fixed
+- **Database Initialization Race Condition** - Fixed startup crash where web server and scanners would query the database before tables were created, causing "unable to open database file" errors
+  - `SQLWriter::new()` now awaits schema initialization before returning, ensuring all tables exist before any queries run
+  - Previously, table creation was fire-and-forget in a background task, racing against the web server's initial scan (which started after only 500ms)
+
 ## [0.5.7]
 
 ### Added

@@ -115,11 +115,6 @@
                         App.Refresh.refreshEndpointTable();
                     }
                     // No auto-refresh for internet and settings tabs
-
-                    // Also poll notifications for badge updates when not on notifications tab
-                    if (App.state.activeTab !== 'notifications' && App.Notifications) {
-                        App.Notifications.poll();
-                    }
                 }, seconds * 1000);
             }
         },
@@ -158,11 +153,6 @@
                 App.Refresh.refreshEndpointTable();
             }
             // No action for internet and settings tabs
-
-            // Also poll notifications for badge updates when not on notifications tab
-            if (App.state.activeTab !== 'notifications' && App.Notifications) {
-                App.Notifications.poll();
-            }
         },
 
         /**

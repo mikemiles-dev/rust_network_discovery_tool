@@ -1,0 +1,343 @@
+//! Device classification via MAC vendor lookups and model/serial detection.
+//! Pattern matching helpers used by sibling classification modules.
+
+use super::patterns::{
+    APPLIANCE_VENDORS, GAMING_VENDORS, GATEWAY_VENDORS, LG_APPLIANCE_PREFIXES,
+    MAC_DESKTOP_SERVICES, SOUNDBAR_MODEL_PREFIXES, TV_VENDORS,
+};
+use super::vendor::get_mac_vendor;
+
+/// Check if hostname matches any pattern in list
+pub(super) fn matches_pattern(hostname: &str, patterns: &[&str]) -> bool {
+    patterns.iter().any(|p| hostname.contains(p))
+}
+
+/// Check if hostname starts with any prefix in list
+pub(super) fn matches_prefix(hostname: &str, prefixes: &[&str]) -> bool {
+    prefixes.iter().any(|p| hostname.starts_with(p))
+}
+
+/// Check if hostname matches pattern but not exclusion
+pub(super) fn matches_conditional(hostname: &str, conditionals: &[(&str, &str)]) -> bool {
+    conditionals
+        .iter()
+        .any(|(pattern, exclude)| hostname.contains(pattern) && !hostname.contains(exclude))
+}
+
+/// Check if any MAC address has a vendor in the given list
+fn has_vendor_in_list(macs: &[String], vendors: &[&str]) -> bool {
+    macs.iter()
+        .any(|mac| get_mac_vendor(mac).is_some_and(|v| vendors.contains(&v)))
+}
+
+/// Check if any MAC address matches known IoT/appliance vendor OUIs
+pub(crate) fn is_appliance_mac(macs: &[String]) -> bool {
+    if has_vendor_in_list(macs, APPLIANCE_VENDORS) {
+        return true;
+    }
+    // Check SmartThings sensor MAC prefixes (mapped to Samsung vendor)
+    macs.iter().any(|mac| {
+        let mac_lower = mac.to_lowercase();
+        mac_lower.starts_with("70:2c:1f") || mac_lower.starts_with("28:6d:97")
+    })
+}
+
+/// Check if any MAC address matches known gaming vendor OUIs
+pub(crate) fn is_gaming_mac(macs: &[String]) -> bool {
+    has_vendor_in_list(macs, GAMING_VENDORS)
+}
+
+/// Check if any MAC address matches known TV/streaming vendor OUIs
+pub(crate) fn is_tv_mac(macs: &[String]) -> bool {
+    has_vendor_in_list(macs, TV_VENDORS)
+}
+
+/// Check if any MAC address is from Apple
+pub(crate) fn is_apple_mac(macs: &[String]) -> bool {
+    macs.iter()
+        .any(|mac| get_mac_vendor(mac).is_some_and(|v| v == "Apple"))
+}
+
+/// Check if any MAC address matches known gateway/router vendor OUIs
+pub(crate) fn is_gateway_mac(macs: &[String]) -> bool {
+    has_vendor_in_list(macs, GATEWAY_VENDORS)
+}
+
+/// Check if SSDP/UPnP model indicates a soundbar
+pub(crate) fn is_soundbar_model(model: &str) -> bool {
+    let model_lower = model.to_lowercase();
+    SOUNDBAR_MODEL_PREFIXES
+        .iter()
+        .any(|prefix| model_lower.starts_with(prefix))
+}
+
+/// Check if a model name indicates a TV
+pub(crate) fn is_tv_model(model: &str) -> bool {
+    let model_lower = model.to_lowercase();
+    let model_upper = model.to_uppercase();
+
+    // Check for known TV model patterns
+    // Samsung TV model patterns
+    if model_upper.starts_with("QN")
+        || model_upper.starts_with("UN")
+        || model_upper.starts_with("UA")
+    {
+        // QN = QLED, UN/UA = LED TVs
+        // e.g., QN43LS03TAFXZA (The Frame), UN55TU8000FXZA
+        return true;
+    }
+
+    // Samsung Frame TVs (LS series)
+    if model_upper.contains("LS03") || model_upper.contains("LS01") {
+        return true;
+    }
+
+    // LG TV model patterns
+    if model_upper.starts_with("OLED") || model_upper.starts_with("NANO") {
+        return true;
+    }
+
+    // Sony Bravia
+    if model_lower.contains("bravia")
+        || model_upper.starts_with("XR")
+        || model_upper.starts_with("KD-")
+    {
+        return true;
+    }
+
+    // Vizio
+    if model_lower.contains("vizio") {
+        return true;
+    }
+
+    // Roku TV platform identifiers (TCL, Hisense, etc. running Roku OS)
+    // Format: 4 digits followed by optional X (e.g., 7105X, 7000X, 6500X, 3800X)
+    // 7XXX series = TCL TVs, 6XXX = mid-range, 3XXX = budget models
+    if is_roku_tv_model(&model_upper) {
+        return true;
+    }
+
+    // Check for generic TV indicators in model name
+    if model_lower.contains("the frame") || model_lower.contains("samsung tv") {
+        return true;
+    }
+
+    false
+}
+
+/// Check if a string is a Roku serial number
+/// Roku serial numbers follow the pattern: 2 letters + 2 digits + 2 letters + N digits
+/// - 12 chars total: 2 letters + 2 digits + 2 letters + 6 digits (e.g., YN00NJ468680)
+/// - 10 chars total: 2 letters + 2 digits + 2 letters + 4 digits (e.g., BR23AM1691)
+pub(super) fn is_roku_serial_number(s: &str) -> bool {
+    // Must be 10 or 12 characters
+    if s.len() != 10 && s.len() != 12 {
+        return false;
+    }
+    let chars: Vec<char> = s.chars().collect();
+    // First 2 chars: letters
+    chars[0].is_ascii_alphabetic()
+        && chars[1].is_ascii_alphabetic()
+        // Next 2 chars: digits
+        && chars[2].is_ascii_digit()
+        && chars[3].is_ascii_digit()
+        // Next 2 chars: letters
+        && chars[4].is_ascii_alphabetic()
+        && chars[5].is_ascii_alphabetic()
+        // Remaining chars (4 or 6): all digits
+        && chars[6..].iter().all(|c| c.is_ascii_digit())
+}
+
+/// Check if model is a Roku TV platform identifier
+/// Roku TV models follow patterns like 7105X, 7000X, 6500X, 3800X
+pub(crate) fn is_roku_tv_model(model: &str) -> bool {
+    let model_upper = model.to_uppercase();
+    // Pattern: 4 digits, optionally followed by X
+    if model_upper.len() >= 4 && model_upper.len() <= 5 {
+        let chars: Vec<char> = model_upper.chars().collect();
+        // First 4 chars must be digits
+        if chars[0..4].iter().all(|c| c.is_ascii_digit()) {
+            // 5th char (if present) must be X
+            if chars.len() == 4 || chars[4] == 'X' {
+                // Roku TV models typically start with 3, 4, 5, 6, or 7
+                let first_digit = chars[0];
+                return matches!(first_digit, '3' | '4' | '5' | '6' | '7' | '8' | '9');
+            }
+        }
+    }
+
+    // Roku serial number format used as hostname (e.g., YN00NJ468680)
+    // Pattern: 2 letters + 2 digits + 2 letters + 6 digits (12 chars total)
+    if is_roku_serial_number(&model_upper) {
+        return true;
+    }
+    false
+}
+
+/// Check if hostname indicates a Mac computer (not a phone)
+pub(super) fn is_mac_computer_hostname(hostname: &str) -> bool {
+    let mac_patterns = [
+        "macbook",
+        "mac-book",
+        "imac",
+        "i-mac",
+        "mac-mini",
+        "macmini",
+        "mac-pro",
+        "macpro",
+        "mac-studio",
+        "macstudio",
+    ];
+    mac_patterns.iter().any(|p| hostname.contains(p))
+}
+
+/// Check if device is likely a phone based on MAC and services
+/// Apple devices that don't advertise file sharing services are likely iPhones/iPads
+pub(crate) fn is_phone_mac(macs: &[String], ips: &[String], hostname: Option<&str>) -> bool {
+    // Only applies to Apple devices (iPhones/iPads)
+    if !is_apple_mac(macs) {
+        return false;
+    }
+
+    // Never classify Mac computers as phones based on hostname
+    if let Some(h) = hostname {
+        let lower = h.to_lowercase();
+        if is_mac_computer_hostname(&lower) {
+            return false;
+        }
+    }
+
+    // Check if device advertises any desktop/Mac services
+    for ip_str in ips {
+        let services = crate::network::mdns_lookup::MDnsLookup::get_services(ip_str);
+        for service in &services {
+            if MAC_DESKTOP_SERVICES.contains(&service.as_str()) {
+                // This is a Mac (desktop), not a phone
+                return false;
+            }
+        }
+    }
+
+    // Apple device without desktop services = likely iPhone/iPad
+    true
+}
+
+/// Check if hostname indicates an LG ThinQ appliance
+pub(crate) fn is_lg_appliance(hostname: &str) -> bool {
+    if matches_prefix(hostname, LG_APPLIANCE_PREFIXES) {
+        return true;
+    }
+    // WM with digit as third character (washer model)
+    if hostname.starts_with("wm")
+        && let Some(c) = hostname.chars().nth(2)
+        && c.is_ascii_digit()
+    {
+        return true;
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_lg_appliance() {
+        assert_eq!(is_lg_appliance("ldf7774st"), true);
+        assert_eq!(is_lg_appliance("wm3900hwa"), true);
+        assert_eq!(is_lg_appliance("dlex3900w"), true);
+    }
+
+    #[test]
+    fn test_roku_serial_number_detection() {
+        // Valid Roku serial numbers: 2 letters + 2 digits + 2 letters + 6 digits (12 chars)
+        assert_eq!(is_roku_serial_number("YN00NJ468680"), true);
+        assert_eq!(is_roku_serial_number("YK00KM123456"), true);
+        assert_eq!(is_roku_serial_number("AB12CD345678"), true);
+
+        // Valid Roku serial numbers: 2 letters + 2 digits + 2 letters + 4 digits (10 chars)
+        assert_eq!(is_roku_serial_number("BR23AM1691"), true);
+        assert_eq!(is_roku_serial_number("AB12CD3456"), true);
+        assert_eq!(is_roku_serial_number("XY99ZZ0000"), true);
+
+        // Invalid patterns
+        assert_eq!(is_roku_serial_number("YN00NJ46868"), false); // 11 chars - invalid length
+        assert_eq!(is_roku_serial_number("YN00NJ4686801"), false); // Too long (13 chars)
+        assert_eq!(is_roku_serial_number("1N00NJ468680"), false); // First char not letter
+        assert_eq!(is_roku_serial_number("YNA0NJ468680"), false); // Third char not digit
+        assert_eq!(is_roku_serial_number("YN0ANJ468680"), false); // Fourth char not digit
+        assert_eq!(is_roku_serial_number("YN001J468680"), false); // Fifth char not letter
+        assert_eq!(is_roku_serial_number("YN00N1468680"), false); // Sixth char not letter
+        assert_eq!(is_roku_serial_number("YN00NJA68680"), false); // Seventh char not digit
+        assert_eq!(is_roku_serial_number("samsung-tv"), false); // Wrong format
+        assert_eq!(is_roku_serial_number("7105X"), false); // Roku model, not serial
+        assert_eq!(is_roku_serial_number("BR23AM169"), false); // 9 chars - too short
+    }
+
+    #[test]
+    fn test_roku_tv_model_detection() {
+        // Roku TV platform identifiers (TCL, Hisense TVs running Roku OS)
+        assert_eq!(is_roku_tv_model("7105X"), true);
+        assert_eq!(is_roku_tv_model("7000X"), true);
+        assert_eq!(is_roku_tv_model("6500X"), true);
+        assert_eq!(is_roku_tv_model("3800X"), true);
+        assert_eq!(is_roku_tv_model("4200"), true); // Without X suffix
+        assert_eq!(is_roku_tv_model("8500X"), true);
+
+        // Should be recognized as TV
+        assert_eq!(is_tv_model("7105X"), true);
+        assert_eq!(is_tv_model("7000X"), true);
+
+        // Non-Roku TV models
+        assert_eq!(is_roku_tv_model("HW-MS750"), false); // Samsung soundbar
+        assert_eq!(is_roku_tv_model("OLED55C3"), false); // LG TV (different format)
+        assert_eq!(is_roku_tv_model("12345X"), false); // Too many digits
+        assert_eq!(is_roku_tv_model("710X"), false); // Only 3 digits
+        assert_eq!(is_roku_tv_model("7105Y"), false); // Wrong suffix
+
+        // Roku serial numbers should also be detected as Roku TV models
+        assert_eq!(is_roku_tv_model("YN00NJ468680"), true);
+        assert_eq!(is_roku_tv_model("yn00nj468680"), true); // lowercase
+    }
+
+    #[test]
+    fn test_is_tv_model() {
+        // Samsung QLED TVs
+        assert!(is_tv_model("QN43LS03TAFXZA")); // The Frame
+        assert!(is_tv_model("QN65Q80AAFXZA")); // QLED Q80A
+        assert!(is_tv_model("QN55QN90AAFXZA")); // Neo QLED
+
+        // Samsung LED TVs
+        assert!(is_tv_model("UN55TU8000FXZA"));
+        assert!(is_tv_model("UA43AU7000KXXS"));
+
+        // Samsung The Frame specific
+        assert!(is_tv_model("LS03T"));
+        assert!(is_tv_model("QN43LS01TAFXZA")); // The Serif
+
+        // LG OLED TVs
+        assert!(is_tv_model("OLED55C3PUA"));
+        assert!(is_tv_model("OLED65G3PUA"));
+
+        // LG NanoCell TVs
+        assert!(is_tv_model("NANO75UPA"));
+
+        // Sony Bravia
+        assert!(is_tv_model("XR-55A80J"));
+        assert!(is_tv_model("KD-55X80K"));
+        assert!(is_tv_model("Sony Bravia"));
+
+        // Vizio
+        assert!(is_tv_model("Vizio M-Series"));
+
+        // Generic patterns
+        assert!(is_tv_model("Samsung The Frame"));
+        assert!(is_tv_model("Samsung TV"));
+
+        // Should NOT match
+        assert!(!is_tv_model("HW-MS750")); // Soundbar
+        assert!(!is_tv_model("Galaxy S23")); // Phone
+        assert!(!is_tv_model("MacBook Pro")); // Computer
+        assert!(!is_tv_model("random-device"));
+    }
+}

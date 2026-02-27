@@ -2,6 +2,7 @@
 //! and orchestrates network monitoring across interfaces.
 
 mod db;
+mod device_control;
 mod network;
 pub mod pcap;
 mod scanner;

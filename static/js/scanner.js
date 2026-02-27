@@ -4,8 +4,9 @@
 (function(App) {
     'use strict';
 
-    var scanPollInterval = null;
     var autoScanIntervalId = null;
+    var indicatorPollId = null;
+    var currentPollRate = 5000; // Start in slow mode
 
     App.Scanner = {
         /**
@@ -37,8 +38,8 @@
             })
             .then(function(response) {
                 if (response.ok) {
-                    // Start polling for status
-                    scanPollInterval = setInterval(App.Scanner.pollStatus, 500);
+                    // Switch unified poller to fast mode
+                    App.Scanner.setPollingRate(500);
                 } else {
                     return response.json().then(function(result) {
                         alert('Scan failed: ' + result.message);
@@ -69,7 +70,7 @@
         },
 
         /**
-         * Poll scan status from API
+         * Poll scan status and update both scanner tab UI and network tab indicator
          */
         pollStatus: function() {
             fetch('/api/scan/status')
@@ -77,19 +78,40 @@
                     return response.json();
                 })
                 .then(function(status) {
-                    document.getElementById('scan-progress-fill').style.width = status.progress_percent + '%';
-                    document.getElementById('scan-progress-text').textContent = status.progress_percent + '%';
-                    document.getElementById('scan-phase').textContent = status.current_phase || 'Scanning...';
-                    document.getElementById('discovered-count').textContent = status.discovered_count;
+                    // Update scanner tab progress UI (elements may not exist if not on scanner tab)
+                    var progressFill = document.getElementById('scan-progress-fill');
+                    var progressText = document.getElementById('scan-progress-text');
+                    var phaseEl = document.getElementById('scan-phase');
+                    var discoveredEl = document.getElementById('discovered-count');
+                    var lastScanEl = document.getElementById('last-scan-time');
 
-                    if (status.last_scan_time) {
+                    if (progressFill) progressFill.style.width = status.progress_percent + '%';
+                    if (progressText) progressText.textContent = status.progress_percent + '%';
+                    if (phaseEl) phaseEl.textContent = status.current_phase || 'Scanning...';
+                    if (discoveredEl) discoveredEl.textContent = status.discovered_count;
+
+                    if (status.last_scan_time && lastScanEl) {
                         var date = new Date(status.last_scan_time * 1000);
-                        document.getElementById('last-scan-time').textContent = date.toLocaleTimeString();
+                        lastScanEl.textContent = date.toLocaleTimeString();
+                    }
+
+                    // Update network tab scan indicator
+                    var indicator = document.getElementById('scan-indicator');
+                    if (indicator) {
+                        if (status.running) {
+                            indicator.style.display = 'flex';
+                            var phase = document.getElementById('scan-indicator-phase');
+                            var progress = document.getElementById('scan-indicator-progress');
+                            if (phase) phase.textContent = status.current_phase || '...';
+                            if (progress) progress.textContent = status.progress_percent + '%';
+                        } else {
+                            indicator.style.display = 'none';
+                        }
                     }
 
                     if (!status.running) {
-                        clearInterval(scanPollInterval);
-                        scanPollInterval = null;
+                        // Switch to slow mode
+                        App.Scanner.setPollingRate(5000);
                         App.Scanner.resetButton();
 
                         // Refresh the page to show new endpoints, preserving scanner tab
@@ -100,6 +122,9 @@
                                 window.location.href = url.toString();
                             }, 500);
                         }
+                    } else if (currentPollRate !== 500) {
+                        // Scan started externally (auto-scan), switch to fast mode
+                        App.Scanner.setPollingRate(500);
                     }
                 })
                 .catch(function(e) {
@@ -108,24 +133,51 @@
         },
 
         /**
+         * Change the polling rate of the unified poller
+         */
+        setPollingRate: function(rateMs) {
+            if (currentPollRate === rateMs && indicatorPollId) return;
+            currentPollRate = rateMs;
+            if (indicatorPollId) {
+                clearInterval(indicatorPollId);
+            }
+            indicatorPollId = setInterval(App.Scanner.pollStatus, rateMs);
+        },
+
+        /**
+         * Start the unified scan indicator/status poller
+         */
+        startIndicatorPolling: function() {
+            // Initial check
+            App.Scanner.pollStatus();
+            // Start in slow mode (5s), will switch to fast (500ms) if scan is active
+            indicatorPollId = setInterval(App.Scanner.pollStatus, 5000);
+        },
+
+        /**
          * Reset scan button to initial state
          */
         resetButton: function() {
             // Reset and show start button
             var startBtn = document.getElementById('start-scan-btn');
-            startBtn.textContent = 'Scan Network';
-            startBtn.disabled = false;
-            startBtn.style.opacity = '1';
-            startBtn.style.display = 'block';
+            if (startBtn) {
+                startBtn.textContent = 'Scan Network';
+                startBtn.disabled = false;
+                startBtn.style.opacity = '1';
+                startBtn.style.display = 'block';
+            }
 
             // Reset and hide stop button
             var stopBtn = document.getElementById('stop-scan-btn');
-            stopBtn.textContent = 'Stop Scan';
-            stopBtn.disabled = false;
-            stopBtn.style.opacity = '1';
-            stopBtn.style.display = 'none';
+            if (stopBtn) {
+                stopBtn.textContent = 'Stop Scan';
+                stopBtn.disabled = false;
+                stopBtn.style.opacity = '1';
+                stopBtn.style.display = 'none';
+            }
 
-            document.getElementById('scan-progress').style.display = 'none';
+            var scanProgress = document.getElementById('scan-progress');
+            if (scanProgress) scanProgress.style.display = 'none';
         },
 
         /**
@@ -248,7 +300,8 @@
             })
             .then(function(response) {
                 if (response.ok) {
-                    scanPollInterval = setInterval(App.Scanner.pollStatus, 500);
+                    // Switch unified poller to fast mode
+                    App.Scanner.setPollingRate(500);
                 }
             })
             .catch(function(e) {

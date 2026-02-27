@@ -1,0 +1,25 @@
+  <!-- Protocol Endpoints Dropdown -->
+  <div id="protocol-dropdown" class="protocol-dropdown">
+    <div class="protocol-dropdown-header">Talked via <span id="protocol-dropdown-name"></span></div>
+    <div id="protocol-dropdown-content"></div>
+  </div>
+
+  <!-- Merge Endpoint Modal -->
+  <div id="merge-modal" class="merge-modal-overlay">
+    <div class="merge-modal">
+      <div class="merge-modal-header">
+        <h3>🔗 Merge Endpoint</h3>
+        <p>Select the target endpoint to merge "<span id="merge-source-name"></span>" into</p>
+      </div>
+      <div class="merge-modal-search">
+        <input type="text" id="merge-search" placeholder="Search endpoints..." autocomplete="off">
+      </div>
+      <div class="merge-modal-list" id="merge-endpoint-list">
+        <div class="merge-modal-empty">Loading endpoints...</div>
+      </div>
+      <div class="merge-modal-footer">
+        <button class="merge-modal-btn merge-modal-btn-cancel" onclick="App.Endpoints.closeMergeModal()">Cancel</button>
+        <button class="merge-modal-btn merge-modal-btn-confirm" id="merge-confirm-btn" disabled onclick="App.Endpoints.confirmMerge()">Merge</button>
+      </div>
+    </div>
+  </div>

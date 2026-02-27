@@ -1,0 +1,501 @@
+      <!-- Protocols Overlay -->
+      <div class="protocols-overlay"{% if not endpoint %} style="display: none;"{% endif %}>
+        <!-- Endpoint Details Header with Tabs -->
+        <div class="overlay-header" style="display: flex; flex-direction: column; align-items: flex-start;">
+          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <span>Endpoint Details</span>
+            <button onclick="unselectNode()" style="background: none; border: none; cursor: pointer; padding: 0.25rem 0.5rem; color: var(--text-secondary); font-size: 1.25rem; line-height: 1;" title="Close">&times;</button>
+          </div>
+          <div class="detail-tabs" style="margin-top: 0.5rem; justify-content: flex-start;">
+            <button class="detail-tab active" data-tab="details-tab-content" onclick="switchDetailTab(this, 'details-tab-content')">Details</button>
+            <button class="detail-tab" data-tab="network-tab-content" onclick="switchDetailTab(this, 'network-tab-content')">Network</button>
+            <button id="control-tab-btn" class="detail-tab" data-tab="control-tab-content" onclick="switchDetailTab(this, 'control-tab-content')" style="display: none;">Control</button>
+          </div>
+        </div>
+
+        <!-- Details Tab Content -->
+        <div id="details-tab-content" class="detail-tab-content active">
+        <div style="margin-bottom: 0.75rem;">
+          <!-- Endpoint Name with Rename -->
+          <div id="endpoint-name-display" style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <span style="font-size: 0.875rem; font-weight: 600; color: var(--text-primary); word-break: break-all;">{% if endpoint %}{{ endpoint }}{% else %}No endpoint selected{% endif %}</span>
+            <button id="rename-btn" onclick="showRenameInput()" style="background: none; border: none; cursor: pointer; padding: 0.125rem; color: var(--text-secondary); font-size: 0.75rem; {% if not endpoint %}display: none;{% endif %}" title="Rename endpoint">✏️</button>
+          </div>
+          <div id="endpoint-rename-input" style="display: none; margin-bottom: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <input type="text" id="custom-name-input" placeholder="Enter custom name" style="flex: 1; padding: 0.375rem 0.5rem; font-size: 0.875rem; border: 1px solid var(--border-color); border-radius: 0.25rem; background: var(--card-bg); color: var(--text-primary);">
+              <button onclick="saveCustomName()" style="padding: 0.375rem 0.75rem; font-size: 0.75rem; background: var(--accent-primary); color: white; border: none; border-radius: 0.25rem; cursor: pointer;">Save</button>
+              <button onclick="cancelRename()" style="padding: 0.375rem 0.75rem; font-size: 0.75rem; background: var(--card-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 0.25rem; cursor: pointer;">Cancel</button>
+              <button onclick="clearCustomName()" style="padding: 0.375rem 0.75rem; font-size: 0.75rem; background: #dc2626; color: white; border: none; border-radius: 0.25rem; cursor: pointer;" title="Reset to original name">Reset</button>
+            </div>
+          </div>
+          <!-- Device Type Dropdown -->
+          {% set endpoint_type = endpoint_types | get(key=endpoint, default="other") %}
+          <div style="margin-bottom: 0.75rem; display: flex; flex-wrap: wrap; align-items: center; row-gap: 0.5rem;">
+            <div class="device-type-selector" {% if not endpoint %}style="display: none;"{% endif %}>
+              <button class="device-type-btn {% if endpoint in manual_overrides %}manual-override{% endif %}" onclick="toggleDeviceTypeDropdown(event)" id="device-type-btn">
+                <span>Type:</span>
+                <span id="current-device-type">
+                  {% if endpoint_type == "gateway" %}🌐 Gateway
+                  {% elif endpoint_type == "internet" %}🌍 Internet
+                  {% elif endpoint_type == "printer" %}🖨️ Printer
+                  {% elif endpoint_type == "tv" %}📺 TV
+                  {% elif endpoint_type == "gaming" %}🎮 Gaming
+                  {% elif endpoint_type == "phone" %}📱 Phone
+                  {% elif endpoint_type == "virtualization" %}🖥 VM
+                  {% elif endpoint_type == "soundbar" %}🔊 Soundbar
+                  {% elif endpoint_type == "appliance" %}🏠 Appliance
+                  {% elif endpoint_type == "local" %}🖥️ Local
+                  {% elif endpoint_type %}💻 {{ endpoint_type }}
+                  {% else %}❓ Other
+                  {% endif %}
+                </span>
+                <span class="dropdown-arrow">▼</span>
+              </button>
+              <div class="device-type-dropdown" id="device-type-dropdown">
+                <div class="device-type-option auto-option" onclick="reclassifyEndpoint('auto')">🔄 Auto (detect automatically)</div>
+                <div class="device-type-option {% if endpoint_type == 'local' %}selected{% endif %}" onclick="reclassifyEndpoint('local')">🖥️ Local</div>
+                <div class="device-type-option {% if endpoint_type == 'printer' %}selected{% endif %}" onclick="reclassifyEndpoint('printer')">🖨️ Printer</div>
+                <div class="device-type-option {% if endpoint_type == 'tv' %}selected{% endif %}" onclick="reclassifyEndpoint('tv')">📺 TV</div>
+                <div class="device-type-option {% if endpoint_type == 'gaming' %}selected{% endif %}" onclick="reclassifyEndpoint('gaming')">🎮 Gaming</div>
+                <div class="device-type-option {% if endpoint_type == 'phone' %}selected{% endif %}" onclick="reclassifyEndpoint('phone')">📱 Phone</div>
+                <div class="device-type-option {% if endpoint_type == 'virtualization' %}selected{% endif %}" onclick="reclassifyEndpoint('virtualization')">🖥 VM</div>
+                <div class="device-type-option {% if endpoint_type == 'soundbar' %}selected{% endif %}" onclick="reclassifyEndpoint('soundbar')">🔊 Soundbar</div>
+                <div class="device-type-option {% if endpoint_type == 'appliance' %}selected{% endif %}" onclick="reclassifyEndpoint('appliance')">🏠 Appliance</div>
+                <div class="device-type-option {% if endpoint_type == 'other' %}selected{% endif %}" onclick="reclassifyEndpoint('other')">❓ Other</div>
+              </div>
+            </div>
+            <span id="manual-override-indicator" style="font-size: 0.625rem; color: var(--accent-secondary); margin-left: 0.5rem; {% if not endpoint in manual_overrides %}display: none;{% endif %}">(manually set)</span>
+            <span id="device-vendor-badge" onclick="showVendorEdit()" style="font-size: 0.875rem; font-weight: bold; color: #60a5fa; background: rgba(59, 130, 246, 0.15); padding: 0.25rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem; cursor: pointer; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: {% if not device_vendor %}none{% else %}inline-block{% endif %};" title="{{ device_vendor }} (click to edit)">{{ device_vendor }}</span>
+            <span id="device-model-badge" onclick="showModelEdit()" style="font-size: 0.875rem; font-weight: bold; color: #a78bfa; background: rgba(139, 92, 246, 0.15); padding: 0.25rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem; cursor: pointer; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: {% if not device_model %}none{% else %}inline-block{% endif %};" title="{{ device_model }} (click to edit)">{{ device_model }}</span>
+            <button onclick="showVendorEdit()" style="background: none; border: none; cursor: pointer; padding: 0.125rem; margin-left: 0.25rem; color: #60a5fa; font-size: 0.625rem; {% if device_vendor or not endpoint %}display: none;{% endif %}" title="Set vendor" id="add-vendor-btn">+Vendor</button>
+            <button onclick="showModelEdit()" style="background: none; border: none; cursor: pointer; padding: 0.125rem; margin-left: 0.25rem; color: #a78bfa; font-size: 0.625rem; {% if device_model or not endpoint %}display: none;{% endif %}" title="Set model" id="add-model-btn">+Model</button>
+          </div>
+          <!-- Vendor Edit Input -->
+          <div id="vendor-edit-input" style="display: none; margin-bottom: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span style="font-size: 0.75rem; color: #60a5fa;">Vendor:</span>
+              <input type="text" id="custom-vendor-input" placeholder="Enter vendor name" style="flex: 1; padding: 0.375rem 0.5rem; font-size: 0.875rem; border: 1px solid #60a5fa; border-radius: 0.25rem; background: var(--card-bg); color: var(--text-primary);">
+              <button onclick="saveCustomVendor()" style="padding: 0.375rem 0.75rem; font-size: 0.75rem; background: #60a5fa; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">Save</button>
+              <button onclick="cancelVendorEdit()" style="padding: 0.375rem 0.75rem; font-size: 0.75rem; background: var(--card-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 0.25rem; cursor: pointer;">Cancel</button>
+              <button onclick="clearCustomVendor()" style="padding: 0.375rem 0.75rem; font-size: 0.75rem; background: #dc2626; color: white; border: none; border-radius: 0.25rem; cursor: pointer;" title="Reset to auto-detected vendor">Auto</button>
+            </div>
+          </div>
+          <!-- Model Edit Input -->
+          <div id="model-edit-input" style="display: none; margin-bottom: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span style="font-size: 0.75rem; color: #a78bfa;">Model:</span>
+              <input type="text" id="custom-model-input" placeholder="Enter model name" style="flex: 1; padding: 0.375rem 0.5rem; font-size: 0.875rem; border: 1px solid #a78bfa; border-radius: 0.25rem; background: var(--card-bg); color: var(--text-primary);">
+              <button onclick="saveCustomModel()" style="padding: 0.375rem 0.75rem; font-size: 0.75rem; background: #a78bfa; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">Save</button>
+              <button onclick="cancelModelEdit()" style="padding: 0.375rem 0.75rem; font-size: 0.75rem; background: var(--card-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 0.25rem; cursor: pointer;">Cancel</button>
+              <button onclick="clearCustomModel()" style="padding: 0.375rem 0.75rem; font-size: 0.75rem; background: #dc2626; color: white; border: none; border-radius: 0.25rem; cursor: pointer;" title="Reset to auto-detected model">Auto</button>
+            </div>
+          </div>
+          <div class="stats">
+            <div class="stat-badge stat-link" onclick="scrollToSection('ips-section')">IPs: <span class="stat-number">{{ ips|length }}</span></div>
+            <div class="stat-badge stat-link" onclick="scrollToSection('macs-section')">MACs: <span class="stat-number">{{ macs|length }}</span></div>
+            <div class="stat-badge stat-link" onclick="scrollToSection('hostnames-section')">Hosts: <span class="stat-number">{{ hostnames|length }}</span></div>
+            <div class="stat-badge stat-link" onclick="scrollToSection('ports-section')">Ports: <span class="stat-number">{{ ports|length }}</span></div>
+            <div class="stat-badge stat-link" onclick="scrollToSection('protocols-section')">Protocols: <span class="stat-number">{{ protocols|length }}</span></div>
+          </div>
+          <div class="stats" style="margin-top: 0.5rem;">
+            <div class="stat-badge">⬇️ In: <span class="stat-number" id="bytes-in">{{ bytes_in }}</span></div>
+            <div class="stat-badge">⬆️ Out: <span class="stat-number" id="bytes-out">{{ bytes_out }}</span></div>
+          </div>
+        </div>
+
+        <div class="overlay-header" id="protocols-section">
+          Protocols
+        </div>
+        <div class="overlay-content" id="protocols-container">
+          {% if not endpoint %}
+            <div class="empty-state">No endpoint selected</div>
+          {% elif protocols %}
+            {% for protocol in protocols %}
+            <div class="protocol-badge" data-protocol="{{ protocol | safe }}" onclick="filterByProtocol('{{ protocol | safe }}', this)">{{ protocol | safe }}</div>
+            {% endfor %}
+          {% else %}
+            <div class="empty-state">No protocols</div>
+          {% endif %}
+        </div>
+
+        <!-- Ports -->
+        <div class="overlay-header" id="ports-section">
+          Ports
+          <button class="clear-port-filter-btn" onclick="clearPortFilter()" style="display: none;">Clear</button>
+        </div>
+        <div style="margin-bottom: 0.75rem;">
+          <input type="text" id="portsListSearch" placeholder="Filter ports..."
+                 oninput="filterPortsList(this.value)"
+                 style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
+        </div>
+        <div class="listbox" id="ports-container">
+          {% if not endpoint %}
+            <div class="empty-state">No endpoint selected</div>
+          {% elif ports %}
+            {% for port in ports %}
+            <div class="listbox-item" data-port="{{ port | safe }}" onclick="filterByPort('{{ port | safe }}', this)">{{ port | safe }}</div>
+            {% endfor %}
+          {% else %}
+            <div class="empty-state">No ports</div>
+          {% endif %}
+        </div>
+
+        <div class="overlay-header" id="hostnames-section">
+          Hostnames
+        </div>
+        <div style="margin-bottom: 0.75rem;">
+          <input type="text" id="hostnamesListSearch" placeholder="Filter hostnames..."
+                 oninput="filterHostnamesList(this.value)"
+                 style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
+        </div>
+        <div class="listbox" id="hostnames-container">
+          {% if not endpoint %}
+            <div class="empty-state">No endpoint selected</div>
+          {% elif hostnames %}
+            {% for hostname in hostnames %}
+            <div class="listbox-item">{{ hostname | safe }}</div>
+            {% endfor %}
+          {% else %}
+            <div class="empty-state">No hostnames</div>
+          {% endif %}
+        </div>
+
+        <!-- IP Addresses -->
+        <div class="overlay-header" id="ips-section">
+          IP Addresses
+        </div>
+        <div style="margin-bottom: 0.75rem;">
+          <input type="text" id="ipsListSearch" placeholder="Filter IPs..."
+                 oninput="filterIpsList(this.value)"
+                 style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
+        </div>
+        <div class="overlay-hostnames" id="ips-container">
+          {% if not endpoint %}
+            <div class="empty-state">No endpoint selected</div>
+          {% elif ips %}
+            {% for ip in ips %}
+            <div class="hostname-item">{{ ip | safe }}</div>
+            {% endfor %}
+          {% else %}
+            <div class="empty-state">No IP addresses</div>
+          {% endif %}
+        </div>
+
+        <!-- MAC Addresses -->
+        <div class="overlay-header" id="macs-section">
+          MAC Addresses
+        </div>
+        <div style="margin-bottom: 0.75rem;">
+          <input type="text" id="macsListSearch" placeholder="Filter MACs..."
+                 oninput="filterMacsList(this.value)"
+                 style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem;">
+        </div>
+        <div class="overlay-hostnames" id="macs-container">
+          {% if not endpoint %}
+            <div class="empty-state">No endpoint selected</div>
+          {% elif macs %}
+            {% for mac in macs %}
+            <div class="hostname-item">{{ mac | safe }}</div>
+            {% endfor %}
+          {% else %}
+            <div class="empty-state">No MAC addresses</div>
+          {% endif %}
+        </div>
+
+        <!-- Merge and Delete Endpoint Buttons -->
+        <div id="endpoint-actions-container" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(71, 85, 105, 0.3);{% if not endpoint %} display: none;{% endif %}">
+          <button id="merge-endpoint-btn"
+                  style="width: 100%; padding: 0.75rem; background: #2563eb; color: white; border: none; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: background-color 0.2s; margin-bottom: 0.5rem;"
+                  onmouseover="this.style.backgroundColor='#1d4ed8'"
+                  onmouseout="this.style.backgroundColor='#2563eb'">
+            🔗 Merge Into Another Endpoint
+          </button>
+          <div style="font-size: 0.7rem; color: var(--text-secondary); text-align: center; margin-bottom: 1rem;">
+            Combine this endpoint with another (for duplicates)
+          </div>
+          <button id="delete-endpoint-btn"
+                  style="width: 100%; padding: 0.75rem; background: #dc2626; color: white; border: none; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: background-color 0.2s;"
+                  onmouseover="this.style.backgroundColor='#b91c1c'"
+                  onmouseout="this.style.backgroundColor='#dc2626'">
+            🗑️ Delete Endpoint
+          </button>
+          <div style="font-size: 0.7rem; color: var(--text-secondary); text-align: center; margin-top: 0.5rem;">
+            Removes endpoint and all associated communications
+          </div>
+        </div>
+        </div><!-- End Details Tab Content -->
+
+        <!-- Network Tab Content -->
+        <div id="network-tab-content" class="detail-tab-content">
+          <div style="padding: 1rem;">
+            <h3 style="color: var(--text-primary); margin-bottom: 1rem; font-size: 1rem;">Network Actions</h3>
+
+            <!-- Ping Action -->
+            <div style="margin-bottom: 1.5rem;">
+              <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                <button onclick="App.NetworkActions.ping()" style="padding: 0.5rem 1rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; border-radius: 0.375rem; cursor: pointer; font-weight: 500; font-size: 0.85rem;">
+                  Ping
+                </button>
+                <span style="color: var(--text-secondary); font-size: 0.8rem;">Test connectivity with ICMP echo</span>
+              </div>
+              <div id="ping-result" style="display: none; padding: 0.75rem; background: rgba(15, 23, 42, 0.6); border-radius: 0.375rem; font-family: monospace; font-size: 0.8rem; color: white;"></div>
+            </div>
+
+            <!-- Probe Hostname Action -->
+            <div style="margin-bottom: 1.5rem;">
+              <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                <button onclick="App.NetworkActions.probeHostname()" style="padding: 0.5rem 1rem; background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: #10b981; border-radius: 0.375rem; cursor: pointer; font-weight: 500; font-size: 0.85rem;">
+                  Probe Hostname
+                </button>
+                <span style="color: var(--text-secondary); font-size: 0.8rem;">Resolve hostname via reverse DNS/mDNS</span>
+              </div>
+              <div id="probe-hostname-result" style="display: none; padding: 0.75rem; background: rgba(15, 23, 42, 0.6); border-radius: 0.375rem; font-size: 0.85rem; color: white;"></div>
+            </div>
+
+            <!-- Probe Model Action -->
+            <div style="margin-bottom: 1.5rem;">
+              <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                <button onclick="App.NetworkActions.probeModel()" style="padding: 0.5rem 1rem; background: rgba(168, 85, 247, 0.2); border: 1px solid rgba(168, 85, 247, 0.4); color: #a855f7; border-radius: 0.375rem; cursor: pointer; font-weight: 500; font-size: 0.85rem;">
+                  Probe Model
+                </button>
+                <span style="color: var(--text-secondary); font-size: 0.8rem;">Detect device model via web interface</span>
+              </div>
+              <div id="probe-model-result" style="display: none; padding: 0.75rem; background: rgba(15, 23, 42, 0.6); border-radius: 0.375rem; font-size: 0.85rem; color: white;"></div>
+            </div>
+
+            <!-- Port Scan Action -->
+            <div style="margin-bottom: 1.5rem;">
+              <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                <button onclick="App.NetworkActions.portScan()" style="padding: 0.5rem 1rem; background: rgba(249, 115, 22, 0.2); border: 1px solid rgba(249, 115, 22, 0.4); color: #f97316; border-radius: 0.375rem; cursor: pointer; font-weight: 500; font-size: 0.85rem;">
+                  Port Scan
+                </button>
+                <span style="color: var(--text-secondary); font-size: 0.8rem;">Scan common ports for open services</span>
+              </div>
+              <div id="port-scan-result" style="display: none; padding: 0.75rem; background: rgba(15, 23, 42, 0.6); border-radius: 0.375rem; font-size: 0.85rem; color: white;"></div>
+            </div>
+
+            <!-- NetBIOS Probe Action -->
+            <div style="margin-bottom: 1rem;">
+              <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                <button onclick="App.NetworkActions.probeNetBios()" style="padding: 0.5rem 1rem; background: rgba(236, 72, 153, 0.2); border: 1px solid rgba(236, 72, 153, 0.4); color: #ec4899; border-radius: 0.375rem; cursor: pointer; font-weight: 500; font-size: 0.85rem;">
+                  Probe NetBIOS
+                </button>
+                <span style="color: var(--text-secondary); font-size: 0.8rem;">Query NetBIOS name (Windows/SMB devices)</span>
+              </div>
+              <div id="probe-netbios-result" style="display: none; padding: 0.75rem; background: rgba(15, 23, 42, 0.6); border-radius: 0.375rem; font-size: 0.85rem; color: white;"></div>
+            </div>
+          </div>
+        </div><!-- End Network Tab Content -->
+
+        <!-- Control Tab Content -->
+        <div id="control-tab-content" class="detail-tab-content">
+          <div id="device-control-container">
+            <div class="control-loading" id="control-loading">
+              <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                Loading device capabilities...
+              </div>
+            </div>
+            <div id="control-content" style="display: none;" data-endpoint-name="{{ endpoint | default(value='') | safe }}" data-device-type="{{ endpoint_type | default(value='') }}" data-ips="{{ ips | join(sep=',') }}">
+              <!-- Device info -->
+              <div id="device-info-section" style="margin-bottom: 1rem; display: none;">
+                <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Device</div>
+                <div id="device-model" style="font-weight: 600;"></div>
+              </div>
+
+              <!-- No control available message -->
+              <div id="no-control-message" style="display: none; text-align: center; padding: 2rem; color: var(--text-secondary);">
+                <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🔒</div>
+                <div>No remote control available for this device type.</div>
+                <div style="font-size: 0.75rem; margin-top: 0.5rem;">Currently supports: Roku and Samsung TVs</div>
+              </div>
+
+              <!-- Pairing Required Message (for TVs) -->
+              <div id="pairing-required" style="display: none; text-align: center; padding: 1.5rem;">
+                <div style="font-size: 2rem; margin-bottom: 0.75rem;">📺</div>
+                <div style="font-weight: 600; margin-bottom: 0.5rem;">Pairing Required</div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                  Click the button below, then approve the connection on your TV screen.
+                </div>
+                <button class="remote-btn" onclick="pairDevice()" style="width: 100%; padding: 0.75rem; font-size: 0.9rem; background: var(--accent-secondary);">
+                  🔗 Pair with TV
+                </button>
+                <div id="pairing-status" style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-secondary);"></div>
+              </div>
+
+              <!-- ThinQ Setup Required Message -->
+              <div id="thinq-setup-required" style="display: none; padding: 1.5rem;">
+                <div style="text-align: center; margin-bottom: 1rem;">
+                  <div style="font-size: 2rem; margin-bottom: 0.75rem;">🏠</div>
+                  <div style="font-weight: 600; margin-bottom: 0.5rem;">LG ThinQ Setup Required</div>
+                  <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                    Enter your Personal Access Token from the <a href="https://smartsolution.developer.lge.com/en/apiManage/thinq_connect" target="_blank" style="color: var(--accent-primary);">LG ThinQ Developer Site</a>
+                  </div>
+                </div>
+                <div style="margin-bottom: 1rem;">
+                  <label style="display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Personal Access Token (PAT)</label>
+                  <input type="password" id="thinq-pat-token" placeholder="Paste your PAT token here" style="width: 100%; padding: 0.5rem; background: rgba(30, 41, 59, 0.8); border: 1px solid #4b5563; border-radius: 0.375rem; color: var(--text-primary); font-size: 0.875rem;">
+                </div>
+                <div style="margin-bottom: 1rem;">
+                  <label style="display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Country Code</label>
+                  <select id="thinq-country-code" style="width: 100%; padding: 0.5rem; background: rgba(30, 41, 59, 0.8); border: 1px solid #4b5563; border-radius: 0.375rem; color: var(--text-primary); font-size: 0.875rem;">
+                    <option value="US">United States (US)</option>
+                    <option value="CA">Canada (CA)</option>
+                    <option value="MX">Mexico (MX)</option>
+                    <option value="GB">United Kingdom (GB)</option>
+                    <option value="DE">Germany (DE)</option>
+                    <option value="FR">France (FR)</option>
+                    <option value="IT">Italy (IT)</option>
+                    <option value="ES">Spain (ES)</option>
+                    <option value="KR">South Korea (KR)</option>
+                    <option value="JP">Japan (JP)</option>
+                    <option value="AU">Australia (AU)</option>
+                    <option value="NZ">New Zealand (NZ)</option>
+                  </select>
+                </div>
+                <button class="remote-btn" onclick="setupThinQ()" style="width: 100%; padding: 0.75rem; font-size: 0.9rem; background: var(--accent-secondary);">
+                  🔗 Connect to LG ThinQ
+                </button>
+                <div id="thinq-setup-status" style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-secondary);"></div>
+              </div>
+
+              <!-- Roku Remote Control -->
+              <div id="roku-remote" style="display: none;">
+                <!-- Navigation Pad -->
+                <div class="remote-section">
+                  <div class="remote-label">Navigation</div>
+                  <div class="remote-dpad">
+                    <button class="remote-btn dpad-up" onclick="sendCommand('Up')" title="Up">▲</button>
+                    <button class="remote-btn dpad-left" onclick="sendCommand('Left')" title="Left">◀</button>
+                    <button class="remote-btn dpad-ok" onclick="sendCommand('Select')" title="OK">OK</button>
+                    <button class="remote-btn dpad-right" onclick="sendCommand('Right')" title="Right">▶</button>
+                    <button class="remote-btn dpad-down" onclick="sendCommand('Down')" title="Down">▼</button>
+                  </div>
+                  <div class="remote-row" style="margin-top: 0.5rem;">
+                    <button class="remote-btn" onclick="sendCommand('Back')" title="Back">↩️ Back</button>
+                    <button class="remote-btn" onclick="sendCommand('Home')" title="Home">🏠 Home</button>
+                  </div>
+                </div>
+
+                <!-- Playback Controls -->
+                <div class="remote-section">
+                  <div class="remote-label">Playback</div>
+                  <div class="remote-row">
+                    <button class="remote-btn" onclick="sendCommand('Rev')" title="Rewind">⏪</button>
+                    <button class="remote-btn" onclick="sendCommand('Play')" title="Play/Pause">⏯️</button>
+                    <button class="remote-btn" onclick="sendCommand('Fwd')" title="Fast Forward">⏩</button>
+                  </div>
+                </div>
+
+                <!-- Volume Controls -->
+                <div class="remote-section">
+                  <div class="remote-label">Volume</div>
+                  <div class="remote-row">
+                    <button class="remote-btn" onclick="sendCommand('VolumeDown')" title="Volume Down">🔉</button>
+                    <button class="remote-btn" onclick="sendCommand('VolumeMute')" title="Mute">🔇</button>
+                    <button class="remote-btn" onclick="sendCommand('VolumeUp')" title="Volume Up">🔊</button>
+                  </div>
+                </div>
+
+                <!-- Power -->
+                <div class="remote-section">
+                  <div class="remote-row">
+                    <button class="remote-btn power-btn" onclick="sendCommand('PowerOff')" title="Power Off">⏻ Power Off</button>
+                  </div>
+                </div>
+
+                <!-- Apps -->
+                <div id="apps-section" style="display: none;">
+                  <div class="remote-label">Apps</div>
+                  <div id="apps-grid" class="apps-grid">
+                    <!-- Apps will be loaded dynamically -->
+                  </div>
+                </div>
+              </div>
+
+              <!-- Samsung Remote Control -->
+              <div id="samsung-remote" style="display: none;">
+                <!-- Navigation Pad -->
+                <div class="remote-section">
+                  <div class="remote-label">Navigation</div>
+                  <div class="remote-dpad">
+                    <button class="remote-btn dpad-up" onclick="sendCommand('KEY_UP')" title="Up">▲</button>
+                    <button class="remote-btn dpad-left" onclick="sendCommand('KEY_LEFT')" title="Left">◀</button>
+                    <button class="remote-btn dpad-ok" onclick="sendCommand('KEY_ENTER')" title="OK">OK</button>
+                    <button class="remote-btn dpad-right" onclick="sendCommand('KEY_RIGHT')" title="Right">▶</button>
+                    <button class="remote-btn dpad-down" onclick="sendCommand('KEY_DOWN')" title="Down">▼</button>
+                  </div>
+                  <div class="remote-row" style="margin-top: 0.5rem;">
+                    <button class="remote-btn" onclick="sendCommand('KEY_RETURN')" title="Back">↩️ Back</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_HOME')" title="Home">🏠 Home</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_EXIT')" title="Exit">✕ Exit</button>
+                  </div>
+                </div>
+
+                <!-- Playback Controls -->
+                <div class="remote-section">
+                  <div class="remote-label">Playback</div>
+                  <div class="remote-row">
+                    <button class="remote-btn" onclick="sendCommand('KEY_REWIND')" title="Rewind">⏪</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_PLAY')" title="Play">▶️</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_PAUSE')" title="Pause">⏸️</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_FF')" title="Fast Forward">⏩</button>
+                  </div>
+                </div>
+
+                <!-- Volume & Channel Controls -->
+                <div class="remote-section">
+                  <div class="remote-label">Volume / Channel</div>
+                  <div class="remote-row">
+                    <button class="remote-btn" onclick="sendCommand('KEY_VOLDOWN')" title="Volume Down">🔉</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_MUTE')" title="Mute">🔇</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_VOLUP')" title="Volume Up">🔊</button>
+                  </div>
+                  <div class="remote-row" style="margin-top: 0.5rem;">
+                    <button class="remote-btn" onclick="sendCommand('KEY_CHDOWN')" title="Channel Down">📺-</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_CHUP')" title="Channel Up">📺+</button>
+                  </div>
+                </div>
+
+                <!-- Power & Input -->
+                <div class="remote-section">
+                  <div class="remote-row">
+                    <button class="remote-btn" onclick="sendCommand('KEY_SOURCE')" title="Source">🔌 Source</button>
+                    <button class="remote-btn" onclick="sendCommand('KEY_MENU')" title="Menu">☰ Menu</button>
+                  </div>
+                  <div class="remote-row" style="margin-top: 0.5rem;">
+                    <button class="remote-btn power-btn" onclick="sendCommand('KEY_POWER')" title="Power">⏻ Power</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- LG ThinQ Remote Control -->
+              <div id="thinq-remote" style="display: none;">
+                <!-- Device Status Section -->
+                <div class="remote-section">
+                  <div class="remote-label">Device Status</div>
+                  <div id="thinq-device-status" style="font-size: 0.8rem; color: var(--text-secondary); padding: 0.5rem; background: rgba(30, 41, 59, 0.5); border-radius: 0.375rem; margin-bottom: 0.5rem;">
+                    Loading status...
+                  </div>
+                  <button class="remote-btn" onclick="refreshThinQStatus()" style="width: 100%;">🔄 Refresh Status</button>
+                </div>
+
+                <!-- Appliance Controls -->
+                <div class="remote-section">
+                  <div class="remote-label">Controls</div>
+                  <div id="thinq-controls" class="remote-row" style="flex-wrap: wrap; gap: 0.5rem;">
+                    <!-- Controls will be populated based on device type -->
+                  </div>
+                </div>
+
+                <!-- Disconnect -->
+                <div class="remote-section">
+                  <button class="remote-btn" onclick="disconnectThinQ()" style="width: 100%; background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.5);">
+                    🔌 Disconnect ThinQ
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div><!-- End Control Tab Content -->
+      </div>

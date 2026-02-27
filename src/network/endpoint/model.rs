@@ -1,9 +1,11 @@
 //! Device model identification. Normalizes raw model numbers to friendly display names
 //! and infers models from hostnames, MAC addresses, and vendor context.
 
-use super::detection::{is_roku_serial_number, is_roku_tv_model};
+use super::classify::is_roku_tv_model;
+use super::hostname_model::get_model_from_hostname;
+use super::model_data::*;
 use super::patterns::{
-    HOSTNAME_MODEL_RULES, LG_TV_SERIES, MAC_VENDOR_MODEL_RULES, SAMSUNG_TV_SERIES, SONY_TV_SERIES,
+    LG_TV_SERIES, MAC_VENDOR_MODEL_RULES, SAMSUNG_TV_SERIES, SONY_TV_SERIES,
     VENDOR_TYPE_MODEL_RULES,
 };
 use super::types::{Characterized, pick_best};
@@ -18,25 +20,22 @@ pub fn normalize_model_name(model: &str, vendor: Option<&str>) -> Option<String>
     let model_lower = model.to_lowercase();
 
     // Check for soundbar models first
-    if model_lower.starts_with("hw-") || model_lower.starts_with("spk-") {
-        // Samsung soundbar - extract series
-        // HW-MS750 -> Soundbar MS750
-        // HW-Q990B -> Soundbar Q990B
-        let series = if model_lower.starts_with("hw-") {
-            &model_upper[3..]
-        } else {
-            &model_upper[4..]
-        };
-        return Some(format!("Samsung Soundbar {}", series));
+    for &(prefix, skip) in SAMSUNG_SOUNDBAR_PREFIXES {
+        if model_lower.starts_with(prefix) {
+            let series = &model_upper[skip..];
+            return Some(format!("Samsung Soundbar {}", series));
+        }
     }
-    if model_lower.starts_with("wam") {
-        // Samsung Wireless Audio Multiroom
-        return Some(format!("Samsung Wireless Speaker {}", &model_upper[3..]));
+    if model_lower.starts_with(SAMSUNG_WAM_PREFIX) {
+        return Some(format!(
+            "Samsung Wireless Speaker {}",
+            &model_upper[SAMSUNG_WAM_PREFIX.len()..]
+        ));
     }
     // LG soundbar models
-    if (model_lower.starts_with("sl")
-        || model_lower.starts_with("sn")
-        || model_lower.starts_with("sp"))
+    if LG_SOUNDBAR_PREFIXES
+        .iter()
+        .any(|p| model_lower.starts_with(p))
         && model_lower
             .chars()
             .nth(2)
@@ -44,74 +43,59 @@ pub fn normalize_model_name(model: &str, vendor: Option<&str>) -> Option<String>
     {
         return Some(format!("LG Soundbar {}", model_upper));
     }
-    if model_lower.starts_with("sc9") {
+    if model_lower.starts_with(LG_SOUNDBAR_SPECIAL_PREFIX) {
         return Some(format!("LG Soundbar {}", model_upper));
     }
     // JBL soundbar
-    if model_lower.starts_with("bar-") || model_lower.starts_with("bar ") {
+    if JBL_SOUNDBAR_PREFIXES
+        .iter()
+        .any(|p| model_lower.starts_with(p))
+    {
         return Some(format!("JBL {}", model_upper));
     }
 
     // AV Receivers
-    // Denon AVR series (AVR-S940H, AVR-X3700H, etc.)
-    if model_lower.starts_with("avr-") {
-        let series = &model_upper[4..];
-        return Some(format!("Denon AVR {}", series));
+    for &(prefix, label, skip) in AV_RECEIVER_RULES {
+        if model_lower.starts_with(prefix) {
+            return if skip > 0 {
+                Some(format!("{}{}", label, &model_upper[skip..]))
+            } else {
+                Some(format!("{}{}", label, model_upper))
+            };
+        }
     }
-    // Yamaha RX-V series (RX-V479, RX-V685, etc.)
-    if model_lower.starts_with("rx-v") {
-        let series = &model_upper[4..];
-        return Some(format!("Yamaha RX-V{}", series));
-    }
-    // Yamaha RX-A Aventage series
-    if model_lower.starts_with("rx-a") {
-        let series = &model_upper[4..];
-        return Some(format!("Yamaha Aventage RX-A{}", series));
-    }
-    // Marantz SR series (SR5015, SR6015, etc.)
-    if model_lower.starts_with("sr")
-        && model_lower
-            .chars()
-            .nth(2)
-            .is_some_and(|c| c.is_ascii_digit())
-    {
-        return Some(format!("Marantz {}", model_upper));
-    }
-    // Marantz NR series (NR1711, etc.)
-    if model_lower.starts_with("nr")
-        && model_lower
-            .chars()
-            .nth(2)
-            .is_some_and(|c| c.is_ascii_digit())
-    {
-        return Some(format!("Marantz {}", model_upper));
-    }
-    // Onkyo TX-NR series
-    if model_lower.starts_with("tx-nr") || model_lower.starts_with("tx-rz") {
-        return Some(format!("Onkyo {}", model_upper));
-    }
-    // Pioneer VSX series
-    if model_lower.starts_with("vsx-") {
-        return Some(format!("Pioneer {}", model_upper));
+    // Marantz SR/NR series (SR5015, NR1711, etc.)
+    for prefix in MARANTZ_PREFIXES {
+        if model_lower.starts_with(prefix)
+            && model_lower
+                .chars()
+                .nth(2)
+                .is_some_and(|c| c.is_ascii_digit())
+        {
+            return Some(format!("Marantz {}", model_upper));
+        }
     }
 
     // Determine vendor from model prefix or provided vendor
-    let is_samsung = model_upper.starts_with("QN")
-        || model_upper.starts_with("UN")
+    let is_samsung = SAMSUNG_TV_MODEL_PREFIXES
+        .iter()
+        .any(|p| model_upper.starts_with(p))
         || vendor.is_some_and(|v| v.to_lowercase().contains("samsung"));
-    let is_lg = model_upper.starts_with("OLED")
-        || model_upper.contains("NANO")
-        || model_upper.contains("QNED")
+    let is_lg = LG_TV_MODEL_KEYWORDS.iter().any(|k| model_upper.contains(k))
         || vendor.is_some_and(|v| v.to_lowercase().contains("lg"));
-    let is_sony = model_upper.starts_with("XR")
-        || model_upper.starts_with("KD")
+    let is_sony = SONY_TV_MODEL_PREFIXES
+        .iter()
+        .any(|p| model_upper.starts_with(p))
         || vendor.is_some_and(|v| v.to_lowercase().contains("sony"));
 
     // Samsung TV models
     if is_samsung {
         // Skip screen size digits to find series identifier
         // Format: [QN|UN][Size][Series][Variant]
-        let series_part = if model_upper.starts_with("QN") || model_upper.starts_with("UN") {
+        let has_panel_prefix = SAMSUNG_TV_MODEL_PREFIXES
+            .iter()
+            .any(|p| model_upper.starts_with(p));
+        let series_part = if has_panel_prefix {
             // Skip panel type (2 chars) and size (2-3 digits)
             let after_panel = &model_lower[2..];
             after_panel.trim_start_matches(|c: char| c.is_ascii_digit())
@@ -220,798 +204,6 @@ pub fn characterize_model(
     ])
 }
 
-/// Extract model name from hostname patterns
-pub fn get_model_from_hostname(hostname: &str) -> Option<String> {
-    let lower = hostname.to_lowercase();
-
-    // Simple rules from generated TOML data (fast path)
-    for &(match_type, pattern, model) in HOSTNAME_MODEL_RULES {
-        let matched = match match_type {
-            "c" => lower.contains(pattern),
-            "s" => lower.starts_with(pattern),
-            _ => false,
-        };
-        if matched {
-            return Some(model.to_string());
-        }
-    }
-
-    // Roku devices: Roku-Ultra-XXXXX, Roku-Express-XXXXX, etc.
-    if lower.starts_with("roku-") || lower.starts_with("roku_") {
-        let parts: Vec<&str> = hostname.split(['-', '_']).collect();
-        if parts.len() >= 2 {
-            // Model is typically the second part
-            let model = parts[1];
-            if !model.chars().all(|c| c.is_ascii_hexdigit()) {
-                return Some(model.to_string());
-            }
-        }
-    }
-
-    // Roku serial number as hostname (e.g., YN00NJ468680) - typically TCL Roku TVs
-    if is_roku_serial_number(&hostname.to_uppercase()) {
-        return Some("Roku TV".to_string());
-    }
-
-    // PlayStation: PS4-XXXXX, PS5-XXXXX
-    if lower.starts_with("ps4") {
-        return Some("PlayStation 4".to_string());
-    }
-    if lower.starts_with("ps5") {
-        return Some("PlayStation 5".to_string());
-    }
-
-    // Xbox: Xbox-One-XXXXX, Xbox-Series-X-XXXXX
-    if lower.starts_with("xbox") {
-        let parts: Vec<&str> = hostname.split(['-', '_']).collect();
-        if parts.len() >= 2 {
-            // Combine model parts (e.g., "Series-X" -> "Series X")
-            let model_parts: Vec<&str> = parts[1..]
-                .iter()
-                .take_while(|p| !p.chars().all(|c| c.is_ascii_hexdigit()))
-                .copied()
-                .collect();
-            if !model_parts.is_empty() {
-                return Some(format!("Xbox {}", model_parts.join(" ")));
-            }
-        }
-        return Some("Xbox".to_string());
-    }
-
-    // iPhone: iPhone-14-Pro, iPhone15Pro, etc.
-    if lower.contains("iphone") {
-        // Try to extract version number
-        let after_iphone = lower.split("iphone").nth(1).unwrap_or("");
-        let model_str: String = after_iphone
-            .chars()
-            .skip_while(|c| *c == '-' || *c == '_')
-            .take_while(|c| c.is_ascii_digit() || *c == '-' || *c == '_' || c.is_ascii_alphabetic())
-            .collect();
-        if !model_str.is_empty() {
-            let cleaned: String = model_str
-                .replace(['-', '_'], " ")
-                .split_whitespace()
-                .take_while(|p| !p.chars().all(|c| c.is_ascii_hexdigit() || c == 's'))
-                .collect::<Vec<_>>()
-                .join(" ");
-            if !cleaned.is_empty() {
-                return Some(format!("iPhone {}", cleaned));
-            }
-        }
-        return Some("iPhone".to_string());
-    }
-
-    // iPad: iPad-Pro, iPad-Air, etc.
-    if lower.contains("ipad") {
-        let after_ipad = lower.split("ipad").nth(1).unwrap_or("");
-        let model_str: String = after_ipad
-            .chars()
-            .skip_while(|c| *c == '-' || *c == '_')
-            .take_while(|c| c.is_ascii_alphabetic() || *c == '-' || *c == '_')
-            .collect();
-        if !model_str.is_empty() && !model_str.chars().all(|c| c.is_ascii_hexdigit()) {
-            let cleaned = model_str.replace(['-', '_'], " ");
-            return Some(format!("iPad {}", cleaned.trim()));
-        }
-        return Some("iPad".to_string());
-    }
-
-    // MacBook: MacBook-Pro, MacBook-Air, etc.
-    if lower.contains("macbook") {
-        if lower.contains("pro") {
-            return Some("MacBook Pro".to_string());
-        }
-        if lower.contains("air") {
-            return Some("MacBook Air".to_string());
-        }
-        return Some("MacBook".to_string());
-    }
-
-    // Samsung devices - comprehensive model detection
-    if lower.contains("samsung") || lower.starts_with("galaxy") || lower.contains("sm-") {
-        let parts: Vec<&str> = hostname.split(['-', '_', ' ', '.']).collect();
-
-        // Samsung TVs: QN65Q80B, UN55NU8000, UA55AU8000
-        for part in &parts {
-            let upper = part.to_uppercase();
-            if (upper.starts_with("QN") || upper.starts_with("UN") || upper.starts_with("UA"))
-                && upper.len() >= 6
-            {
-                return Some(format!("Samsung TV {}", upper));
-            }
-        }
-
-        // Galaxy phones by model number (SM-XXXX)
-        for part in &parts {
-            let upper = part.to_uppercase();
-            if upper.starts_with("SM-") {
-                // S series: SM-S9xx, SM-G9xx
-                if upper.starts_with("SM-S9") || upper.starts_with("SM-S8") {
-                    return Some(format!("Galaxy S{}", &upper[4..6]));
-                }
-                if upper.starts_with("SM-G99") {
-                    return Some("Galaxy S21".to_string());
-                }
-                if upper.starts_with("SM-G98") {
-                    return Some("Galaxy S20".to_string());
-                }
-                if upper.starts_with("SM-G97") {
-                    return Some("Galaxy S10".to_string());
-                }
-                if upper.starts_with("SM-G96") {
-                    return Some("Galaxy S9".to_string());
-                }
-                if upper.starts_with("SM-G95") {
-                    return Some("Galaxy S8".to_string());
-                }
-                // A series: SM-A5xx, SM-A7xx
-                if upper.starts_with("SM-A") {
-                    let model_num = &upper[4..6];
-                    return Some(format!("Galaxy A{}", model_num));
-                }
-                // Z Fold: SM-F9xx
-                if upper.starts_with("SM-F9") {
-                    return Some("Galaxy Z Fold".to_string());
-                }
-                // Z Flip: SM-F7xx
-                if upper.starts_with("SM-F7") {
-                    return Some("Galaxy Z Flip".to_string());
-                }
-                // Note series: SM-N9xx
-                if upper.starts_with("SM-N9") {
-                    return Some("Galaxy Note".to_string());
-                }
-                // Tab series: SM-T, SM-X
-                if upper.starts_with("SM-T") || upper.starts_with("SM-X") {
-                    return Some("Galaxy Tab".to_string());
-                }
-                return Some(format!("Galaxy ({})", upper));
-            }
-        }
-
-        // Galaxy phones by name pattern
-        if lower.contains("galaxy") {
-            // S series
-            if lower.contains("s24") {
-                return Some("Galaxy S24".to_string());
-            }
-            if lower.contains("s23") {
-                return Some("Galaxy S23".to_string());
-            }
-            if lower.contains("s22") {
-                return Some("Galaxy S22".to_string());
-            }
-            if lower.contains("s21") {
-                return Some("Galaxy S21".to_string());
-            }
-            if lower.contains("s20") {
-                return Some("Galaxy S20".to_string());
-            }
-            if lower.contains("s10") {
-                return Some("Galaxy S10".to_string());
-            }
-            // A series
-            if lower.contains("a54") {
-                return Some("Galaxy A54".to_string());
-            }
-            if lower.contains("a53") {
-                return Some("Galaxy A53".to_string());
-            }
-            if lower.contains("a52") {
-                return Some("Galaxy A52".to_string());
-            }
-            if lower.contains("a34") {
-                return Some("Galaxy A34".to_string());
-            }
-            if lower.contains("a14") {
-                return Some("Galaxy A14".to_string());
-            }
-            // Z series
-            if lower.contains("z-fold") || lower.contains("zfold") || lower.contains("fold") {
-                return Some("Galaxy Z Fold".to_string());
-            }
-            if lower.contains("z-flip") || lower.contains("zflip") || lower.contains("flip") {
-                return Some("Galaxy Z Flip".to_string());
-            }
-            // Note
-            if lower.contains("note") {
-                return Some("Galaxy Note".to_string());
-            }
-            // Tab
-            if lower.contains("tab") {
-                if lower.contains("s9") {
-                    return Some("Galaxy Tab S9".to_string());
-                }
-                if lower.contains("s8") {
-                    return Some("Galaxy Tab S8".to_string());
-                }
-                if lower.contains("s7") {
-                    return Some("Galaxy Tab S7".to_string());
-                }
-                if lower.contains("s6") {
-                    return Some("Galaxy Tab S6".to_string());
-                }
-                return Some("Galaxy Tab".to_string());
-            }
-            // Watch
-            if lower.contains("watch") {
-                if lower.contains("ultra") {
-                    return Some("Galaxy Watch Ultra".to_string());
-                }
-                if lower.contains("6") {
-                    return Some("Galaxy Watch 6".to_string());
-                }
-                if lower.contains("5") {
-                    return Some("Galaxy Watch 5".to_string());
-                }
-                if lower.contains("4") {
-                    return Some("Galaxy Watch 4".to_string());
-                }
-                return Some("Galaxy Watch".to_string());
-            }
-            // Buds
-            if lower.contains("buds") {
-                if lower.contains("pro") {
-                    return Some("Galaxy Buds Pro".to_string());
-                }
-                if lower.contains("live") {
-                    return Some("Galaxy Buds Live".to_string());
-                }
-                if lower.contains("fe") {
-                    return Some("Galaxy Buds FE".to_string());
-                }
-                if lower.contains("2") {
-                    return Some("Galaxy Buds 2".to_string());
-                }
-                return Some("Galaxy Buds".to_string());
-            }
-            return Some("Galaxy".to_string());
-        }
-
-        // Samsung soundbars: HW-Q990C, HW-S800B
-        for part in &parts {
-            let upper = part.to_uppercase();
-            if upper.starts_with("HW-") || upper.starts_with("HW") && upper.len() >= 6 {
-                return Some(format!("Soundbar {}", upper));
-            }
-        }
-
-        // SmartThings
-        if lower.contains("smartthings") {
-            if lower.contains("hub") {
-                return Some("SmartThings Hub".to_string());
-            }
-            if lower.contains("station") {
-                return Some("SmartThings Station".to_string());
-            }
-            return Some("SmartThings".to_string());
-        }
-
-        // Samsung appliances
-        if lower.contains("fridge") || lower.contains("refrigerator") || lower.starts_with("rf") {
-            return Some("Samsung Refrigerator".to_string());
-        }
-        if lower.contains("washer") || lower.starts_with("wf") || lower.starts_with("ww") {
-            return Some("Samsung Washer".to_string());
-        }
-        if lower.contains("dryer") || lower.starts_with("dv") {
-            return Some("Samsung Dryer".to_string());
-        }
-        if lower.contains("dishwasher") || lower.starts_with("dw") {
-            return Some("Samsung Dishwasher".to_string());
-        }
-        if lower.contains("oven") || lower.contains("range") {
-            return Some("Samsung Oven".to_string());
-        }
-        if lower.contains("vacuum") || lower.contains("jet") {
-            return Some("Samsung Jet".to_string());
-        }
-    }
-
-    // Huawei devices - phones, tablets, routers
-    if lower.contains("huawei") || lower.starts_with("honor") || lower.contains("harmonyos") {
-        let parts: Vec<&str> = hostname.split(['-', '_', ' ', '.']).collect();
-
-        // Huawei phones: P40, P30, Mate 40, Mate 30, Nova, etc.
-        for part in &parts {
-            let upper = part.to_uppercase();
-            // P series: P40, P30, P20
-            if upper.starts_with("P")
-                && upper.len() >= 2
-                && upper.chars().skip(1).all(|c| c.is_ascii_digit())
-            {
-                return Some(format!("Huawei {}", upper));
-            }
-            // Mate series: MATE40, MATE30
-            if upper.starts_with("MATE") && upper.len() >= 5 {
-                return Some(format!("Huawei {}", upper));
-            }
-            // Nova series
-            if upper.starts_with("NOVA") {
-                return Some(format!("Huawei {}", upper));
-            }
-        }
-
-        // Honor devices
-        if lower.contains("honor") {
-            for part in &parts {
-                let upper = part.to_uppercase();
-                // Honor number series: Honor 50, Honor 70, etc.
-                if upper.chars().all(|c| c.is_ascii_digit()) && !upper.is_empty() {
-                    return Some(format!("Honor {}", upper));
-                }
-                // Honor X series
-                if upper.starts_with("X") && upper.len() >= 2 {
-                    return Some(format!("Honor {}", upper));
-                }
-            }
-            return Some("Honor Phone".to_string());
-        }
-
-        // MatePad tablets
-        if lower.contains("matepad") {
-            return Some("MatePad".to_string());
-        }
-
-        // HarmonyOS devices
-        if lower.contains("harmonyos") {
-            return Some("Huawei HarmonyOS Device".to_string());
-        }
-
-        return Some("Huawei Device".to_string());
-    }
-
-    // LG TVs: often have model numbers like OLED55C1, 65UP8000
-    if lower.starts_with("lg") || lower.contains("[lg]") {
-        let parts: Vec<&str> = hostname.split(['-', '_', ' ']).collect();
-        for part in parts {
-            let upper = part.to_uppercase();
-            if upper.starts_with("OLED") || upper.starts_with("NANO") {
-                return Some(upper);
-            }
-            // Model like 65UP8000
-            if upper.len() >= 6
-                && upper.chars().take(2).all(|c| c.is_ascii_digit())
-                && upper
-                    .chars()
-                    .skip(2)
-                    .take(2)
-                    .all(|c| c.is_ascii_uppercase())
-            {
-                return Some(upper);
-            }
-        }
-    }
-
-    // LG ThinQ dishwashers: LDP/LDF prefixes
-    if lower.starts_with("ldp") || lower.starts_with("ldf") {
-        return Some("Dishwasher".to_string());
-    }
-    if lower.starts_with("wm")
-        && lower
-            .chars()
-            .nth(2)
-            .map(|c| c.is_ascii_digit())
-            .unwrap_or(false)
-    {
-        return Some("Washing Machine".to_string());
-    }
-    if lower.starts_with("dlex") || lower.starts_with("dle") || lower.starts_with("dlg") {
-        return Some("Dryer".to_string());
-    }
-    if lower.starts_with("lrm") || lower.starts_with("lrf") || lower.starts_with("lrs") {
-        return Some("Refrigerator".to_string());
-    }
-
-    // Google/Nest devices
-    if lower.contains("chromecast") {
-        if lower.contains("ultra") {
-            return Some("Chromecast Ultra".to_string());
-        }
-        if lower.contains("4k") || lower.contains("google-tv") {
-            return Some("Chromecast with Google TV".to_string());
-        }
-        return Some("Chromecast".to_string());
-    }
-    if lower.contains("nest-hub") || lower.contains("nesthub") {
-        if lower.contains("max") {
-            return Some("Nest Hub Max".to_string());
-        }
-        return Some("Nest Hub".to_string());
-    }
-    if lower.contains("nest-mini") || lower.contains("google-home-mini") {
-        return Some("Nest Mini".to_string());
-    }
-    if lower.contains("google-home") {
-        return Some("Google Home".to_string());
-    }
-
-    // Amazon Echo devices
-    if lower.contains("echo") {
-        if lower.contains("dot") {
-            return Some("Echo Dot".to_string());
-        }
-        if lower.contains("show") {
-            return Some("Echo Show".to_string());
-        }
-        if lower.contains("studio") {
-            return Some("Echo Studio".to_string());
-        }
-        if lower.contains("plus") {
-            return Some("Echo Plus".to_string());
-        }
-        return Some("Echo".to_string());
-    }
-
-    // Sonos speakers
-    if lower.contains("sonos") {
-        if lower.contains("one") {
-            return Some("Sonos One".to_string());
-        }
-        if lower.contains("beam") {
-            return Some("Sonos Beam".to_string());
-        }
-        if lower.contains("arc") {
-            return Some("Sonos Arc".to_string());
-        }
-        if lower.contains("move") {
-            return Some("Sonos Move".to_string());
-        }
-        if lower.contains("roam") {
-            return Some("Sonos Roam".to_string());
-        }
-        if lower.contains("sub") {
-            return Some("Sonos Sub".to_string());
-        }
-        if lower.contains("play:1") || lower.contains("play1") {
-            return Some("Sonos Play:1".to_string());
-        }
-        if lower.contains("play:3") || lower.contains("play3") {
-            return Some("Sonos Play:3".to_string());
-        }
-        if lower.contains("play:5") || lower.contains("play5") {
-            return Some("Sonos Play:5".to_string());
-        }
-    }
-
-    // Ring doorbells/cameras
-    if lower.contains("ring") {
-        if lower.contains("doorbell") {
-            return Some("Ring Doorbell".to_string());
-        }
-        if lower.contains("cam") || lower.contains("camera") {
-            return Some("Ring Camera".to_string());
-        }
-        if lower.contains("stick") {
-            return Some("Ring Stick Up Cam".to_string());
-        }
-    }
-
-    // HP Printers - try to extract model
-    if lower.starts_with("hp") || lower.starts_with("npi") {
-        let parts: Vec<&str> = hostname.split(['-', '_']).collect();
-        for part in parts {
-            // HP model patterns like LaserJet, OfficeJet, DeskJet, ENVY
-            let upper = part.to_uppercase();
-            if upper.contains("LASERJET")
-                || upper.contains("OFFICEJET")
-                || upper.contains("DESKJET")
-                || upper.contains("ENVY")
-                || upper.contains("PHOTOSMART")
-            {
-                return Some(upper);
-            }
-        }
-    }
-
-    // Amazon Fire TV and Kindle
-    if lower.contains("fire") {
-        if lower.contains("tv") || lower.contains("stick") {
-            if lower.contains("4k") {
-                return Some("Fire TV Stick 4K".to_string());
-            }
-            if lower.contains("max") {
-                return Some("Fire TV Stick 4K Max".to_string());
-            }
-            if lower.contains("lite") {
-                return Some("Fire TV Stick Lite".to_string());
-            }
-            if lower.contains("cube") {
-                return Some("Fire TV Cube".to_string());
-            }
-            return Some("Fire TV Stick".to_string());
-        }
-        if lower.contains("kindle") || lower.contains("hd") {
-            return Some("Fire Tablet".to_string());
-        }
-    }
-    if lower.contains("kindle") {
-        if lower.contains("paperwhite") {
-            return Some("Kindle Paperwhite".to_string());
-        }
-        if lower.contains("oasis") {
-            return Some("Kindle Oasis".to_string());
-        }
-        return Some("Kindle".to_string());
-    }
-
-    // TP-Link/Tapo devices
-    if lower.contains("tapo") {
-        if lower.contains("c200") || lower.contains("c210") || lower.contains("c220") {
-            let parts: Vec<&str> = lower.split(['-', '_']).collect();
-            for part in &parts {
-                if part.starts_with("c2") || part.starts_with("c3") || part.starts_with("c4") {
-                    return Some(format!("Tapo {}", part.to_uppercase()));
-                }
-            }
-            return Some("Tapo Camera".to_string());
-        }
-        if lower.contains("p100") || lower.contains("p110") || lower.contains("p105") {
-            return Some("Tapo Smart Plug".to_string());
-        }
-        if lower.contains("l530") || lower.contains("l510") || lower.contains("l900") {
-            return Some("Tapo Smart Bulb".to_string());
-        }
-        return Some("Tapo Device".to_string());
-    }
-    if lower.contains("kasa")
-        || lower.contains("hs100")
-        || lower.contains("hs110")
-        || lower.contains("hs200")
-    {
-        return Some("Kasa Smart Plug".to_string());
-    }
-    if lower.contains("deco") {
-        return Some("TP-Link Deco".to_string());
-    }
-    if lower.contains("archer") {
-        return Some("TP-Link Archer".to_string());
-    }
-
-    // Wyze devices
-    if lower.contains("wyze") {
-        if lower.contains("cam") {
-            if lower.contains("v3") {
-                return Some("Wyze Cam v3".to_string());
-            }
-            if lower.contains("pan") {
-                return Some("Wyze Cam Pan".to_string());
-            }
-            if lower.contains("outdoor") {
-                return Some("Wyze Cam Outdoor".to_string());
-            }
-            return Some("Wyze Cam".to_string());
-        }
-        if lower.contains("plug") {
-            return Some("Wyze Plug".to_string());
-        }
-        if lower.contains("bulb") {
-            return Some("Wyze Bulb".to_string());
-        }
-        if lower.contains("lock") {
-            return Some("Wyze Lock".to_string());
-        }
-        if lower.contains("vacuum") {
-            return Some("Wyze Robot Vacuum".to_string());
-        }
-    }
-
-    // iRobot Roomba
-    if lower.contains("roomba") || lower.contains("irobot") {
-        // Try to extract model number (e.g., Roomba-i7, Roomba-s9)
-        let parts: Vec<&str> = hostname.split(['-', '_']).collect();
-        for part in &parts {
-            let p = part.to_lowercase();
-            if (p.starts_with('i')
-                || p.starts_with('s')
-                || p.starts_with('j')
-                || p.starts_with('e'))
-                && p.len() >= 2
-                && p.chars()
-                    .nth(1)
-                    .map(|c| c.is_ascii_digit())
-                    .unwrap_or(false)
-            {
-                return Some(format!("Roomba {}", part.to_uppercase()));
-            }
-            // Numeric models like 675, 960
-            if p.chars().all(|c| c.is_ascii_digit()) && p.len() == 3 {
-                return Some(format!("Roomba {}", part));
-            }
-        }
-        return Some("Roomba".to_string());
-    }
-
-    // Philips Hue
-    if lower.contains("hue") || lower.contains("philips") {
-        if lower.contains("bridge") {
-            return Some("Hue Bridge".to_string());
-        }
-        if lower.contains("bulb") || lower.contains("lamp") || lower.contains("light") {
-            return Some("Hue Light".to_string());
-        }
-        if lower.contains("play") {
-            return Some("Hue Play".to_string());
-        }
-        if lower.contains("strip") || lower.contains("lightstrip") {
-            return Some("Hue Lightstrip".to_string());
-        }
-        if lower.contains("bloom") {
-            return Some("Hue Bloom".to_string());
-        }
-        if lower.contains("go") {
-            return Some("Hue Go".to_string());
-        }
-    }
-
-    // Ecobee thermostats
-    if lower.contains("ecobee") {
-        if lower.contains("lite") {
-            return Some("Ecobee Lite".to_string());
-        }
-        if lower.contains("smart") || lower.contains("premium") {
-            return Some("Ecobee Smart Thermostat".to_string());
-        }
-        if lower.contains("sensor") {
-            return Some("Ecobee Sensor".to_string());
-        }
-        return Some("Ecobee Thermostat".to_string());
-    }
-
-    // Canon printers
-    if lower.contains("canon") {
-        let parts: Vec<&str> = hostname.split(['-', '_']).collect();
-        for part in &parts {
-            let upper = part.to_uppercase();
-            if upper.starts_with("MX")
-                || upper.starts_with("MG")
-                || upper.starts_with("TS")
-                || upper.starts_with("TR")
-                || upper.starts_with("PIXMA")
-            {
-                return Some(upper);
-            }
-        }
-    }
-
-    // Epson printers
-    if lower.contains("epson") {
-        let parts: Vec<&str> = hostname.split(['-', '_']).collect();
-        for part in &parts {
-            let upper = part.to_uppercase();
-            if upper.starts_with("ET")
-                || upper.starts_with("WF")
-                || upper.starts_with("XP")
-                || upper.starts_with("L")
-                || upper.contains("ECOTANK")
-                || upper.contains("WORKFORCE")
-            {
-                return Some(upper);
-            }
-        }
-    }
-
-    // Brother printers
-    if lower.contains("brother") {
-        let parts: Vec<&str> = hostname.split(['-', '_']).collect();
-        for part in &parts {
-            let upper = part.to_uppercase();
-            if upper.starts_with("HL") || upper.starts_with("MFC") || upper.starts_with("DCP") {
-                return Some(upper);
-            }
-        }
-    }
-
-    // Nintendo Switch
-    if lower.contains("switch") && (lower.contains("nintendo") || lower.starts_with("switch")) {
-        if lower.contains("lite") {
-            return Some("Switch Lite".to_string());
-        }
-        if lower.contains("oled") {
-            return Some("Switch OLED".to_string());
-        }
-        return Some("Nintendo Switch".to_string());
-    }
-    if lower.starts_with("nintendo") || lower.contains("nx-") {
-        return Some("Nintendo Switch".to_string());
-    }
-
-    // eero mesh routers
-    if lower.contains("eero") {
-        if lower.contains("pro") {
-            return Some("eero Pro".to_string());
-        }
-        if lower.contains("beacon") {
-            return Some("eero Beacon".to_string());
-        }
-        return Some("eero".to_string());
-    }
-
-    // Apple Watch
-    if lower.contains("apple-watch") || lower.contains("applewatch") {
-        if lower.contains("ultra") {
-            return Some("Apple Watch Ultra".to_string());
-        }
-        if lower.contains("se") {
-            return Some("Apple Watch SE".to_string());
-        }
-        // Try to extract series number
-        for i in 1..=10 {
-            if lower.contains(&format!("series{}", i)) || lower.contains(&format!("series-{}", i)) {
-                return Some(format!("Apple Watch Series {}", i));
-            }
-        }
-        return Some("Apple Watch".to_string());
-    }
-
-    // HomePod
-    if lower.contains("homepod") {
-        if lower.contains("mini") {
-            return Some("HomePod mini".to_string());
-        }
-        return Some("HomePod".to_string());
-    }
-
-    // Apple TV
-    if lower.contains("apple-tv") || lower.contains("appletv") {
-        if lower.contains("4k") {
-            return Some("Apple TV 4K".to_string());
-        }
-        return Some("Apple TV".to_string());
-    }
-
-    // Belkin/Wemo smart devices
-    if lower.contains("wemo") {
-        if lower.contains("mini") {
-            return Some("Wemo Mini".to_string());
-        }
-        if lower.contains("insight") {
-            return Some("Wemo Insight".to_string());
-        }
-        if lower.contains("switch") || lower.contains("plug") {
-            return Some("Wemo Smart Plug".to_string());
-        }
-        if lower.contains("dimmer") {
-            return Some("Wemo Dimmer".to_string());
-        }
-    }
-
-    // Tuya/Smart Life generic devices
-    if lower.contains("tuya") || lower.contains("smartlife") || lower.contains("smart-life") {
-        if lower.contains("plug") {
-            return Some("Smart Plug".to_string());
-        }
-        if lower.contains("bulb") || lower.contains("light") {
-            return Some("Smart Bulb".to_string());
-        }
-        if lower.contains("cam") {
-            return Some("Smart Camera".to_string());
-        }
-    }
-
-    None
-}
-
 /// Infer model from MAC vendor with additional context about discovery
 /// This allows more specific model identification based on what protocols found (or didn't find) the device
 pub fn infer_model_with_context(
@@ -1026,10 +218,7 @@ pub fn infer_model_with_context(
     match vendor {
         "Amazon" => {
             // Fire TV: typically has ADB port 5555 when developer mode enabled, or port 8008/8443
-            if open_ports.contains(&5555) {
-                return Some("Amazon Fire TV".to_string());
-            }
-            if open_ports.contains(&8008) || open_ports.contains(&8443) {
+            if AMAZON_FIRE_TV_PORTS.iter().any(|p| open_ports.contains(p)) {
                 return Some("Amazon Fire TV".to_string());
             }
             // Ring devices: usually have SSDP or mDNS
@@ -1047,7 +236,10 @@ pub fn infer_model_with_context(
         "Ring" => Some("Ring Device".to_string()),
         "Google" | "Nest" => {
             // Chromecast has port 8008/8443
-            if open_ports.contains(&8008) || open_ports.contains(&8443) {
+            if GOOGLE_CHROMECAST_PORTS
+                .iter()
+                .any(|p| open_ports.contains(p))
+            {
                 return Some("Chromecast".to_string());
             }
             // Google Home/Nest speakers respond to mDNS _googlecast
@@ -1071,7 +263,7 @@ pub fn get_model_from_mac(mac: &str) -> Option<String> {
     };
 
     // SmartThings sensors (Wisol and Samjin make sensors for Samsung)
-    if prefix == "70:2c:1f" || prefix == "28:6d:97" {
+    if SMARTTHINGS_SENSOR_MAC_PREFIXES.contains(&prefix) {
         return Some("SmartThings Sensor".to_string());
     }
 

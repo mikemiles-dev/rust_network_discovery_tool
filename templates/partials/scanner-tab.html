@@ -1,0 +1,118 @@
+  <!-- Scanner Tab Content -->
+  <div id="scanner-tab" class="tab-content">
+    <div class="dns-table-container" style="display: flex; flex-direction: column; align-items: center; padding-top: 2rem;">
+      <div style="max-width: 600px; width: 100%;">
+        <h2 style="color: var(--text-primary); margin-bottom: 1.5rem; font-size: 1.25rem; text-align: center;">Network Scanner</h2>
+
+        <div class="card" style="padding: 1.5rem;">
+          <div class="card-title" style="margin-bottom: 1rem; font-size: 0.875rem;">Scan Types</div>
+
+          <!-- Scan Type Checkboxes -->
+          <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-radius: 0.5rem; border: 1px solid var(--border-color); flex: 1; min-width: 120px;">
+              <input type="checkbox" id="scan-arp" checked style="cursor: pointer; width: 1rem; height: 1rem;">
+              <div>
+                <div style="font-weight: 500;">ARP</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">Find devices by MAC</div>
+              </div>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-radius: 0.5rem; border: 1px solid var(--border-color); flex: 1; min-width: 120px;">
+              <input type="checkbox" id="scan-icmp" checked style="cursor: pointer; width: 1rem; height: 1rem;">
+              <div>
+                <div style="font-weight: 500;">Ping</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">ICMP echo sweep</div>
+              </div>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-radius: 0.5rem; border: 1px solid var(--border-color); flex: 1; min-width: 120px;">
+              <input type="checkbox" id="scan-port" style="cursor: pointer; width: 1rem; height: 1rem;">
+              <div>
+                <div style="font-weight: 500;">Ports</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">TCP port probe</div>
+              </div>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-radius: 0.5rem; border: 1px solid var(--border-color); flex: 1; min-width: 120px;">
+              <input type="checkbox" id="scan-ssdp" checked style="cursor: pointer; width: 1rem; height: 1rem;">
+              <div>
+                <div style="font-weight: 500;">SSDP</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">UPnP discovery</div>
+              </div>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-radius: 0.5rem; border: 1px solid var(--border-color); flex: 1; min-width: 120px;">
+              <input type="checkbox" id="scan-netbios" checked style="cursor: pointer; width: 1rem; height: 1rem;">
+              <div>
+                <div style="font-weight: 500;">NetBIOS</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">Windows names</div>
+              </div>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-radius: 0.5rem; border: 1px solid var(--border-color); flex: 1; min-width: 120px;">
+              <input type="checkbox" id="scan-snmp" checked style="cursor: pointer; width: 1rem; height: 1rem;">
+              <div>
+                <div style="font-weight: 500;">SNMP</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">Device info</div>
+              </div>
+            </label>
+          </div>
+
+          <!-- Privilege Warning -->
+          <div id="privilege-warning" style="display: none; margin-bottom: 1rem; padding: 0.75rem; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 0.5rem; font-size: 0.75rem; color: #fbbf24;">
+            ⚠️ ARP and Ping scans require root/admin privileges. Run with <code style="background: rgba(0,0,0,0.3); padding: 0.125rem 0.25rem; border-radius: 0.25rem;">sudo</code> to enable.
+          </div>
+
+          <!-- Scan Buttons -->
+          <div id="scan-buttons" style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+            <button id="start-scan-btn" onclick="startNetworkScan()" style="flex: 1; padding: 0.75rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; font-weight: 600; transition: all 0.2s;">
+              🔍 Scan Network
+            </button>
+            <button id="stop-scan-btn" onclick="stopNetworkScan()" style="display: none; flex: 1; padding: 0.75rem; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; font-weight: 600; transition: all 0.2s;">
+              ⏹ Stop Scan
+            </button>
+          </div>
+
+          <!-- Progress -->
+          <div id="scan-progress" style="display: none; margin-bottom: 1rem;">
+            <div style="background: rgba(51, 65, 85, 0.6); border-radius: 0.375rem; height: 8px; overflow: hidden;">
+              <div id="scan-progress-fill" style="background: linear-gradient(90deg, #3b82f6, #8b5cf6); height: 100%; width: 0%; transition: width 0.3s;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem;">
+              <span id="scan-phase">Scanning...</span>
+              <span id="scan-progress-text">0%</span>
+            </div>
+          </div>
+
+          <!-- Stats -->
+          <div style="display: flex; gap: 1rem; justify-content: center;">
+            <div class="stat-badge" style="font-size: 0.75rem; padding: 0.5rem 1rem;">
+              <span style="color: var(--text-secondary);">Last Scan:</span>
+              <span id="last-scan-time" style="font-weight: 500;">Never</span>
+            </div>
+            <div class="stat-badge" style="font-size: 0.75rem; padding: 0.5rem 1rem;">
+              <span style="color: var(--text-secondary);">Devices Found:</span>
+              <span id="discovered-count" class="stat-number" style="font-weight: 500;">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Scan Results Table -->
+        <div class="card" style="margin-top: 1rem; padding: 1rem;">
+          <div class="card-title" style="margin-bottom: 0.75rem; font-size: 0.875rem;">Recent Scan Results</div>
+          <div id="scan-results-container" style="max-height: 300px; overflow-y: auto;">
+            <table class="dns-table" style="font-size: 0.75rem;">
+              <thead>
+                <tr>
+                  <th>IP Address</th>
+                  <th>MAC Address</th>
+                  <th>Method</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody id="scan-results-body">
+                <tr>
+                  <td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 1rem;">No scan results yet. Click "Scan Network" to discover devices.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div><!-- End Scanner Tab -->
