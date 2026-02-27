@@ -14,6 +14,7 @@ use crate::network::endpoint::{
 };
 
 use crate::web::{
+    COMPONENT_VENDORS, DEFAULT_ACTIVE_THRESHOLD_SECONDS, DEFAULT_SCAN_INTERVAL_MINUTES,
     dropdown_endpoints, get_all_endpoint_types, get_all_endpoints_last_seen,
     get_all_endpoints_online_status, get_endpoint_ips_and_macs, get_endpoint_ssdp_models,
 };
@@ -24,7 +25,7 @@ use crate::web::{
 
 #[get("/api/export/endpoints.xlsx")]
 pub async fn export_endpoints_xlsx() -> impl Responder {
-    let scan_interval: u64 = 525600;
+    let scan_interval: u64 = DEFAULT_SCAN_INTERVAL_MINUTES;
 
     // Get endpoint list
     let dropdown_future = tokio::task::spawn_blocking(move || dropdown_endpoints(scan_interval));
@@ -53,7 +54,7 @@ pub async fn export_endpoints_xlsx() -> impl Responder {
         get_all_endpoints_last_seen(&dropdown_for_seen, scan_interval)
     });
     let online_status_future = tokio::task::spawn_blocking(move || {
-        let active_threshold = get_setting_i64("active_threshold_seconds", 120) as u64;
+        let active_threshold = get_setting_i64("active_threshold_seconds", DEFAULT_ACTIVE_THRESHOLD_SECONDS) as u64;
         get_all_endpoints_online_status(&dropdown_for_online, active_threshold)
     });
     let all_types_future =
@@ -82,20 +83,6 @@ pub async fn export_endpoints_xlsx() -> impl Responder {
     let endpoint_ssdp_models = ssdp_models_result.unwrap_or_default();
 
     // Build vendor lookup
-    let component_vendors = [
-        "Espressif",
-        "Tuya",
-        "Realtek",
-        "MediaTek",
-        "Qualcomm",
-        "Broadcom",
-        "Marvell",
-        "USI",
-        "Wisol",
-        "Murata",
-        "AzureWave",
-    ];
-
     let endpoint_vendors: HashMap<String, String> =
         dropdown_endpoints_list
             .iter()
@@ -110,14 +97,14 @@ pub async fn export_endpoints_xlsx() -> impl Responder {
                     _snmp_model,
                 ) = endpoint_ssdp_models
                     .get(&endpoint_lower)
-                    .map(|(cm, sm, sf, cv, sv, snm)| {
+                    .map(|m| {
                         (
-                            cm.as_deref(),
-                            sm.as_deref(),
-                            sf.as_deref(),
-                            cv.as_deref(),
-                            sv.as_deref(),
-                            snm.as_deref(),
+                            m.custom_model.as_deref(),
+                            m.ssdp_model.as_deref(),
+                            m.ssdp_friendly_name.as_deref(),
+                            m.custom_vendor.as_deref(),
+                            m.snmp_vendor.as_deref(),
+                            m.snmp_model.as_deref(),
                         )
                     })
                     .unwrap_or((None, None, None, None, None, None));
@@ -129,7 +116,7 @@ pub async fn export_endpoints_xlsx() -> impl Responder {
                     .into_iter()
                     .filter(|mac| {
                         get_mac_vendor(mac)
-                            .map(|v| !component_vendors.contains(&v))
+                            .map(|v| !COMPONENT_VENDORS.contains(&v))
                             .unwrap_or(true)
                     })
                     .collect();
@@ -153,14 +140,14 @@ pub async fn export_endpoints_xlsx() -> impl Responder {
             let endpoint_lower = endpoint.to_lowercase();
             let (custom_model, ssdp_model, _, _, _, snmp_model) = endpoint_ssdp_models
                 .get(&endpoint_lower)
-                .map(|(cm, sm, sf, cv, sv, snm)| {
+                .map(|m| {
                     (
-                        cm.as_deref(),
-                        sm.as_deref(),
-                        sf.as_deref(),
-                        cv.as_deref(),
-                        sv.as_deref(),
-                        snm.as_deref(),
+                        m.custom_model.as_deref(),
+                        m.ssdp_model.as_deref(),
+                        m.ssdp_friendly_name.as_deref(),
+                        m.custom_vendor.as_deref(),
+                        m.snmp_vendor.as_deref(),
+                        m.snmp_model.as_deref(),
                     )
                 })
                 .unwrap_or((None, None, None, None, None, None));

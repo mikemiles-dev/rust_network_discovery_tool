@@ -124,63 +124,14 @@
          * Update pagination control buttons
          */
         updatePaginationControls: function(totalPages) {
-            var controlsDiv = document.getElementById('internet-page-controls');
-            if (!controlsDiv) return;
-
-            if (totalPages <= 1) {
-                controlsDiv.innerHTML = '';
-                return;
-            }
-
-            var html = '';
-
-            // Previous button
-            html += '<button class="pagination-btn" onclick="App.Internet.goToPage(' + (currentPage - 1) + ')" ' +
-                    (currentPage === 1 ? 'disabled' : '') + '>&laquo;</button>';
-
-            // Page number buttons
-            var pages = App.Internet.getPageNumbers(currentPage, totalPages);
-            var lastPage = 0;
-
-            pages.forEach(function(page) {
-                if (page - lastPage > 1) {
-                    html += '<span class="pagination-ellipsis">...</span>';
-                }
-                html += '<button class="pagination-btn' + (page === currentPage ? ' active' : '') + '" ' +
-                        'onclick="App.Internet.goToPage(' + page + ')">' + page + '</button>';
-                lastPage = page;
+            App.Pagination.renderPaginationUI({
+                controlsId: 'internet-page-controls',
+                currentPage: currentPage,
+                totalPages: totalPages,
+                onPageClick: 'App.Internet.goToPage',
+                btnClass: 'pagination-btn',
+                ellipsisClass: 'pagination-ellipsis'
             });
-
-            // Next button
-            html += '<button class="pagination-btn" onclick="App.Internet.goToPage(' + (currentPage + 1) + ')" ' +
-                    (currentPage === totalPages ? 'disabled' : '') + '>&raquo;</button>';
-
-            controlsDiv.innerHTML = html;
-        },
-
-        /**
-         * Calculate which page numbers to show
-         */
-        getPageNumbers: function(current, total) {
-            var pages = [];
-            var delta = 2;
-
-            pages.push(1);
-
-            var rangeStart = Math.max(2, current - delta);
-            var rangeEnd = Math.min(total - 1, current + delta);
-
-            for (var i = rangeStart; i <= rangeEnd; i++) {
-                if (pages.indexOf(i) === -1) {
-                    pages.push(i);
-                }
-            }
-
-            if (total > 1 && pages.indexOf(total) === -1) {
-                pages.push(total);
-            }
-
-            return pages.sort(function(a, b) { return a - b; });
         },
 
         /**

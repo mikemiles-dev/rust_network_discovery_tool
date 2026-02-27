@@ -207,6 +207,58 @@
          */
         getState: function(tableType) {
             return state[tableType];
+        },
+
+        /**
+         * Shared page number calculator (exposed for notifications/internet modules)
+         * @param {number} current - Current page
+         * @param {number} total - Total pages
+         * @returns {number[]} Array of page numbers to display
+         */
+        getPageNumbers: function(current, total) {
+            return getPageNumbers(current, total);
+        },
+
+        /**
+         * Render pagination controls into a container element
+         * @param {Object} config - { controlsId, currentPage, totalPages, onPageClick, btnClass, ellipsisClass }
+         */
+        renderPaginationUI: function(config) {
+            var controlsDiv = document.getElementById(config.controlsId);
+            if (!controlsDiv) return;
+
+            if (config.totalPages <= 1) {
+                controlsDiv.innerHTML = '';
+                return;
+            }
+
+            var btnClass = config.btnClass || 'pagination-btn';
+            var ellipsisClass = config.ellipsisClass || 'pagination-ellipsis';
+            var current = config.currentPage;
+            var html = '';
+
+            // Previous button
+            html += '<button class="' + btnClass + '" onclick="' + config.onPageClick + '(' + (current - 1) + ')" ' +
+                    (current === 1 ? 'disabled' : '') + '>&laquo;</button>';
+
+            // Page number buttons
+            var pages = getPageNumbers(current, config.totalPages);
+            var lastPage = 0;
+
+            pages.forEach(function(page) {
+                if (page - lastPage > 1) {
+                    html += '<span class="' + ellipsisClass + '">...</span>';
+                }
+                html += '<button class="' + btnClass + (page === current ? ' active' : '') + '" ' +
+                        'onclick="' + config.onPageClick + '(' + page + ')">' + page + '</button>';
+                lastPage = page;
+            });
+
+            // Next button
+            html += '<button class="' + btnClass + '" onclick="' + config.onPageClick + '(' + (current + 1) + ')" ' +
+                    (current === config.totalPages ? 'disabled' : '') + '>&raquo;</button>';
+
+            controlsDiv.innerHTML = html;
         }
     };
 

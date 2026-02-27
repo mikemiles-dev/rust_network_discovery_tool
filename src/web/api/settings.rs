@@ -6,6 +6,7 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
 use crate::db::{get_all_settings, new_connection, set_setting};
+use crate::web::helpers::ApiResponse;
 
 // ============================================================================
 // Settings Endpoints
@@ -20,12 +21,6 @@ pub struct SettingsResponse {
 pub struct UpdateSettingRequest {
     key: String,
     value: String,
-}
-
-#[derive(Serialize)]
-pub struct UpdateSettingResponse {
-    success: bool,
-    message: String,
 }
 
 #[get("/api/settings")]
@@ -45,11 +40,11 @@ pub async fn update_setting(body: Json<UpdateSettingRequest>) -> impl Responder 
     let result = tokio::task::spawn_blocking(move || set_setting(&key, &value)).await;
 
     match result {
-        Ok(Ok(())) => HttpResponse::Ok().json(UpdateSettingResponse {
+        Ok(Ok(())) => HttpResponse::Ok().json(ApiResponse {
             success: true,
             message: format!("Setting '{}' updated", body.key),
         }),
-        _ => HttpResponse::InternalServerError().json(UpdateSettingResponse {
+        _ => HttpResponse::InternalServerError().json(ApiResponse {
             success: false,
             message: "Failed to update setting".to_string(),
         }),

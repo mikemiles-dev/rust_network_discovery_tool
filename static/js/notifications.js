@@ -177,37 +177,33 @@
                 return;
             }
 
-            var html = '';
-
             // Info text
             var start = (current - 1) * paging.pageSize + 1;
             var end = Math.min(current * paging.pageSize, paging.total);
-            html += '<span class="notif-page-info">' + start + '-' + end + ' of ' + paging.total + '</span>';
+            var html = '<span class="notif-page-info">' + start + '-' + end + ' of ' + paging.total + '</span>';
 
             if (totalPages <= 1) {
                 container.innerHTML = html;
                 return;
             }
 
-            // Prev button
-            html += '<button class="notif-page-btn" onclick="App.Notifications.goToPage(' + (current - 1) + ')" ' +
-                    (current === 1 ? 'disabled' : '') + '>&laquo;</button>';
+            // Use shared pagination UI helper for controls
+            // We need to append controls after the info span, so render into a temp div
+            var tempDiv = document.createElement('div');
+            tempDiv.id = 'notif-page-controls-temp';
+            document.body.appendChild(tempDiv);
 
-            // Page numbers
-            var pages = getPageNumbers(current, totalPages);
-            var lastPage = 0;
-            pages.forEach(function(p) {
-                if (p - lastPage > 1) {
-                    html += '<span class="notif-page-ellipsis">...</span>';
-                }
-                html += '<button class="notif-page-btn' + (p === current ? ' active' : '') + '" ' +
-                        'onclick="App.Notifications.goToPage(' + p + ')">' + p + '</button>';
-                lastPage = p;
+            App.Pagination.renderPaginationUI({
+                controlsId: 'notif-page-controls-temp',
+                currentPage: current,
+                totalPages: totalPages,
+                onPageClick: 'App.Notifications.goToPage',
+                btnClass: 'notif-page-btn',
+                ellipsisClass: 'notif-page-ellipsis'
             });
 
-            // Next button
-            html += '<button class="notif-page-btn" onclick="App.Notifications.goToPage(' + (current + 1) + ')" ' +
-                    (current === totalPages ? 'disabled' : '') + '>&raquo;</button>';
+            html += tempDiv.innerHTML;
+            document.body.removeChild(tempDiv);
 
             container.innerHTML = html;
         },
@@ -435,22 +431,6 @@
         }
         // No good identifier available
         return null;
-    }
-
-    /**
-     * Calculate which page numbers to show
-     */
-    function getPageNumbers(current, total) {
-        var pages = [];
-        var delta = 2;
-        pages.push(1);
-        var rangeStart = Math.max(2, current - delta);
-        var rangeEnd = Math.min(total - 1, current + delta);
-        for (var i = rangeStart; i <= rangeEnd; i++) {
-            if (pages.indexOf(i) === -1) pages.push(i);
-        }
-        if (total > 1 && pages.indexOf(total) === -1) pages.push(total);
-        return pages.sort(function(a, b) { return a - b; });
     }
 
 })(window.App);

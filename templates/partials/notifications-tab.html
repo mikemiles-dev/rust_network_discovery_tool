@@ -1,0 +1,19 @@
+  <!-- Settings Tab Content -->
+  <div id="notifications-tab" class="tab-content">
+    <div class="dns-table-container" style="max-width: 800px; margin: 0 auto; padding: 1rem 2rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+        <h2 style="color: var(--text-primary); font-size: 1.25rem; margin: 0;">Notifications</h2>
+        <div style="display: flex; gap: 0.5rem;">
+          <button onclick="App.Notifications.refresh()" style="padding: 0.4rem 0.8rem; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 0.25rem; cursor: pointer; font-size: 0.8rem;">Refresh</button>
+          <button onclick="App.Notifications.clearAll()" style="padding: 0.4rem 0.8rem; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 0.25rem; cursor: pointer; font-size: 0.8rem;">Clear All</button>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem;">
+        <input type="text" id="notifications-search" placeholder="Search notifications..."
+               oninput="App.Notifications.onSearch()"
+               style="flex: 1; padding: 0.4rem 0.75rem; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 0.25rem; font-size: 0.85rem; outline: none;">
+      </div>
+      <div id="notifications-list"></div>
+      <div id="notifications-pagination" class="notifications-pagination"></div>
+    </div>
+  </div>

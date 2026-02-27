@@ -87,6 +87,25 @@ pub(crate) fn initialize_schema(conn: &Connection) {
     )
     .expect("Failed to create notifications index");
 
+    // Indexes on foreign key columns used heavily in merge operations
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_endpoint_attributes_endpoint_id ON endpoint_attributes(endpoint_id)",
+        [],
+    )
+    .expect("Failed to create endpoint_attributes index");
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_communications_src ON communications(src_endpoint_id)",
+        [],
+    )
+    .expect("Failed to create communications src index");
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_communications_dst ON communications(dst_endpoint_id)",
+        [],
+    )
+    .expect("Failed to create communications dst index");
+
     // Insert default settings if they don't exist
     conn.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES

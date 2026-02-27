@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};
 
 use crate::device_control::DeviceController;
+use crate::web::helpers::ApiResponse;
 
 // ============================================================================
 // Global State
@@ -58,7 +59,13 @@ pub async fn get_device_capabilities(query: Query<DeviceQuery>) -> impl Responde
 
     match capabilities {
         Ok(caps) => HttpResponse::Ok().json(caps),
-        Err(_) => HttpResponse::InternalServerError().body("Failed to get device capabilities"),
+        Err(e) => {
+            eprintln!("Failed to get device capabilities: {}", e);
+            HttpResponse::InternalServerError().json(ApiResponse {
+                success: false,
+                message: "Failed to get device capabilities".to_string(),
+            })
+        }
     }
 }
 
@@ -75,7 +82,13 @@ pub async fn send_device_command(body: Json<DeviceCommandRequest>) -> impl Respo
     match result {
         Ok(r) if r.success => HttpResponse::Ok().json(r),
         Ok(r) => HttpResponse::BadRequest().json(r),
-        Err(_) => HttpResponse::InternalServerError().body("Command failed"),
+        Err(e) => {
+            eprintln!("Device command failed: {}", e);
+            HttpResponse::InternalServerError().json(ApiResponse {
+                success: false,
+                message: "Command failed".to_string(),
+            })
+        }
     }
 }
 
@@ -92,7 +105,13 @@ pub async fn launch_device_app(body: Json<LaunchAppRequest>) -> impl Responder {
     match result {
         Ok(r) if r.success => HttpResponse::Ok().json(r),
         Ok(r) => HttpResponse::BadRequest().json(r),
-        Err(_) => HttpResponse::InternalServerError().body("Launch failed"),
+        Err(e) => {
+            eprintln!("App launch failed: {}", e);
+            HttpResponse::InternalServerError().json(ApiResponse {
+                success: false,
+                message: "Launch failed".to_string(),
+            })
+        }
     }
 }
 
@@ -112,7 +131,13 @@ pub async fn pair_device(body: Json<PairRequest>) -> impl Responder {
     match result {
         Ok(r) if r.success => HttpResponse::Ok().json(r),
         Ok(r) => HttpResponse::BadRequest().json(r),
-        Err(_) => HttpResponse::InternalServerError().body("Pairing failed"),
+        Err(e) => {
+            eprintln!("Device pairing failed: {}", e);
+            HttpResponse::InternalServerError().json(ApiResponse {
+                success: false,
+                message: "Pairing failed".to_string(),
+            })
+        }
     }
 }
 
@@ -153,7 +178,13 @@ pub async fn setup_thinq(body: Json<ThinQSetupRequest>) -> impl Responder {
     match result {
         Ok(r) if r.success => HttpResponse::Ok().json(r),
         Ok(r) => HttpResponse::BadRequest().json(r),
-        Err(_) => HttpResponse::InternalServerError().body("ThinQ setup failed"),
+        Err(e) => {
+            eprintln!("ThinQ setup failed: {}", e);
+            HttpResponse::InternalServerError().json(ApiResponse {
+                success: false,
+                message: "ThinQ setup failed".to_string(),
+            })
+        }
     }
 }
 
@@ -186,7 +217,13 @@ pub async fn get_thinq_status() -> impl Responder {
 
     match result {
         Ok(status) => HttpResponse::Ok().json(status),
-        Err(_) => HttpResponse::InternalServerError().body("Failed to get ThinQ status"),
+        Err(e) => {
+            eprintln!("Failed to get ThinQ status: {}", e);
+            HttpResponse::InternalServerError().json(ApiResponse {
+                success: false,
+                message: "Failed to get ThinQ status".to_string(),
+            })
+        }
     }
 }
 
@@ -211,7 +248,13 @@ pub async fn list_thinq_devices() -> impl Responder {
     match result {
         Ok(Ok(devices)) => HttpResponse::Ok().json(devices),
         Ok(Err(e)) => HttpResponse::BadRequest().body(e),
-        Err(_) => HttpResponse::InternalServerError().body("Failed to list ThinQ devices"),
+        Err(e) => {
+            eprintln!("Failed to list ThinQ devices: {}", e);
+            HttpResponse::InternalServerError().json(ApiResponse {
+                success: false,
+                message: "Failed to list ThinQ devices".to_string(),
+            })
+        }
     }
 }
 
@@ -233,6 +276,12 @@ pub async fn disconnect_thinq() -> impl Responder {
                 }))
             }
         }
-        Err(_) => HttpResponse::InternalServerError().body("Failed to disconnect ThinQ"),
+        Err(e) => {
+            eprintln!("Failed to disconnect ThinQ: {}", e);
+            HttpResponse::InternalServerError().json(ApiResponse {
+                success: false,
+                message: "Failed to disconnect ThinQ".to_string(),
+            })
+        }
     }
 }

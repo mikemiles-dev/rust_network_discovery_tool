@@ -1,13 +1,15 @@
 //! Database module. Manages SQLite connections and re-exports sub-module APIs.
 
-mod endpoints;
+mod hotspot_merge;
 mod maintenance;
+mod merge_maintenance;
+mod notifications;
 mod schema;
 mod settings;
 mod writer;
 
-pub use endpoints::{insert_notification, insert_notification_with_endpoint_id};
-pub use settings::{get_all_settings, get_setting, get_setting_i64, set_setting};
+pub use notifications::{insert_notification, insert_notification_with_endpoint_id};
+pub use settings::{get_all_settings, get_setting_i64, set_setting};
 pub use writer::SQLWriter;
 
 use rusqlite::Connection;

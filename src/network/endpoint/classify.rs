@@ -1,42 +1,28 @@
-//! Device classification and hostname-based detection. Identifies device types (printers, TVs,
-//! phones, gaming consoles, computers, soundbars, appliances, VMs) using MAC vendor lookups,
-//! open port/service analysis, and hostname pattern matching.
+//! Device classification via MAC vendor lookups and model/serial detection.
+//! Pattern matching helpers used by sibling classification modules.
 
 use super::patterns::{
-    APPLIANCE_PATTERNS, APPLIANCE_SERVICES, APPLIANCE_VENDORS, CLASSIFICATION_APPLIANCE,
-    CLASSIFICATION_GAMING, CLASSIFICATION_PHONE, CLASSIFICATION_PRINTER, CLASSIFICATION_SOUNDBAR,
-    CLASSIFICATION_TV, CLASSIFICATION_VIRTUALIZATION, GAMING_PATTERNS, GAMING_VENDORS,
-    GATEWAY_VENDORS, LG_APPLIANCE_PREFIXES, MAC_DESKTOP_SERVICES, PHONE_CONDITIONAL,
-    PHONE_PATTERNS, PHONE_PREFIXES, PHONE_SERVICES, PRINTER_PATTERNS, PRINTER_PREFIXES,
-    PRINTER_SERVICES, SOUNDBAR_MODEL_PREFIXES, SOUNDBAR_PATTERNS, SOUNDBAR_SERVICES, TV_PATTERNS,
-    TV_PREFIXES, TV_SERVICES, TV_VENDORS, VM_PATTERNS,
+    APPLIANCE_VENDORS, GAMING_VENDORS, GATEWAY_VENDORS, LG_APPLIANCE_PREFIXES,
+    MAC_DESKTOP_SERVICES, SOUNDBAR_MODEL_PREFIXES, TV_VENDORS,
 };
 use super::vendor::get_mac_vendor;
 
-// ---------------------------------------------------------------------------
-// Generic matching helpers
-// ---------------------------------------------------------------------------
-
 /// Check if hostname matches any pattern in list
-pub(crate) fn matches_pattern(hostname: &str, patterns: &[&str]) -> bool {
+pub(super) fn matches_pattern(hostname: &str, patterns: &[&str]) -> bool {
     patterns.iter().any(|p| hostname.contains(p))
 }
 
 /// Check if hostname starts with any prefix in list
-pub(crate) fn matches_prefix(hostname: &str, prefixes: &[&str]) -> bool {
+pub(super) fn matches_prefix(hostname: &str, prefixes: &[&str]) -> bool {
     prefixes.iter().any(|p| hostname.starts_with(p))
 }
 
 /// Check if hostname matches pattern but not exclusion
-pub(crate) fn matches_conditional(hostname: &str, conditionals: &[(&str, &str)]) -> bool {
+pub(super) fn matches_conditional(hostname: &str, conditionals: &[(&str, &str)]) -> bool {
     conditionals
         .iter()
         .any(|(pattern, exclude)| hostname.contains(pattern) && !hostname.contains(exclude))
 }
-
-// ---------------------------------------------------------------------------
-// MAC-vendor helpers
-// ---------------------------------------------------------------------------
 
 /// Check if any MAC address has a vendor in the given list
 fn has_vendor_in_list(macs: &[String], vendors: &[&str]) -> bool {
@@ -76,101 +62,6 @@ pub(crate) fn is_apple_mac(macs: &[String]) -> bool {
 pub(crate) fn is_gateway_mac(macs: &[String]) -> bool {
     has_vendor_in_list(macs, GATEWAY_VENDORS)
 }
-
-// ---------------------------------------------------------------------------
-// Hostname-based detection
-// ---------------------------------------------------------------------------
-
-/// Check if hostname indicates a printer
-pub(crate) fn is_printer_hostname(hostname: &str) -> bool {
-    matches_pattern(hostname, PRINTER_PATTERNS) || matches_prefix(hostname, PRINTER_PREFIXES)
-}
-
-/// Check if hostname indicates a TV/streaming device
-pub(crate) fn is_tv_hostname(hostname: &str) -> bool {
-    if matches_pattern(hostname, TV_PATTERNS) || matches_prefix(hostname, TV_PREFIXES) {
-        return true;
-    }
-    // Roku serial number as hostname (e.g., YN00NJ468680)
-    let hostname_upper = hostname.to_uppercase();
-    is_roku_serial_number(&hostname_upper)
-}
-
-/// Check if hostname indicates a gaming console
-pub(crate) fn is_gaming_hostname(hostname: &str) -> bool {
-    matches_pattern(hostname, GAMING_PATTERNS)
-}
-
-/// Check if hostname indicates a phone/tablet
-pub(crate) fn is_phone_hostname(hostname: &str) -> bool {
-    if matches_pattern(hostname, PHONE_PATTERNS) || matches_prefix(hostname, PHONE_PREFIXES) {
-        return true;
-    }
-    if matches_conditional(hostname, PHONE_CONDITIONAL) {
-        return true;
-    }
-    // Special case: android but not androidtv
-    if hostname.contains("android") && !hostname.contains("androidtv") && !hostname.contains("tv") {
-        return true;
-    }
-    // Special case: asus phone
-    if hostname.contains("asus") && (hostname.contains("phone") || hostname.contains("zenfone")) {
-        return true;
-    }
-    false
-}
-
-/// Check if hostname indicates a VM/container
-pub(crate) fn is_vm_hostname(hostname: &str) -> bool {
-    matches_pattern(hostname, VM_PATTERNS)
-        || hostname.starts_with("vm-")
-        || hostname.ends_with("-vm")
-}
-
-/// Check if hostname indicates a soundbar
-pub(crate) fn is_soundbar_hostname(hostname: &str) -> bool {
-    if matches_pattern(hostname, SOUNDBAR_PATTERNS) {
-        return true;
-    }
-    // Sonos Arc special case
-    if hostname.contains("arc") && (hostname.contains("sonos") || hostname.contains("sound")) {
-        return true;
-    }
-    // Brand + sound combinations
-    let sound_brands = ["yamaha", "samsung", "lg", "vizio"];
-    if sound_brands.iter().any(|b| hostname.contains(b)) && hostname.contains("sound") {
-        return true;
-    }
-    // JBL bar
-    if hostname.contains("jbl") && hostname.contains("bar") {
-        return true;
-    }
-    false
-}
-
-/// Check if hostname indicates an appliance
-pub(crate) fn is_appliance_hostname(hostname: &str) -> bool {
-    if matches_pattern(hostname, APPLIANCE_PATTERNS) {
-        return true;
-    }
-    // Whirlpool (but not router)
-    if hostname.contains("whirlpool") && !hostname.contains("router") {
-        return true;
-    }
-    // GE appliance
-    if hostname.contains("ge-") && hostname.contains("appliance") {
-        return true;
-    }
-    // Bosch washer/dishwasher
-    if hostname.contains("bosch") && (hostname.contains("wash") || hostname.contains("dish")) {
-        return true;
-    }
-    false
-}
-
-// ---------------------------------------------------------------------------
-// Model / serial detection helpers
-// ---------------------------------------------------------------------------
 
 /// Check if SSDP/UPnP model indicates a soundbar
 pub(crate) fn is_soundbar_model(model: &str) -> bool {
@@ -238,7 +129,7 @@ pub(crate) fn is_tv_model(model: &str) -> bool {
 /// Roku serial numbers follow the pattern: 2 letters + 2 digits + 2 letters + N digits
 /// - 12 chars total: 2 letters + 2 digits + 2 letters + 6 digits (e.g., YN00NJ468680)
 /// - 10 chars total: 2 letters + 2 digits + 2 letters + 4 digits (e.g., BR23AM1691)
-pub(crate) fn is_roku_serial_number(s: &str) -> bool {
+pub(super) fn is_roku_serial_number(s: &str) -> bool {
     // Must be 10 or 12 characters
     if s.len() != 10 && s.len() != 12 {
         return false;
@@ -283,12 +174,8 @@ pub(crate) fn is_roku_tv_model(model: &str) -> bool {
     false
 }
 
-// ---------------------------------------------------------------------------
-// Phone / Mac-computer classification
-// ---------------------------------------------------------------------------
-
 /// Check if hostname indicates a Mac computer (not a phone)
-pub(crate) fn is_mac_computer_hostname(hostname: &str) -> bool {
+pub(super) fn is_mac_computer_hostname(hostname: &str) -> bool {
     let mac_patterns = [
         "macbook",
         "mac-book",
@@ -350,159 +237,15 @@ pub(crate) fn is_lg_appliance(hostname: &str) -> bool {
     false
 }
 
-// ---------------------------------------------------------------------------
-// Service and port classification
-// ---------------------------------------------------------------------------
-
-/// Service-to-classification mapping, checked in priority order
-const SERVICE_CLASSIFICATIONS: &[(&[&str], &str)] = &[
-    (APPLIANCE_SERVICES, CLASSIFICATION_APPLIANCE),
-    (PHONE_SERVICES, CLASSIFICATION_PHONE),
-    (SOUNDBAR_SERVICES, CLASSIFICATION_SOUNDBAR),
-    (PRINTER_SERVICES, CLASSIFICATION_PRINTER),
-    (TV_SERVICES, CLASSIFICATION_TV),
-];
-
-/// Check mDNS services for device type
-pub(crate) fn classify_by_services(
-    services: &[String],
-    hostname: Option<&str>,
-) -> Option<&'static str> {
-    for service in services {
-        let s = service.as_str();
-        for &(svc_list, classification) in SERVICE_CLASSIFICATIONS {
-            if svc_list.contains(&s) {
-                // Skip phone classification for Mac computers
-                // (they also advertise _companion-link._tcp)
-                if classification == CLASSIFICATION_PHONE
-                    && let Some(h) = hostname
-                    && is_mac_computer_hostname(h)
-                {
-                    continue;
-                }
-                return Some(classification);
-            }
-        }
-    }
-    None
-}
-
-/// Check if port combination indicates a computer (laptop/desktop)
-/// Computers typically have remote access ports (RDP/VNC) combined with file sharing
-pub(crate) fn is_computer_by_ports(ports: &[u16]) -> bool {
-    let has_remote_access = ports.contains(&3389)  // RDP (Windows Remote Desktop)
-        || ports.contains(&5900)                    // VNC
-        || ports.contains(&22); // SSH
-
-    let has_file_sharing = ports.contains(&445)    // SMB (Windows file sharing)
-        || ports.contains(&548)                     // AFP (Apple file sharing)
-        || ports.contains(&139); // NetBIOS
-
-    // Must have both remote access AND file sharing to be classified as computer
-    // This avoids false positives from devices that just have SSH
-    has_remote_access && has_file_sharing
-}
-
-/// Classify by port number
-pub(crate) fn classify_by_port(port: u16) -> Option<&'static str> {
-    match port {
-        // Printer ports
-        9100 | 631 | 515 => Some(CLASSIFICATION_PRINTER),
-        // Gaming console ports (check BEFORE TV ports)
-        9295..=9297 => Some(CLASSIFICATION_GAMING), // PlayStation Remote Play
-        3478..=3480 => Some(CLASSIFICATION_GAMING), // PlayStation Network
-        3074 => Some(CLASSIFICATION_GAMING),        // Xbox Live
-        // TV/Streaming ports
-        8008 | 8009 => Some(CLASSIFICATION_TV), // Chromecast
-        7000 | 7001 | 8001 | 8002 => Some(CLASSIFICATION_TV), // Samsung TV
-        3000 | 3001 => Some(CLASSIFICATION_TV), // LG WebOS
-        6467 | 6466 => Some(CLASSIFICATION_TV), // Roku
-        // VM/Container ports
-        902 | 903 => Some(CLASSIFICATION_VIRTUALIZATION), // VMware ESXi
-        8006 => Some(CLASSIFICATION_VIRTUALIZATION),      // Proxmox
-        2179 => Some(CLASSIFICATION_VIRTUALIZATION),      // Hyper-V
-        2375 | 2376 => Some(CLASSIFICATION_VIRTUALIZATION), // Docker API
-        6443 => Some(CLASSIFICATION_VIRTUALIZATION),      // Kubernetes API
-        10250 => Some(CLASSIFICATION_VIRTUALIZATION),     // Kubelet
-        9000 => Some(CLASSIFICATION_VIRTUALIZATION),      // Portainer
-        _ => None,
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::patterns::{CLASSIFICATION_PRINTER, CLASSIFICATION_TV, CLASSIFICATION_VIRTUALIZATION};
-
-    // -- classification tests --
 
     #[test]
     fn test_lg_appliance() {
         assert_eq!(is_lg_appliance("ldf7774st"), true);
         assert_eq!(is_lg_appliance("wm3900hwa"), true);
         assert_eq!(is_lg_appliance("dlex3900w"), true);
-    }
-
-    #[test]
-    fn test_classify_by_port() {
-        // Printer ports
-        assert_eq!(classify_by_port(9100), Some(CLASSIFICATION_PRINTER));
-        assert_eq!(classify_by_port(631), Some(CLASSIFICATION_PRINTER));
-
-        // TV ports
-        assert_eq!(classify_by_port(8008), Some(CLASSIFICATION_TV)); // Chromecast
-        assert_eq!(classify_by_port(8001), Some(CLASSIFICATION_TV)); // Samsung
-        assert_eq!(classify_by_port(6467), Some(CLASSIFICATION_TV)); // Roku
-
-        // VM ports
-        assert_eq!(classify_by_port(8006), Some(CLASSIFICATION_VIRTUALIZATION)); // Proxmox
-        assert_eq!(classify_by_port(2375), Some(CLASSIFICATION_VIRTUALIZATION)); // Docker
-
-        // Unknown
-        assert_eq!(classify_by_port(80), None);
-        assert_eq!(classify_by_port(443), None);
-    }
-
-    // -- detection tests --
-
-    #[test]
-    fn test_classify_printer() {
-        // Hostname patterns
-        assert_eq!(is_printer_hostname("hp-laserjet-pro"), true);
-        assert_eq!(is_printer_hostname("canon-mx920"), true);
-        assert_eq!(is_printer_hostname("epson-wf-7720"), true);
-        assert_eq!(is_printer_hostname("brother-mfc-9340cdw"), true);
-        assert_eq!(is_printer_hostname("npi123456"), true);
-        assert_eq!(is_printer_hostname("brn001122334455"), true);
-
-        // Non-printers
-        assert_eq!(is_printer_hostname("my-laptop"), false);
-        assert_eq!(is_printer_hostname("iphone"), false);
-    }
-
-    #[test]
-    fn test_classify_tv() {
-        // Hostname patterns
-        assert_eq!(is_tv_hostname("samsung-tv"), true);
-        assert_eq!(is_tv_hostname("roku-ultra"), true);
-        assert_eq!(is_tv_hostname("chromecast-living-room"), true);
-        assert_eq!(is_tv_hostname("appletv"), true);
-        assert_eq!(is_tv_hostname("firetv-stick"), true);
-        assert_eq!(is_tv_hostname("the-frame"), true);
-
-        // Roku serial number hostnames (e.g., YN00NJ468680)
-        assert_eq!(is_tv_hostname("YN00NJ468680"), true);
-        assert_eq!(is_tv_hostname("yn00nj468680"), true); // lowercase
-        assert_eq!(is_tv_hostname("YK00KM123456"), true);
-
-        // Non-TVs (lg-* removed - too generic, matches soundbars)
-        assert_eq!(is_tv_hostname("lg-oled55"), false); // Use SSDP model instead
-        assert_eq!(is_tv_hostname("my-laptop"), false);
-        assert_eq!(is_tv_hostname("printer"), false);
     }
 
     #[test]
@@ -558,53 +301,6 @@ mod tests {
     }
 
     #[test]
-    fn test_classify_gaming() {
-        assert_eq!(is_gaming_hostname("xbox-series-x"), true);
-        assert_eq!(is_gaming_hostname("playstation-5"), true);
-        assert_eq!(is_gaming_hostname("nintendo-switch"), true);
-        assert_eq!(is_gaming_hostname("steamdeck"), true);
-
-        assert_eq!(is_gaming_hostname("my-pc"), false);
-    }
-
-    #[test]
-    fn test_classify_phone() {
-        assert_eq!(is_phone_hostname("iphone-14-pro"), true);
-        assert_eq!(is_phone_hostname("ipad-mini"), true);
-        assert_eq!(is_phone_hostname("galaxy-s23"), true);
-        assert_eq!(is_phone_hostname("pixel-7"), true);
-        assert_eq!(is_phone_hostname("sm-g991u"), true);
-        assert_eq!(is_phone_hostname("oneplus-11"), true);
-        assert_eq!(is_phone_hostname("moto-g-power"), true);
-
-        // Should NOT match TV variants
-        assert_eq!(is_phone_hostname("galaxy-tv"), false);
-        assert_eq!(is_phone_hostname("androidtv"), false);
-    }
-
-    #[test]
-    fn test_classify_vm() {
-        assert_eq!(is_vm_hostname("vmware-esxi-01"), true);
-        assert_eq!(is_vm_hostname("proxmox-server"), true);
-        assert_eq!(is_vm_hostname("docker-host"), true);
-        assert_eq!(is_vm_hostname("kubernetes-node-1"), true);
-        assert_eq!(is_vm_hostname("vm-ubuntu-22"), true);
-        assert_eq!(is_vm_hostname("webserver-vm"), true);
-
-        assert_eq!(is_vm_hostname("my-laptop"), false);
-    }
-
-    #[test]
-    fn test_classify_soundbar() {
-        assert_eq!(is_soundbar_hostname("sonos-beam"), true);
-        assert_eq!(is_soundbar_hostname("bose-soundbar-700"), true);
-        assert_eq!(is_soundbar_hostname("samsung-sound-plus"), true);
-        assert_eq!(is_soundbar_hostname("jbl-bar-5.1"), true);
-
-        assert_eq!(is_soundbar_hostname("samsung-tv"), false);
-    }
-
-    #[test]
     fn test_is_tv_model() {
         // Samsung QLED TVs
         assert!(is_tv_model("QN43LS03TAFXZA")); // The Frame
@@ -643,15 +339,5 @@ mod tests {
         assert!(!is_tv_model("Galaxy S23")); // Phone
         assert!(!is_tv_model("MacBook Pro")); // Computer
         assert!(!is_tv_model("random-device"));
-    }
-
-    #[test]
-    fn test_classify_appliance() {
-        assert_eq!(is_appliance_hostname("lg-dishwasher"), true);
-        assert_eq!(is_appliance_hostname("samsung-washer"), true);
-        assert_eq!(is_appliance_hostname("whirlpool-dryer"), true);
-        assert_eq!(is_appliance_hostname("bosch-dishwasher-500"), true);
-
-        assert_eq!(is_appliance_hostname("my-laptop"), false);
     }
 }

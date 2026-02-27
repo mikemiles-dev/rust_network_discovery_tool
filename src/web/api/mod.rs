@@ -5,6 +5,8 @@ mod devices;
 mod dns;
 mod endpoints;
 mod export;
+mod scan_models;
+mod scan_results;
 mod scanning;
 mod settings;
 

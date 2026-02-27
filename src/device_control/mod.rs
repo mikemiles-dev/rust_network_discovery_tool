@@ -3,6 +3,8 @@
 
 mod controller;
 mod lg;
+mod lg_commands;
+mod lg_pairing;
 mod lg_thinq;
 mod roku;
 mod samsung;

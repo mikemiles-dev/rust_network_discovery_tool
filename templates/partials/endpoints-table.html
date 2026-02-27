@@ -1,0 +1,92 @@
+    <main id="graph-container">
+      <!-- Endpoints Table View -->
+      <div class="endpoints-table-container">
+        <div class="endpoints-table-wrapper">
+        <table class="endpoints-table" id="endpoints-table">
+          <thead>
+            <tr>
+              <th class="status-header" title="Online status (activity in last 60s)"></th>
+              <th data-sort="type" class="sortable">Type<span class="sort-icon"></span></th>
+              <th data-sort="name" class="sortable sorted-asc">Name<span class="sort-icon"></span></th>
+              <th data-sort="vendor" class="sortable">Vendor<span class="sort-icon"></span></th>
+              <th data-sort="model" class="sortable">Model<span class="sort-icon"></span></th>
+              <th data-sort="bandwidth" class="sortable">Bandwidth<span class="sort-icon"></span></th>
+              <th data-sort="last_seen" class="sortable">Last Seen<span class="sort-icon"></span></th>
+              <th class="actions-header">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for node in dropdown_endpoints %}
+            {% set node_lower = node | lower %}
+            {% set node_type = endpoint_types | get(key=node, default="other") %}
+            {% set node_vendor = endpoint_vendors | get(key=node_lower, default="") %}
+            {% set node_model = endpoint_models | get(key=node_lower, default="") %}
+            {% set node_bytes = endpoint_bytes | get(key=node_lower, default=0) %}
+            {% set node_last_seen = endpoint_last_seen | get(key=node_lower, default="-") %}
+            {% set node_online = endpoint_online_status | get(key=node_lower, default=false) %}
+            {% set node_ips_macs = endpoint_ips_macs | get(key=node_lower, default=[]) %}
+            {% set node_ip = node_ips_macs.0 | first | default(value="") %}
+            <tr class="endpoint-row {% if node == selected_node %}selected{% endif %}"
+                onclick="selectNode(this.dataset.endpoint)"
+                data-endpoint="{{ node | safe }}"
+                data-endpoint-name="{{ node | safe }}"
+                data-endpoint-vendor="{{ node_vendor }}"
+                data-endpoint-model="{{ node_model }}"
+                data-endpoint-type="{% if node == hostname %}local{% elif node_type == "gateway" %}gateway{% elif node_type == "internet" %}internet{% elif node_type == "printer" %}printer{% elif node_type == "tv" %}tv{% elif node_type == "gaming" %}gaming{% elif node_type == "phone" %}phone{% elif node_type == "virtualization" %}virtualization{% elif node_type == "soundbar" %}soundbar{% elif node_type == "appliance" %}appliance{% elif node_type %}local{% else %}other{% endif %}"
+                data-endpoint-bytes="{{ node_bytes }}"
+                data-endpoint-online="{% if node_online %}true{% else %}false{% endif %}"
+                data-endpoint-ip="{{ node_ip }}">
+              <td class="status-cell"><span class="status-indicator {% if node_online %}online{% else %}offline{% endif %}" title="{% if node_online %}Online{% else %}Offline{% endif %}"></span></td>
+              <td class="endpoint-type-cell">{% if node == hostname %}🖥️{% elif node_type == "gateway" %}🌐{% elif node_type == "internet" %}🌍{% elif node_type == "printer" %}🖨️{% elif node_type == "tv" %}📺{% elif node_type == "gaming" %}🎮{% elif node_type == "phone" %}📱{% elif node_type == "virtualization" %}🖥{% elif node_type == "soundbar" %}🔊{% elif node_type == "appliance" %}🏠{% elif node_type %}💻{% else %}❓{% endif %}</td>
+              <td class="endpoint-name-cell">{{ node | safe }}</td>
+              <td class="vendor-cell" title="{% if node_vendor %}{{ node_vendor }}{% else %}Unknown{% endif %}">{% if node_vendor %}{{ node_vendor }}{% else %}-{% endif %}</td>
+              <td class="model-cell" title="{{ node_model }}">{% if node_model %}{{ node_model }}{% else %}-{% endif %}</td>
+              <td class="bandwidth-cell" data-bytes="{{ node_bytes }}">
+                {% if node_bytes and node_bytes > 0 %}
+                  <span class="bandwidth-value">{{ node_bytes }}</span>
+                {% else %}
+                  <span class="no-data">-</span>
+                {% endif %}
+              </td>
+              <td class="last-seen-cell">{{ node_last_seen }}</td>
+              <td class="actions-cell">
+                <button class="ping-btn" onclick="event.stopPropagation(); pingFromTable(this, '{{ node_ip }}')" title="Ping device" {% if not node_ip %}disabled{% endif %}>
+                  <span class="ping-icon">📶</span>
+                  <span class="ping-status"></span>
+                </button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div><!-- End endpoints-table-wrapper -->
+        <!-- Endpoints Pagination -->
+        <div class="pagination-container" id="endpoints-pagination">
+          <div class="pagination-info">
+            <span id="endpoints-page-info">Showing 1-25 of {{ dropdown_endpoints | length }}</span>
+            <select class="page-size-select" id="endpoints-page-size" onchange="changePageSize('endpoints')">
+              <option value="25" selected>25 per page</option>
+              <option value="50">50 per page</option>
+              <option value="100">100 per page</option>
+              <option value="all">Show all</option>
+            </select>
+          </div>
+          <div class="pagination-controls" id="endpoints-page-controls">
+            <!-- Page buttons will be generated by JavaScript -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Zoom Controls - Hidden for table view -->
+      <div class="zoom-controls" style="display: none;">
+        <button class="zoom-btn" onclick="zoomIn()" title="Zoom in">+</button>
+        <button class="zoom-btn" onclick="zoomOut()" title="Zoom out">−</button>
+        <button class="zoom-btn" onclick="fitGraph()" title="Fit to view">⊡</button>
+      </div>
+
+      <!-- No Communications Message -->
+      <div id="no-communications-msg" style="display: none; position: absolute; top: 50%; left: calc(50% - 160px); transform: translate(-50%, -50%); text-align: center; color: var(--text-secondary); pointer-events: none;">
+        <div style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;">📡</div>
+        <div style="font-size: 1.25rem; font-weight: 500; margin-bottom: 0.5rem;">No Communications Found</div>
+        <div style="font-size: 0.875rem; opacity: 0.7;">No network activity detected for this endpoint in the selected time range</div>
+      </div>
