@@ -5,7 +5,7 @@ use actix_web::{HttpResponse, Responder, post};
 use rusqlite::params;
 use serde::Serialize;
 
-use crate::db::{insert_notification_with_endpoint_id, new_connection, new_connection_result};
+use crate::db::{get_pool, insert_notification_with_endpoint_id};
 use crate::web::helpers::{EndpointNameRequest, IpRequest};
 use crate::web::{DISPLAY_NAME_SQL, looks_like_ip, probe_hp_printer_model_blocking};
 
@@ -34,7 +34,7 @@ pub async fn probe_hostname(body: Json<IpRequest>) -> impl Responder {
         let hostname_clone = h.clone();
         // Spawn a blocking task to update the database
         tokio::task::spawn_blocking(move || {
-            if let Ok(conn) = new_connection_result() {
+            if let Ok(conn) = get_pool().get() {
                 // Update hostname in endpoint_attributes where ip matches
                 let _ = conn.execute(
                     "UPDATE endpoint_attributes SET hostname = ?1 WHERE ip = ?2 AND (hostname IS NULL OR hostname = ?2 OR hostname LIKE '%:%' OR hostname GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*')",
@@ -95,7 +95,7 @@ pub async fn probe_netbios(body: Json<IpRequest>) -> impl Responder {
             let netbios_name = netbios.netbios_name.clone();
             let ip_for_db = ip_str.clone();
             tokio::task::spawn_blocking(move || {
-                if let Ok(conn) = new_connection_result() {
+                if let Ok(conn) = get_pool().get() {
                     // Find endpoint by IP and update netbios_name
                     let _ = conn.execute(
                         "UPDATE endpoints SET netbios_name = ?1 WHERE id IN (SELECT endpoint_id FROM endpoint_attributes WHERE ip = ?2) AND (netbios_name IS NULL OR netbios_name = '')",
@@ -319,7 +319,7 @@ pub async fn probe_endpoint(body: Json<EndpointNameRequest>) -> impl Responder {
     use crate::scanner::netbios::NetBiosScanner;
     use crate::scanner::snmp::SnmpScanner;
 
-    let conn = new_connection();
+    let conn = get_pool().get().expect("Failed to get pooled connection");
 
     // Get IPs for this endpoint
     let ips: Vec<String> = conn
@@ -510,7 +510,7 @@ pub async fn probe_endpoint_model(body: Json<IpRequest>) -> impl Responder {
 
     if let Some(model) = model {
         // Find the endpoint and save the model
-        let conn = match new_connection_result() {
+        let conn = match get_pool().get() {
             Ok(c) => c,
             Err(e) => {
                 return HttpResponse::InternalServerError().json(ProbeModelResponse {

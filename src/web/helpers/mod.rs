@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 use rusqlite::params;
 
-use crate::db::{insert_notification_with_endpoint_id, new_connection_result};
+use crate::db::{get_pool, insert_notification_with_endpoint_id};
 use crate::network::endpoint::{is_valid_display_name, strip_local_suffix};
 use crate::network::mdns_lookup::MDnsLookup;
 
@@ -188,7 +188,7 @@ pub(crate) fn probe_hp_printer_model_blocking(ip: &str) -> Option<String> {
 pub(crate) fn probe_and_save_hp_printer_model_blocking(ip: &str, endpoint_id: i64) {
     if let Some(model) = probe_hp_printer_model_blocking(ip) {
         // Save the model to the database
-        if let Ok(conn) = new_connection_result() {
+        if let Ok(conn) = get_pool().get() {
             let rows = conn.execute(
                 "UPDATE endpoints SET ssdp_model = ?1 WHERE id = ?2 AND (ssdp_model IS NULL OR ssdp_model = '')",
                 params![model, endpoint_id],
@@ -227,9 +227,9 @@ pub(crate) fn get_combined_endpoint_stats(
         );
     }
 
-    let conn = try_db!(new_connection_result(), result);
+    let conn = try_db!(get_pool().get(), result);
 
-    // Single query to get bytes, last_seen for all endpoints
+    // UNION ALL to allow each branch to use its composite index
     let mut stmt = try_db!(
         conn.prepare(&format!(
             "SELECT
@@ -237,8 +237,11 @@ pub(crate) fn get_combined_endpoint_stats(
                 COALESCE(SUM(c.bytes), 0) as total_bytes,
                 MAX(c.last_seen_at) as last_seen
              FROM endpoints e
-             INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
-             WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
+             INNER JOIN (
+                 SELECT src_endpoint_id AS endpoint_id, bytes, last_seen_at FROM communications WHERE last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
+                 UNION ALL
+                 SELECT dst_endpoint_id AS endpoint_id, bytes, last_seen_at FROM communications WHERE last_seen_at >= (strftime('%s', 'now') - (?2 * 60))
+             ) c ON e.id = c.endpoint_id
              GROUP BY e.id"
         )),
         result
@@ -248,7 +251,7 @@ pub(crate) fn get_combined_endpoint_stats(
     let online_threshold = now - active_threshold as i64;
 
     let rows = try_db!(
-        stmt.query_map([scan_interval], |row| {
+        stmt.query_map([scan_interval, scan_interval], |row| {
             let name: String = row.get(0)?;
             let bytes: i64 = row.get(1)?;
             let last_seen: i64 = row.get(2)?;

@@ -2,7 +2,7 @@
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::db::{insert_notification_with_endpoint_id, new_connection};
+use crate::db::{get_pool, insert_notification_with_endpoint_id};
 use crate::network::endpoint::{EndPoint, get_mac_vendor, is_valid_display_name};
 use crate::scanner::ScanResult;
 
@@ -33,7 +33,7 @@ pub(super) fn process_scan_result(result: &ScanResult) -> Result<(), String> {
 
 /// Inner function that does the actual work
 fn process_scan_result_inner(result: &ScanResult) -> Result<(), String> {
-    let conn = new_connection();
+    let conn = get_pool().get().expect("Failed to get pooled connection");
 
     match result {
         ScanResult::Arp(arp) => {

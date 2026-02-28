@@ -6,7 +6,7 @@ use serde::Deserialize;
 use std::sync::OnceLock;
 use tokio::sync::mpsc;
 
-use crate::db::{insert_notification, new_connection};
+use crate::db::{get_pool, insert_notification};
 use crate::scanner::manager::{ScanConfig, ScanManager};
 use crate::scanner::{ScanResult, ScanType, check_scan_privileges};
 
@@ -54,7 +54,7 @@ pub async fn start_scan(body: Json<StartScanRequest>) -> impl Responder {
             let type_names: Vec<String> = scan_types.iter().map(|t| t.to_string()).collect();
             let details = format!("Scan types: {}", type_names.join(", "));
             tokio::task::spawn_blocking(move || {
-                let conn = new_connection();
+                let conn = get_pool().get().expect("Failed to get pooled connection");
                 insert_notification(
                     &conn,
                     "scan_started",
@@ -82,7 +82,7 @@ pub async fn stop_scan() -> impl Responder {
     manager.stop_scan().await;
 
     tokio::task::spawn_blocking(|| {
-        let conn = new_connection();
+        let conn = get_pool().get().expect("Failed to get pooled connection");
         insert_notification(&conn, "scan_stopped", "Network scan stopped", None, None);
     });
 

@@ -2,7 +2,7 @@
 
 use actix_web::{HttpResponse, Responder, get};
 
-use crate::db::new_connection;
+use crate::db::get_pool;
 use crate::web::get_dns_entries;
 
 // ============================================================================
@@ -23,7 +23,7 @@ pub struct InternetDestinationsResponse {
 #[get("/api/internet")]
 pub async fn get_internet_destinations() -> impl Responder {
     let result = tokio::task::spawn_blocking(|| {
-        let conn = new_connection();
+        let conn = get_pool().get().expect("Failed to get pooled connection");
         crate::network::endpoint::EndPoint::get_internet_destinations(&conn)
     })
     .await;

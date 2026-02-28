@@ -12,11 +12,47 @@ pub use notifications::{insert_notification, insert_notification_with_endpoint_i
 pub use settings::{get_all_settings, get_setting_i64, set_setting};
 pub use writer::SQLWriter;
 
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
 use std::env;
 use std::sync::OnceLock;
 
 static RESOLVED_DB_PATH: OnceLock<String> = OnceLock::new();
+static CONNECTION_POOL: OnceLock<Pool<SqliteConnectionManager>> = OnceLock::new();
+
+/// Customizer that configures each pooled connection with WAL mode and pragmas
+#[derive(Debug)]
+struct PragmaCustomizer;
+
+impl r2d2::CustomizeConnection<Connection, rusqlite::Error> for PragmaCustomizer {
+    fn on_acquire(&self, conn: &mut Connection) -> Result<(), rusqlite::Error> {
+        conn.execute_batch(
+            "PRAGMA busy_timeout = 30000;
+             PRAGMA journal_mode = WAL;
+             PRAGMA synchronous = NORMAL;",
+        )?;
+        Ok(())
+    }
+}
+
+/// Get the shared connection pool. Initializes on first call.
+pub fn get_pool() -> &'static Pool<SqliteConnectionManager> {
+    CONNECTION_POOL.get_or_init(|| {
+        let db_url = get_database_url();
+        let db_path = db_url.strip_prefix("sqlite://").unwrap_or(&db_url);
+
+        // Clean up stale WAL/SHM files before creating pool
+        maintenance::cleanup_stale_wal_files(db_path);
+
+        let manager = SqliteConnectionManager::file(db_path);
+        Pool::builder()
+            .max_size(8)
+            .connection_customizer(Box::new(PragmaCustomizer))
+            .build(manager)
+            .expect("Failed to create connection pool")
+    })
+}
 
 fn get_database_url() -> String {
     RESOLVED_DB_PATH

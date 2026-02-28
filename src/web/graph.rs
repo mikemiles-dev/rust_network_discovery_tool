@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 
 use super::helpers::*;
-use crate::db::new_connection_result;
+use crate::db::get_pool;
 use crate::network::endpoint::EndPoint;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -61,7 +61,7 @@ pub(super) fn get_ports_from_communications(
 }
 
 pub(super) fn get_nodes(current_node: Option<String>, internal_minutes: u64) -> Vec<Node> {
-    let conn = try_db!(new_connection_result(), Vec::new());
+    let conn = try_db!(get_pool().get(), Vec::new());
 
     // If no node specified, show all communications (overall network view)
     // If node is specified, filter to only that endpoint's communications

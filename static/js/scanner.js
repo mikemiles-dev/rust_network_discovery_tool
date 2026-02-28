@@ -7,6 +7,7 @@
     var autoScanIntervalId = null;
     var indicatorPollId = null;
     var currentPollRate = 5000; // Start in slow mode
+    var wasRunning = false; // Track scan state transitions to avoid reload loops
 
     App.Scanner = {
         /**
@@ -38,6 +39,7 @@
             })
             .then(function(response) {
                 if (response.ok) {
+                    wasRunning = true;
                     // Switch unified poller to fast mode
                     App.Scanner.setPollingRate(500);
                 } else {
@@ -114,17 +116,22 @@
                         App.Scanner.setPollingRate(5000);
                         App.Scanner.resetButton();
 
-                        // Refresh the page to show new endpoints, preserving scanner tab
-                        if (status.discovered_count > 0) {
+                        // Only reload once when scan transitions from running to not-running
+                        if (wasRunning && status.discovered_count > 0) {
+                            wasRunning = false;
                             setTimeout(function() {
                                 var url = new URL(window.location.href);
                                 url.searchParams.set('tab', 'scanner');
                                 window.location.href = url.toString();
                             }, 500);
                         }
-                    } else if (currentPollRate !== 500) {
-                        // Scan started externally (auto-scan), switch to fast mode
-                        App.Scanner.setPollingRate(500);
+                        wasRunning = false;
+                    } else {
+                        wasRunning = true;
+                        if (currentPollRate !== 500) {
+                            // Scan started externally (auto-scan), switch to fast mode
+                            App.Scanner.setPollingRate(500);
+                        }
                     }
                 })
                 .catch(function(e) {

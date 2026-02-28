@@ -116,9 +116,7 @@ impl SsdpScanner {
             }
         }
 
-        while let Some(Ok((idx, Some((friendly_name, model_name))))) =
-            fetch_set.join_next().await
-        {
+        while let Some(Ok((idx, Some((friendly_name, model_name))))) = fetch_set.join_next().await {
             if let Some(result) = results.get_mut(idx) {
                 result.friendly_name = friendly_name;
                 result.model_name = model_name;

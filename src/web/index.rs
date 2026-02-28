@@ -10,7 +10,7 @@ use dns_lookup::get_hostname;
 use tera::{Context, Tera};
 use tokio::task;
 
-use crate::db::{get_setting_i64, new_connection_result};
+use crate::db::{get_pool, get_setting_i64};
 use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::endpoint::{
     characterize_model, characterize_vendor, get_mac_vendor, get_model_from_hostname,
@@ -34,7 +34,7 @@ pub(super) async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Res
     } else if let Some(ref ip) = query.ip {
         let ip_clone = ip.clone();
         let resolved = task::spawn_blocking(move || {
-            let conn = new_connection_result().ok()?;
+            let conn = get_pool().get().ok()?;
             resolve_identifier_to_display_name(&conn, &ip_clone)
         })
         .await
@@ -44,7 +44,7 @@ pub(super) async fn index(tera: Data<Tera>, query: Query<NodeQuery>) -> impl Res
     } else if let Some(ref mac) = query.mac {
         let mac_clone = mac.clone();
         let resolved = task::spawn_blocking(move || {
-            let conn = new_connection_result().ok()?;
+            let conn = get_pool().get().ok()?;
             resolve_identifier_to_display_name(&conn, &mac_clone)
         })
         .await

@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use dns_lookup::get_hostname;
 use rusqlite::Connection;
 
-use crate::db::new_connection_result;
+use crate::db::get_pool;
 use crate::network::endpoint::{EndPoint, strip_local_suffix};
 use crate::network::mdns_lookup::MDnsLookup;
 
@@ -16,10 +16,10 @@ use super::types::DnsEntryView;
 use super::{box_i64_params, build_in_placeholders, params_to_refs};
 
 pub(crate) fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
-    let conn = match new_connection_result() {
+    let conn = match get_pool().get() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("dropdown_endpoints: failed to open database: {}", e);
+            eprintln!("dropdown_endpoints: failed to get connection: {}", e);
             return Vec::new();
         }
     };
@@ -35,8 +35,11 @@ pub(crate) fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
                 ea_ip.ip,
                 CASE WHEN e.name IS NOT NULL AND e.name != '' AND e.name NOT LIKE '%:%' AND e.name NOT GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' AND NOT (LENGTH(e.name) = 36 AND e.name GLOB '[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*') THEN e.name END) AS display_name
             FROM endpoints e
-            INNER JOIN communications c
-                ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
+            INNER JOIN (
+                SELECT src_endpoint_id AS endpoint_id FROM communications WHERE last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
+                UNION ALL
+                SELECT dst_endpoint_id AS endpoint_id FROM communications WHERE last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
+            ) c ON e.id = c.endpoint_id
             LEFT JOIN (
                 SELECT endpoint_id, MIN(hostname) AS hostname
                 FROM endpoint_attributes
@@ -52,8 +55,7 @@ pub(crate) fn dropdown_endpoints(internal_minutes: u64) -> Vec<String> {
                 WHERE ip IS NOT NULL AND ip != ''
                 GROUP BY endpoint_id
             ) ea_ip ON ea_ip.endpoint_id = e.id
-            WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
-            AND (
+            WHERE (
                 -- Has at least one real (non-locally-administered) MAC
                 EXISTS (
                     SELECT 1 FROM endpoint_attributes ea2
@@ -126,7 +128,7 @@ pub(crate) fn get_all_endpoint_types(
     std::collections::HashSet<String>,
 ) {
     let conn = try_db!(
-        new_connection_result(),
+        get_pool().get(),
         (
             std::collections::HashMap::new(),
             std::collections::HashSet::new()
@@ -343,25 +345,27 @@ pub(crate) fn get_all_endpoints_last_seen(
         result.insert(endpoint.to_lowercase(), String::new());
     }
 
-    let conn = try_db!(new_connection_result(), result);
+    let conn = try_db!(get_pool().get(), result);
 
-    // Single query to get last_seen_at for each endpoint
-    // Uses DISPLAY_NAME_SQL constant for consistency with other queries
+    // UNION ALL to allow each branch to use its composite index
     let mut stmt = try_db!(
         conn.prepare(&format!(
             "SELECT
                 {DISPLAY_NAME_SQL} AS display_name,
                 MAX(c.last_seen_at) as last_seen
              FROM endpoints e
-             INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
-             WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
+             INNER JOIN (
+                 SELECT src_endpoint_id AS endpoint_id, last_seen_at FROM communications WHERE last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
+                 UNION ALL
+                 SELECT dst_endpoint_id AS endpoint_id, last_seen_at FROM communications WHERE last_seen_at >= (strftime('%s', 'now') - (?2 * 60))
+             ) c ON e.id = c.endpoint_id
              GROUP BY e.id"
         )),
         result
     );
 
     let rows = try_db!(
-        stmt.query_map([internal_minutes], |row| {
+        stmt.query_map([internal_minutes, internal_minutes], |row| {
             let name: String = row.get(0)?;
             let last_seen: i64 = row.get(1)?;
             Ok((name, last_seen))
@@ -406,23 +410,26 @@ pub(crate) fn get_all_endpoints_online_status(
         result.insert(endpoint.to_lowercase(), false);
     }
 
-    let conn = try_db!(new_connection_result(), result);
+    let conn = try_db!(get_pool().get(), result);
 
-    // Single query to get endpoints with recent traffic within threshold
+    // UNION ALL to allow each branch to use its composite index
     let mut stmt = try_db!(
         conn.prepare(&format!(
             "SELECT
                 {DISPLAY_NAME_SQL} AS display_name
              FROM endpoints e
-             INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
-             WHERE c.last_seen_at >= (strftime('%s', 'now') - ?1)
+             INNER JOIN (
+                 SELECT src_endpoint_id AS endpoint_id FROM communications WHERE last_seen_at >= (strftime('%s', 'now') - ?1)
+                 UNION ALL
+                 SELECT dst_endpoint_id AS endpoint_id FROM communications WHERE last_seen_at >= (strftime('%s', 'now') - ?2)
+             ) c ON e.id = c.endpoint_id
              GROUP BY e.id"
         )),
         result
     );
 
     let rows = try_db!(
-        stmt.query_map([threshold_seconds], |row| {
+        stmt.query_map([threshold_seconds, threshold_seconds], |row| {
             let name: String = row.get(0)?;
             Ok(name)
         }),
@@ -498,7 +505,7 @@ pub(crate) fn get_all_ips_macs_and_hostnames_from_single_hostname(
     internal_minutes: u64,
 ) -> (Vec<String>, Vec<String>, Vec<String>) {
     let conn = try_db!(
-        new_connection_result(),
+        get_pool().get(),
         (Vec::new(), Vec::new(), Vec::new())
     );
 
