@@ -201,8 +201,7 @@ impl ScanManager {
                                 let timeout_ms = cfg.timeout_ms;
                                 let subnet = *subnet;
                                 subnet_set.spawn(async move {
-                                    let scanner =
-                                        ArpScanner::new().with_timeout(timeout_ms);
+                                    let scanner = ArpScanner::new().with_timeout(timeout_ms);
                                     scanner
                                         .scan_subnet(subnet)
                                         .await
@@ -266,8 +265,7 @@ impl ScanManager {
                                 .iter()
                                 .flat_map(|s| s.iter().map(IpAddr::V4))
                                 .collect();
-                            let scanner =
-                                NetBiosScanner::new().with_timeout(cfg.timeout_ms);
+                            let scanner = NetBiosScanner::new().with_timeout(cfg.timeout_ms);
                             scanner
                                 .scan_ips(&all_ips)
                                 .await
@@ -280,8 +278,7 @@ impl ScanManager {
                                 .iter()
                                 .flat_map(|s| s.iter().map(IpAddr::V4))
                                 .collect();
-                            let scanner =
-                                SnmpScanner::new().with_timeout(cfg.timeout_ms);
+                            let scanner = SnmpScanner::new().with_timeout(cfg.timeout_ms);
                             scanner
                                 .scan_ips(&all_ips)
                                 .await
@@ -316,12 +313,8 @@ impl ScanManager {
                             .unwrap_or(0)
                             .min(100);
                         s.progress_percent = percent as u8;
-                        s.discovered_count = discovered_ips
-                            .lock()
-                            .unwrap()
-                            .len()
-                            .min(u32::MAX as usize)
-                            as u32;
+                        s.discovered_count =
+                            discovered_ips.lock().unwrap().len().min(u32::MAX as usize) as u32;
                     }
                 });
             }

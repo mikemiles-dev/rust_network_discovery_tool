@@ -2,7 +2,7 @@
 
 use actix_web::{HttpResponse, Responder, get};
 
-use crate::db::new_connection;
+use crate::db::get_pool;
 use crate::network::communication::extract_model_from_vendor_class;
 use crate::network::endpoint::{
     EndPoint, get_hostname_vendor, get_mac_vendor, get_model_from_hostname, get_model_from_mac,
@@ -11,7 +11,7 @@ use crate::network::endpoint::{
 };
 
 use crate::web::{
-    COMPONENT_VENDORS, DEFAULT_SCAN_INTERVAL_MINUTES, DISPLAY_NAME_SQL, EndpointDetailsResponse,
+    COMPONENT_VENDORS, DEFAULT_SCAN_INTERVAL_MINUTES, EndpointDetailsResponse,
     NodeQuery, get_all_ips_macs_and_hostnames_from_single_hostname, get_bytes_for_endpoint,
     get_ports_for_endpoint, get_protocols_for_endpoint, probe_and_save_hp_printer_model_blocking,
 };
@@ -58,7 +58,7 @@ fn get_endpoint_details_blocking(
     );
 
     // Get device type for this endpoint
-    let conn = new_connection();
+    let conn = get_pool().get().expect("Failed to get pooled connection");
     let manual_types = EndPoint::get_all_manual_device_types(&conn);
     let auto_types = EndPoint::get_all_auto_device_types(&conn);
 
@@ -74,17 +74,28 @@ fn get_endpoint_details_blocking(
         .find(|(k, _)| k.eq_ignore_ascii_case(&endpoint_name))
         .map(|(_, v)| v.clone());
 
-    // Get SSDP model for this endpoint (for device classification)
-    let ssdp_model: Option<String> = conn
+    // Single consolidated query for all endpoint metadata (replaces 4 separate queries)
+    let (custom_model, ssdp_model, custom_vendor, dhcp_vendor_class) = conn
         .query_row(
-            &format!(
-                "SELECT e.ssdp_model FROM endpoints e WHERE {} = ?1 COLLATE NOCASE AND e.ssdp_model IS NOT NULL",
-                DISPLAY_NAME_SQL
-            ),
-            [&endpoint_name],
-            |row| row.get(0),
+            "SELECT e.custom_model, e.ssdp_model, e.custom_vendor,
+                    (SELECT ea.dhcp_vendor_class FROM endpoint_attributes ea
+                     WHERE ea.endpoint_id = e.id
+                     AND ea.dhcp_vendor_class IS NOT NULL AND ea.dhcp_vendor_class != ''
+                     LIMIT 1)
+             FROM endpoints e
+             WHERE (LOWER(e.name) = LOWER(?1) OR LOWER(e.custom_name) = LOWER(?1))
+             LIMIT 1",
+            rusqlite::params![&endpoint_name],
+            |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                ))
+            },
         )
-        .ok();
+        .unwrap_or((None, None, None, None));
 
     // Get local hostname for comparison
     let local_hostname =
@@ -138,52 +149,10 @@ fn get_endpoint_details_blocking(
     let mac_vendor = macs.iter().find_map(|mac| get_mac_vendor(mac));
     let hostname_vendor = get_hostname_vendor(&endpoint_name);
 
-    // Get SSDP model early so we can use it for vendor detection
-    let ssdp_model_for_vendor: Option<String> = conn
-        .query_row(
-            "SELECT e.ssdp_model FROM endpoints e
-             WHERE (LOWER(e.name) = LOWER(?1) OR LOWER(e.custom_name) = LOWER(?1))
-             AND e.ssdp_model IS NOT NULL AND e.ssdp_model != ''
-             LIMIT 1",
-            rusqlite::params![&endpoint_name],
-            |row| row.get(0),
-        )
-        .ok();
-
     // Try to detect vendor from model (e.g., "7105X" -> TCL)
-    let model_vendor = ssdp_model_for_vendor
+    let model_vendor = ssdp_model
         .as_ref()
         .and_then(|m| get_vendor_from_model(m));
-
-    // Get DHCP vendor class for this endpoint (if available)
-    let dhcp_vendor_class: Option<String> = conn
-        .query_row(
-            "SELECT ea.dhcp_vendor_class
-         FROM endpoints e
-         INNER JOIN endpoint_attributes ea ON ea.endpoint_id = e.id
-         WHERE (LOWER(e.name) = LOWER(?1) OR LOWER(e.custom_name) = LOWER(?1))
-         AND ea.dhcp_vendor_class IS NOT NULL AND ea.dhcp_vendor_class != ''
-         LIMIT 1",
-            rusqlite::params![&endpoint_name],
-            |row| row.get(0),
-        )
-        .ok();
-
-    // Get custom_model, SSDP model, and custom_vendor for this endpoint
-    let (custom_model, ssdp_model, custom_vendor): (
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    ) = conn
-        .query_row(
-            "SELECT e.custom_model, e.ssdp_model, e.custom_vendor
-         FROM endpoints e
-         WHERE (LOWER(e.name) = LOWER(?1) OR LOWER(e.custom_name) = LOWER(?1))
-         LIMIT 1",
-            rusqlite::params![&endpoint_name],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .unwrap_or((None, None, None));
 
     // Custom vendor takes priority if set
     let device_vendor: String = if let Some(ref cv) = custom_vendor {

@@ -93,17 +93,30 @@ pub(crate) fn initialize_schema(conn: &Connection) {
     )
     .expect("Failed to create endpoint_attributes index");
 
+    // Drop old single-column indexes (superseded by composite indexes below)
+    let _ = conn.execute("DROP INDEX IF EXISTS idx_communications_src", []);
+    let _ = conn.execute("DROP INDEX IF EXISTS idx_communications_dst", []);
+
+    // Composite indexes covering the most common query pattern:
+    // JOIN communications by endpoint_id with last_seen_at range filter
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_communications_src ON communications(src_endpoint_id)",
+        "CREATE INDEX IF NOT EXISTS idx_communications_src_last_seen ON communications(src_endpoint_id, last_seen_at)",
         [],
     )
-    .expect("Failed to create communications src index");
+    .expect("Failed to create communications src+last_seen index");
 
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_communications_dst ON communications(dst_endpoint_id)",
+        "CREATE INDEX IF NOT EXISTS idx_communications_dst_last_seen ON communications(dst_endpoint_id, last_seen_at)",
         [],
     )
-    .expect("Failed to create communications dst index");
+    .expect("Failed to create communications dst+last_seen index");
+
+    // Standalone last_seen_at index for time-only filtered queries
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_communications_last_seen ON communications(last_seen_at)",
+        [],
+    )
+    .expect("Failed to create communications last_seen index");
 
     // Insert default settings if they don't exist
     conn.execute(

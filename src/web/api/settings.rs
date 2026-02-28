@@ -5,7 +5,7 @@ use actix_web::{HttpResponse, Responder, get, post};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
-use crate::db::{get_all_settings, new_connection, set_setting};
+use crate::db::{get_all_settings, get_pool, set_setting};
 use crate::web::helpers::ApiResponse;
 
 // ============================================================================
@@ -157,7 +157,7 @@ pub async fn get_notifications(query: Query<NotificationsQuery>) -> impl Respond
     let search = query.search.clone().unwrap_or_default();
 
     let result = tokio::task::spawn_blocking(move || {
-        let conn = new_connection();
+        let conn = get_pool().get().expect("Failed to get pooled connection");
 
         let has_search = !search.is_empty();
         let search_pattern = format!("%{}%", search);
@@ -276,7 +276,7 @@ pub struct DismissRequest {
 pub async fn dismiss_notifications(body: Json<DismissRequest>) -> impl Responder {
     let ids = body.ids.clone();
     let result = tokio::task::spawn_blocking(move || {
-        let conn = new_connection();
+        let conn = get_pool().get().expect("Failed to get pooled connection");
         let placeholders: Vec<String> = ids
             .iter()
             .enumerate()
@@ -311,7 +311,7 @@ pub async fn dismiss_notifications(body: Json<DismissRequest>) -> impl Responder
 #[post("/api/notifications/clear")]
 pub async fn clear_notifications() -> impl Responder {
     let result = tokio::task::spawn_blocking(move || {
-        let conn = new_connection();
+        let conn = get_pool().get().expect("Failed to get pooled connection");
         conn.execute(
             "UPDATE notifications SET dismissed = 1 WHERE dismissed = 0",
             [],

@@ -5,7 +5,7 @@ use actix_web::{HttpResponse, Responder, post};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
-use crate::db::{insert_notification, new_connection};
+use crate::db::{get_pool, insert_notification};
 use crate::network::endpoint::EndPoint;
 use crate::web::helpers::ApiResponse;
 
@@ -17,7 +17,7 @@ pub struct ClassifyRequest {
 
 #[post("/api/endpoint/classify")]
 pub async fn set_endpoint_type(body: Json<ClassifyRequest>) -> impl Responder {
-    let conn = new_connection();
+    let conn = get_pool().get().expect("Failed to get pooled connection");
 
     // If device_type is "auto" or empty, clear the manual override
     let device_type = match &body.device_type {
@@ -82,7 +82,7 @@ pub struct RenameResponse {
 
 #[post("/api/endpoint/rename")]
 pub async fn rename_endpoint(body: Json<RenameRequest>) -> impl Responder {
-    let conn = new_connection();
+    let conn = get_pool().get().expect("Failed to get pooled connection");
 
     // If custom_name is empty string, treat as None (clear the custom name)
     let custom_name = match &body.custom_name {
@@ -148,7 +148,7 @@ pub struct SetModelRequest {
 
 #[post("/api/endpoint/model")]
 pub async fn set_endpoint_model(body: Json<SetModelRequest>) -> impl Responder {
-    let conn = new_connection();
+    let conn = get_pool().get().expect("Failed to get pooled connection");
 
     // If model is "auto" or empty, clear the custom model
     let model = match &body.model {
@@ -204,7 +204,7 @@ pub struct SetVendorRequest {
 
 #[post("/api/endpoint/vendor")]
 pub async fn set_endpoint_vendor(body: Json<SetVendorRequest>) -> impl Responder {
-    let conn = new_connection();
+    let conn = get_pool().get().expect("Failed to get pooled connection");
 
     // If vendor is "auto" or empty, clear the custom vendor
     let vendor = match &body.vendor {
@@ -260,7 +260,7 @@ pub struct DeleteEndpointRequest {
 /// Delete an endpoint and all associated data (communications, attributes, scan results)
 #[post("/api/endpoint/delete")]
 pub async fn delete_endpoint(body: Json<DeleteEndpointRequest>) -> impl Responder {
-    let conn = new_connection();
+    let conn = get_pool().get().expect("Failed to get pooled connection");
 
     // First, find the endpoint ID(s) matching the name
     let endpoint_ids = match crate::web::helpers::find_endpoint_ids(&conn, &body.endpoint_name) {
@@ -371,7 +371,7 @@ pub struct MergeEndpointsRequest {
 /// All communications, attributes, scan results, and ports from source are moved to target
 #[post("/api/endpoint/merge")]
 pub async fn merge_endpoints(body: Json<MergeEndpointsRequest>) -> impl Responder {
-    let conn = new_connection();
+    let conn = get_pool().get().expect("Failed to get pooled connection");
 
     // Find the target endpoint ID
     let target_id = match crate::web::helpers::find_endpoint_id(&conn, &body.target) {

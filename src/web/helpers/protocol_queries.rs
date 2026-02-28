@@ -2,14 +2,14 @@
 
 use rusqlite::params;
 
-use crate::db::new_connection_result;
+use crate::db::get_pool;
 
 use super::endpoint_queries::resolve_identifier_to_endpoint_ids;
 use super::try_db;
 use super::{box_i64_params, build_in_placeholders, params_to_refs};
 
 pub(crate) fn get_protocols_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String> {
-    let conn = try_db!(new_connection_result(), Vec::new());
+    let conn = try_db!(get_pool().get(), Vec::new());
 
     let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, &hostname);
     if endpoint_ids.is_empty() {
@@ -50,7 +50,7 @@ pub(crate) fn get_endpoints_for_protocol(
     internal_minutes: u64,
     from_endpoint: Option<&str>,
 ) -> Vec<String> {
-    let conn = try_db!(new_connection_result(), Vec::new());
+    let conn = try_db!(get_pool().get(), Vec::new());
 
     match from_endpoint {
         Some(endpoint) => {
@@ -118,7 +118,7 @@ pub(crate) fn get_endpoints_for_protocol(
 
 /// Get all protocols seen across all endpoints
 pub(crate) fn get_all_protocols(internal_minutes: u64) -> Vec<String> {
-    let conn = try_db!(new_connection_result(), Vec::new());
+    let conn = try_db!(get_pool().get(), Vec::new());
 
     let query =
         "SELECT DISTINCT COALESCE(NULLIF(c.sub_protocol, ''), c.ip_header_protocol) as protocol
@@ -137,7 +137,7 @@ pub(crate) fn get_all_protocols(internal_minutes: u64) -> Vec<String> {
 }
 
 pub(crate) fn get_ports_for_endpoint(hostname: String, internal_minutes: u64) -> Vec<String> {
-    let conn = try_db!(new_connection_result(), Vec::new());
+    let conn = try_db!(get_pool().get(), Vec::new());
 
     let endpoint_ids = resolve_identifier_to_endpoint_ids(&conn, &hostname);
     if endpoint_ids.is_empty() {

@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use rusqlite::params;
 
-use crate::db::new_connection_result;
+use crate::db::get_pool;
 
 use super::DISPLAY_NAME_SQL;
 use super::try_db;
@@ -20,7 +20,7 @@ pub(crate) fn get_endpoint_ips_and_macs(
         result.insert(endpoint.to_lowercase(), (Vec::new(), Vec::new()));
     }
 
-    let conn = try_db!(new_connection_result(), result);
+    let conn = try_db!(get_pool().get(), result);
 
     // Single batch query to get all IPs and MACs with their display names
     let mut stmt = try_db!(
@@ -77,7 +77,7 @@ pub(crate) fn get_endpoint_vendor_classes(endpoints: &[String]) -> HashMap<Strin
     // Build lowercase set for case-insensitive matching
     let endpoints_lower: HashSet<String> = endpoints.iter().map(|e| e.to_lowercase()).collect();
 
-    let conn = try_db!(new_connection_result(), result);
+    let conn = try_db!(get_pool().get(), result);
 
     let mut stmt = try_db!(
         conn.prepare(&format!(
@@ -115,10 +115,10 @@ pub(crate) fn get_endpoint_vendor_classes(endpoints: &[String]) -> HashMap<Strin
 pub(crate) fn get_endpoint_ssdp_models(
     _endpoints: &[String],
 ) -> HashMap<String, EndpointModelData> {
-    let conn = match new_connection_result() {
+    let conn = match get_pool().get() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("get_endpoint_ssdp_models: failed to open database: {}", e);
+            eprintln!("get_endpoint_ssdp_models: failed to get connection: {}", e);
             return HashMap::new();
         }
     };
@@ -201,7 +201,7 @@ pub(crate) fn get_endpoint_ssdp_models(
 }
 
 pub(crate) fn get_bytes_for_endpoint(hostname: String, internal_minutes: u64) -> BytesStats {
-    let conn = try_db!(new_connection_result(), BytesStats::default());
+    let conn = try_db!(get_pool().get(), BytesStats::default());
 
     // Bytes received (where this endpoint is the destination)
     let bytes_in: i64 = conn
@@ -250,22 +250,25 @@ pub(crate) fn get_all_endpoints_bytes(
         result.insert(endpoint.to_lowercase(), 0);
     }
 
-    let conn = try_db!(new_connection_result(), result);
+    let conn = try_db!(get_pool().get(), result);
 
-    // Single query to get all bytes data at once
+    // UNION ALL to allow each branch to use its composite index
     let mut stmt = try_db!(
         conn.prepare(&format!(
             "SELECT {DISPLAY_NAME_SQL} AS display_name, COALESCE(SUM(c.bytes), 0) as total_bytes
              FROM endpoints e
-             INNER JOIN communications c ON e.id = c.src_endpoint_id OR e.id = c.dst_endpoint_id
-             WHERE c.last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
+             INNER JOIN (
+                 SELECT src_endpoint_id AS endpoint_id, bytes FROM communications WHERE last_seen_at >= (strftime('%s', 'now') - (?1 * 60))
+                 UNION ALL
+                 SELECT dst_endpoint_id AS endpoint_id, bytes FROM communications WHERE last_seen_at >= (strftime('%s', 'now') - (?2 * 60))
+             ) c ON e.id = c.endpoint_id
              GROUP BY e.id"
         )),
         result
     );
 
     let rows = try_db!(
-        stmt.query_map([internal_minutes], |row| {
+        stmt.query_map([internal_minutes, internal_minutes], |row| {
             let name: String = row.get(0)?;
             let bytes: i64 = row.get(1)?;
             Ok((name, bytes))
